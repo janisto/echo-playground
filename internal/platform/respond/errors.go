@@ -7,19 +7,19 @@ import (
 
 // ProblemDetails represents an RFC 9457 Problem Details response.
 type ProblemDetails struct {
-	Type     string        `json:"type"               cbor:"type"`
-	Title    string        `json:"title"              cbor:"title"`
-	Status   int           `json:"status"             cbor:"status"`
-	Detail   string        `json:"detail,omitempty"   cbor:"detail,omitempty"`
-	Instance string        `json:"instance,omitempty" cbor:"instance,omitempty"`
+	Type     string        `json:"type"               cbor:"type"               example:"about:blank"`
+	Title    string        `json:"title"              cbor:"title"              example:"Not Found"`
+	Status   int           `json:"status"             cbor:"status"             example:"404"`
+	Detail   string        `json:"detail,omitempty"   cbor:"detail,omitempty"   example:"resource not found"`
+	Instance string        `json:"instance,omitempty" cbor:"instance,omitempty" example:"/v1/items/42"`
 	Errors   []ErrorDetail `json:"errors,omitempty"   cbor:"errors,omitempty"`
 }
 
 // ErrorDetail represents a single field-level error within a Problem Details response.
 type ErrorDetail struct {
-	Message  string `json:"message"            cbor:"message"`
-	Location string `json:"location,omitempty" cbor:"location,omitempty"`
-	Value    string `json:"value,omitempty"    cbor:"value,omitempty"`
+	Message  string `json:"message"            cbor:"message"            example:"firstname is required"`
+	Location string `json:"location,omitempty" cbor:"location,omitempty" example:"body.firstname"`
+	Value    string `json:"value,omitempty"    cbor:"value,omitempty"    example:""`
 }
 
 // Error implements the error interface.

@@ -28,7 +28,6 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 //	@Summary		Create profile
 //	@Description	Creates a new user profile
 //	@Tags			profile
-//	@Accept			json
 //	@Produce		json,application/cbor
 //	@Param			body	body		CreateInput	true	"Profile creation request body"
 //	@Success		201		{object}	Profile
@@ -82,7 +81,6 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Summary		Get profile
 //	@Description	Returns the authenticated user's profile
 //	@Tags			profile
-//	@Accept			json
 //	@Produce		json,application/cbor
 //	@Success		200	{object}	Profile
 //	@Failure		401	{object}	respond.ProblemDetails
@@ -112,7 +110,6 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Summary		Update profile
 //	@Description	Partially updates the authenticated user's profile
 //	@Tags			profile
-//	@Accept			json
 //	@Produce		json,application/cbor
 //	@Param			body	body		UpdateInput	true	"Profile update request body"
 //	@Success		200		{object}	Profile

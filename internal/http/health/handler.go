@@ -10,7 +10,7 @@ import (
 
 // Response is the payload for the health endpoint.
 type Response struct {
-	Status string `json:"status" cbor:"status"`
+	Status string `json:"status" cbor:"status" example:"healthy"`
 }
 
 // Handler is the health check endpoint.
