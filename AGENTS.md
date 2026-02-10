@@ -620,6 +620,7 @@ Regenerate after any of these changes:
 
 - General API info (`@title`, `@servers.url`, `@securityDefinitions.apikey`) lives in `cmd/server/main.go`.
 - Operation annotations (`@Summary`, `@Param`, `@Success`, `@Failure`, `@Security`, `@Router`) go on the handler function.
+- Do NOT use `@Accept json` on handler annotations. swag v2 has a bug ([swaggo/swag#2142](https://github.com/swaggo/swag/issues/2142)) where `@Accept json` combined with `@Param body` generates a `oneOf` with an empty object schema, breaking Swagger UI examples. swag defaults to `application/json` for body params, so omitting `@Accept` produces the correct spec.
 - Use `@Produce json,application/cbor` for endpoints supporting content negotiation.
 - Use `@Failure` with `respond.ProblemDetails` for error responses.
 - Use `@Security BearerAuth` on protected routes.

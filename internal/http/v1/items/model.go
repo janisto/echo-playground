@@ -14,7 +14,7 @@ type Item struct {
 	Price       float64       `json:"price"       example:"29.99"`
 	InStock     bool          `json:"inStock"     example:"true"`
 	CreatedAt   timeutil.Time `json:"createdAt"   example:"2024-01-15T10:30:00.000Z"`
-	Description string        `json:"description"`
+	Description string        `json:"description" example:"A compact electronic widget for everyday use"`
 }
 
 // ListData is the response body containing paginated items.

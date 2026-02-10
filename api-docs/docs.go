@@ -11,6 +11,7 @@ const docTemplate = `{
             "hello.CreateInput": {
                 "properties": {
                     "name": {
+                        "example": "World",
                         "maxLength": 100,
                         "minLength": 1,
                         "type": "string"
@@ -82,6 +83,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "description": {
+                        "example": "A compact electronic widget for everyday use",
                         "type": "string"
                     },
                     "id": {
@@ -122,25 +124,31 @@ const docTemplate = `{
             "profile.CreateInput": {
                 "properties": {
                     "email": {
+                        "example": "john@example.com",
                         "type": "string"
                     },
                     "firstname": {
+                        "example": "John",
                         "maxLength": 100,
                         "minLength": 1,
                         "type": "string"
                     },
                     "lastname": {
+                        "example": "Doe",
                         "maxLength": 100,
                         "minLength": 1,
                         "type": "string"
                     },
                     "marketing": {
+                        "example": true,
                         "type": "boolean"
                     },
                     "phoneNumber": {
+                        "example": "+358401234567",
                         "type": "string"
                     },
                     "terms": {
+                        "example": true,
                         "type": "boolean"
                     }
                 },
@@ -155,22 +163,27 @@ const docTemplate = `{
             "profile.UpdateInput": {
                 "properties": {
                     "email": {
+                        "example": "john@example.com",
                         "type": "string"
                     },
                     "firstname": {
+                        "example": "John",
                         "maxLength": 100,
                         "minLength": 1,
                         "type": "string"
                     },
                     "lastname": {
+                        "example": "Doe",
                         "maxLength": 100,
                         "minLength": 1,
                         "type": "string"
                     },
                     "marketing": {
+                        "example": true,
                         "type": "boolean"
                     },
                     "phoneNumber": {
+                        "example": "+358401234567",
                         "type": "string"
                     }
                 },
@@ -179,12 +192,15 @@ const docTemplate = `{
             "respond.ErrorDetail": {
                 "properties": {
                     "location": {
+                        "example": "body.firstname",
                         "type": "string"
                     },
                     "message": {
+                        "example": "firstname is required",
                         "type": "string"
                     },
                     "value": {
+                        "example": "",
                         "type": "string"
                     }
                 },
@@ -193,6 +209,7 @@ const docTemplate = `{
             "respond.ProblemDetails": {
                 "properties": {
                     "detail": {
+                        "example": "resource not found",
                         "type": "string"
                     },
                     "errors": {
@@ -203,15 +220,19 @@ const docTemplate = `{
                         "uniqueItems": false
                     },
                     "instance": {
+                        "example": "/v1/items/42",
                         "type": "string"
                     },
                     "status": {
+                        "example": 404,
                         "type": "integer"
                     },
                     "title": {
+                        "example": "Not Found",
                         "type": "string"
                     },
                     "type": {
+                        "example": "about:blank",
                         "type": "string"
                     }
                 },
@@ -239,15 +260,6 @@ const docTemplate = `{
         "/hello": {
             "get": {
                 "description": "Returns a hello greeting",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -276,16 +288,9 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/hello.CreateInput",
-                                        "summary": "body",
-                                        "description": "Greeting request body"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/hello.CreateInput",
+                                "summary": "body",
+                                "description": "Greeting request body"
                             }
                         }
                     },
@@ -384,15 +389,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -504,15 +500,6 @@ const docTemplate = `{
             },
             "get": {
                 "description": "Returns the authenticated user's profile",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -591,16 +578,9 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/profile.UpdateInput",
-                                        "summary": "body",
-                                        "description": "Profile update request body"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/profile.UpdateInput",
+                                "summary": "body",
+                                "description": "Profile update request body"
                             }
                         }
                     },
@@ -715,16 +695,9 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/profile.CreateInput",
-                                        "summary": "body",
-                                        "description": "Profile creation request body"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/profile.CreateInput",
+                                "summary": "body",
+                                "description": "Profile creation request body"
                             }
                         }
                     },

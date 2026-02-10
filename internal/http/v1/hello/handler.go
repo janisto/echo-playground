@@ -22,7 +22,6 @@ func Register(g *echo.Group) {
 //	@Summary		Greeting endpoint
 //	@Description	Returns a hello greeting
 //	@Tags			hello
-//	@Accept			json
 //	@Produce		json,application/cbor
 //	@Success		200	{object}	Data
 //	@Router			/hello [get]
@@ -36,7 +35,6 @@ func getHandler(c *echo.Context) error {
 //	@Summary		Create greeting
 //	@Description	Creates a personalized greeting
 //	@Tags			hello
-//	@Accept			json
 //	@Produce		json,application/cbor
 //	@Param			body	body		CreateInput	true	"Greeting request body"
 //	@Success		201		{object}	Data

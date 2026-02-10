@@ -23,7 +23,6 @@ func Register(g *echo.Group) {
 //	@Summary		List items
 //	@Description	Returns a paginated list of items with optional category filtering
 //	@Tags			items
-//	@Accept			json
 //	@Produce		json,application/cbor
 //	@Param			cursor		query		string	false	"Pagination cursor"
 //	@Param			limit		query		int		false	"Items per page"		minimum(1)	maximum(100)
