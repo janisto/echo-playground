@@ -78,7 +78,9 @@ Key recipes:
 - `just install` - Download module dependencies (alias for download)
 - `just fresh` - Recreate project from clean state
 - `just emulators` - Start Firebase emulators (Auth + Firestore)
+- `just docs` - Generate OpenAPI 3.1 spec (alias for gen-openapi)
 - `just gen-openapi` - Generate OpenAPI 3.1 spec
+- `just fmt-openapi` - Format swag annotations
 
 All commands in this document can be run via their corresponding `just` recipes.
 
@@ -111,6 +113,8 @@ go run ./cmd/server
 
 The server starts on port 8080 with endpoints:
 - `http://localhost:8080/health` - health probe
+- `http://localhost:8080/api-docs` - Swagger UI
+- `http://localhost:8080/api-docs/openapi.json` - OpenAPI 3.1 spec
 
 ---
 
@@ -171,7 +175,9 @@ golangci-lint run --fix ./...
 
 ```
 cmd/server/            # Application entrypoint and HTTP server bootstrap
+api-docs/              # Generated OpenAPI 3.1 spec (swagger.json, swagger.yaml, docs.go)
 internal/http/         # HTTP transport layer
+  docs/                # Swagger UI serving and spec route registration
   health/              # Health check handler (unversioned)
   v1/                  # Versioned API (v1)
     hello/             # Hello endpoint handlers
@@ -316,9 +322,11 @@ These helpers preserve contextual fields such as trace IDs.
 2. Create `handler.go` with `Register(g *echo.Group)` function
 3. Create `input.go` with input structs using `validate` tags
 4. Create `model.go` with response model structs
-5. Call `Register()` from `routes.Register()`
-6. Log within handlers using context-aware helpers
-7. Return errors using respond error helpers
+5. Add swag annotations to handler functions (see [OpenAPI Documentation](#openapi-documentation))
+6. Call `Register()` from `routes.Register()`
+7. Log within handlers using context-aware helpers
+8. Return errors using respond error helpers
+9. Regenerate the OpenAPI spec: `just docs`
 
 ### POST 201 Created Pattern
 
@@ -563,6 +571,68 @@ func handleGetProfile(c *echo.Context) error {
     return respond.Negotiate(c, http.StatusOK, Profile{ID: user.UID})
 }
 ```
+
+---
+
+## OpenAPI Documentation
+
+The project uses [swaggo/swag v2](https://github.com/swaggo/swag/tree/v2) to generate an OpenAPI 3.1 spec from Go comment annotations. The CLI is installed as a Go tool dependency (`go tool swag`).
+
+### Generated files
+
+| File | Purpose |
+|------|---------|
+| `api-docs/swagger.json` | OpenAPI 3.1 spec (JSON), served at `/api-docs/openapi.json` |
+| `api-docs/swagger.yaml` | Same spec in YAML |
+| `api-docs/docs.go` | Swag registry (auto-generated, not imported by the app) |
+
+### Generating the spec
+
+```bash
+just docs
+```
+
+or equivalently:
+
+```bash
+go tool swag init --v3.1 --parseInternal -g cmd/server/main.go -o api-docs
+```
+
+`--parseInternal` is required because all handlers live under `internal/`.
+
+### Formatting annotations
+
+```bash
+just fmt-openapi
+```
+
+This auto-aligns `// @` annotations. Run before `just docs` after manual annotation edits.
+
+### When to regenerate
+
+Regenerate after any of these changes:
+- Adding, removing, or renaming handler functions or routes
+- Modifying `// @` annotations (summary, params, responses, security)
+- Changing request/response struct fields or tags (`json`, `example`, `validate`)
+- Updating general API info in `cmd/server/main.go`
+
+### Annotation conventions
+
+- General API info (`@title`, `@servers.url`, `@securityDefinitions.apikey`) lives in `cmd/server/main.go`.
+- Operation annotations (`@Summary`, `@Param`, `@Success`, `@Failure`, `@Security`, `@Router`) go on the handler function.
+- Use `@Produce json,application/cbor` for endpoints supporting content negotiation.
+- Use `@Failure` with `respond.ProblemDetails` for error responses.
+- Use `@Security BearerAuth` on protected routes.
+- The generated `api-docs/` files must be committed.
+
+### Swagger UI
+
+Swagger UI is served via an embedded HTML page in `internal/http/docs/`. Routes are registered in `cmd/server/main.go` via `docs.Register(e, "api-docs/swagger.json")`.
+
+| URL | Purpose |
+|-----|---------|
+| `/api-docs` | Swagger UI |
+| `/api-docs/openapi.json` | Raw OpenAPI 3.1 spec |
 
 ---
 

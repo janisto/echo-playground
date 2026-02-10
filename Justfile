@@ -32,9 +32,15 @@ run-port port=PORT:
     PORT={{ port }} go run ./cmd/server
 
 # Generate OpenAPI 3.1 spec
+alias docs := gen-openapi
 [group('build')]
 gen-openapi:
-    go tool swag init --v3.1 --parseInternal -g cmd/server/main.go -o docs
+    go tool swag init --v3.1 --parseInternal -g cmd/server/main.go -o api-docs
+
+# Format swag annotations
+[group('build')]
+fmt-openapi:
+    go tool swag fmt
 
 # Start Firebase emulators for E2E tests
 [group('test')]

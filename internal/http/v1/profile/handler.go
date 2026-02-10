@@ -21,6 +21,22 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 	g.DELETE("/profile", handleDeleteProfile(svc))
 }
 
+// handleCreateProfile godoc
+//
+//	@Summary		Create profile
+//	@Description	Creates a new user profile
+//	@Tags			profile
+//	@Accept			json
+//	@Produce		json,application/cbor
+//	@Param			body	body		CreateInput	true	"Profile creation request body"
+//	@Success		201		{object}	Profile
+//	@Failure		400		{object}	respond.ProblemDetails
+//	@Failure		401		{object}	respond.ProblemDetails
+//	@Failure		409		{object}	respond.ProblemDetails
+//	@Failure		422		{object}	respond.ProblemDetails
+//	@Header			201		{string}	Location	"URI of the created profile"
+//	@Security		BearerAuth
+//	@Router			/profile [post]
 func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		var input CreateInput
@@ -57,6 +73,18 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	}
 }
 
+// handleGetProfile godoc
+//
+//	@Summary		Get profile
+//	@Description	Returns the authenticated user's profile
+//	@Tags			profile
+//	@Accept			json
+//	@Produce		json,application/cbor
+//	@Success		200	{object}	Profile
+//	@Failure		401	{object}	respond.ProblemDetails
+//	@Failure		404	{object}	respond.ProblemDetails
+//	@Security		BearerAuth
+//	@Router			/profile [get]
 func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		user, err := auth.UserFromEchoContext(c)
@@ -73,6 +101,21 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 	}
 }
 
+// handleUpdateProfile godoc
+//
+//	@Summary		Update profile
+//	@Description	Partially updates the authenticated user's profile
+//	@Tags			profile
+//	@Accept			json
+//	@Produce		json,application/cbor
+//	@Param			body	body		UpdateInput	true	"Profile update request body"
+//	@Success		200		{object}	Profile
+//	@Failure		400		{object}	respond.ProblemDetails
+//	@Failure		401		{object}	respond.ProblemDetails
+//	@Failure		404		{object}	respond.ProblemDetails
+//	@Failure		422		{object}	respond.ProblemDetails
+//	@Security		BearerAuth
+//	@Router			/profile [patch]
 func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		var input UpdateInput
@@ -103,6 +146,16 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	}
 }
 
+// handleDeleteProfile godoc
+//
+//	@Summary		Delete profile
+//	@Description	Deletes the authenticated user's profile
+//	@Tags			profile
+//	@Success		204
+//	@Failure		401	{object}	respond.ProblemDetails
+//	@Failure		404	{object}	respond.ProblemDetails
+//	@Security		BearerAuth
+//	@Router			/profile [delete]
 func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		user, err := auth.UserFromEchoContext(c)

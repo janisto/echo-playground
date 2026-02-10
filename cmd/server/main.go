@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
+	"github.com/janisto/echo-playground/internal/http/docs"
 	"github.com/janisto/echo-playground/internal/http/health"
 	"github.com/janisto/echo-playground/internal/http/v1/routes"
 	"github.com/janisto/echo-playground/internal/platform/auth"
@@ -24,6 +25,15 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/validate"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 )
+
+//	@title						Echo Playground API
+//	@version					1.0
+//	@description				Example API built with Echo v5
+//	@servers.url				http://localhost:8080/v1
+//	@servers.description		Local development server
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
 
 // Version can be overridden at build time: -ldflags "-X main.Version=1.2.3"
 var Version = "dev"
@@ -63,7 +73,7 @@ func main() {
 	e.Logger = applog.Logger()
 
 	e.Use(
-		appmiddleware.Security("/v1/api-docs"),
+		appmiddleware.Security("/api-docs"),
 		appmiddleware.Vary(),
 		appmiddleware.CORS(),
 		appmiddleware.RequestID(),
@@ -74,6 +84,7 @@ func main() {
 	)
 
 	e.GET("/health", health.Handler)
+	docs.Register(e, "api-docs/swagger.json")
 
 	v1 := e.Group("/v1")
 	routes.Register(v1, verifier, profileService)

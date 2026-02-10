@@ -18,6 +18,21 @@ func Register(g *echo.Group) {
 	g.GET("/items", listHandler)
 }
 
+// listHandler godoc
+//
+//	@Summary		List items
+//	@Description	Returns a paginated list of items with optional category filtering
+//	@Tags			items
+//	@Accept			json
+//	@Produce		json,application/cbor
+//	@Param			cursor		query		string	false	"Pagination cursor"
+//	@Param			limit		query		int		false	"Items per page"		minimum(1)	maximum(100)
+//	@Param			category	query		string	false	"Filter by category"	Enums(electronics, tools, accessories, robotics, power, components)
+//	@Success		200			{object}	ListData
+//	@Failure		400			{object}	respond.ProblemDetails
+//	@Failure		422			{object}	respond.ProblemDetails
+//	@Header			200			{string}	Link	"RFC 8288 pagination links"
+//	@Router			/items [get]
 func listHandler(c *echo.Context) error {
 	var input ListInput
 	if err := c.Bind(&input); err != nil {
