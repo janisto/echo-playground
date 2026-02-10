@@ -653,3 +653,4 @@ Swagger UI is served via an embedded HTML page in `internal/http/docs/`. Routes 
 - Clean up temporary files/scripts before finishing a task.
 - Do not invent paths/APIs/commands. Verify from repo or tooling.
 - For runnable code changes, run minimal tests to validate, report PASS/FAIL succinctly, and iterate up to three targeted fixes if needed.
+
