@@ -124,6 +124,7 @@ cp .env.example .env
 ## Project Layout
 
 ```
+api-docs/              # Generated OpenAPI 3.1 spec (swagger.json, swagger.yaml, docs.go)
 cmd/server/            # Application entrypoint and HTTP server bootstrap
 internal/http/         # HTTP transport layer
   docs/                # Swagger UI serving and spec route registration
