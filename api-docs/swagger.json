@@ -1,0 +1,846 @@
+{
+    "components": {
+        "schemas": {
+            "hello.CreateInput": {
+                "properties": {
+                    "name": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "name"
+                ],
+                "type": "object"
+            },
+            "hello.Data": {
+                "properties": {
+                    "message": {
+                        "example": "Hello, World!",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "internal_http_v1_profile.Profile": {
+                "properties": {
+                    "createdAt": {
+                        "example": "2024-01-15T10:30:00.000Z",
+                        "type": "string"
+                    },
+                    "email": {
+                        "example": "john@example.com",
+                        "type": "string"
+                    },
+                    "firstname": {
+                        "example": "John",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "user-123",
+                        "type": "string"
+                    },
+                    "lastname": {
+                        "example": "Doe",
+                        "type": "string"
+                    },
+                    "marketing": {
+                        "example": true,
+                        "type": "boolean"
+                    },
+                    "phoneNumber": {
+                        "example": "+358401234567",
+                        "type": "string"
+                    },
+                    "terms": {
+                        "example": true,
+                        "type": "boolean"
+                    },
+                    "updatedAt": {
+                        "example": "2024-01-15T10:30:00.000Z",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "items.Item": {
+                "properties": {
+                    "category": {
+                        "example": "electronics",
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "example": "2024-01-15T10:30:00.000Z",
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "item-001",
+                        "type": "string"
+                    },
+                    "inStock": {
+                        "example": true,
+                        "type": "boolean"
+                    },
+                    "name": {
+                        "example": "Alpha Widget",
+                        "type": "string"
+                    },
+                    "price": {
+                        "example": 29.99,
+                        "type": "number"
+                    }
+                },
+                "type": "object"
+            },
+            "items.ListData": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/items.Item"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "total": {
+                        "example": 30,
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "profile.CreateInput": {
+                "properties": {
+                    "email": {
+                        "type": "string"
+                    },
+                    "firstname": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "lastname": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "marketing": {
+                        "type": "boolean"
+                    },
+                    "phoneNumber": {
+                        "type": "string"
+                    },
+                    "terms": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "email",
+                    "firstname",
+                    "lastname",
+                    "phoneNumber"
+                ],
+                "type": "object"
+            },
+            "profile.UpdateInput": {
+                "properties": {
+                    "email": {
+                        "type": "string"
+                    },
+                    "firstname": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "lastname": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "marketing": {
+                        "type": "boolean"
+                    },
+                    "phoneNumber": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "respond.ErrorDetail": {
+                "properties": {
+                    "location": {
+                        "type": "string"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "respond.ProblemDetails": {
+                "properties": {
+                    "detail": {
+                        "type": "string"
+                    },
+                    "errors": {
+                        "items": {
+                            "$ref": "#/components/schemas/respond.ErrorDetail"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "instance": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "integer"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "BearerAuth": {
+                "in": "header",
+                "name": "Authorization",
+                "type": "apiKey"
+            }
+        }
+    },
+    "info": {
+        "description": "Example API built with Echo v5",
+        "title": "Echo Playground API",
+        "version": "1.0"
+    },
+    "externalDocs": {
+        "description": "",
+        "url": ""
+    },
+    "paths": {
+        "/hello": {
+            "get": {
+                "description": "Returns a hello greeting",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/hello.Data"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/hello.Data"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "summary": "Greeting endpoint",
+                "tags": [
+                    "hello"
+                ]
+            },
+            "post": {
+                "description": "Creates a personalized greeting",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/hello.CreateInput",
+                                        "summary": "body",
+                                        "description": "Greeting request body"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "description": "Greeting request body",
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/hello.Data"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/hello.Data"
+                                }
+                            }
+                        },
+                        "description": "Created"
+                    },
+                    "400": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "422": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unprocessable Entity"
+                    }
+                },
+                "summary": "Create greeting",
+                "tags": [
+                    "hello"
+                ]
+            }
+        },
+        "/items": {
+            "get": {
+                "description": "Returns a paginated list of items with optional category filtering",
+                "parameters": [
+                    {
+                        "description": "Pagination cursor",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Items per page",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "maximum": 100,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Filter by category",
+                        "in": "query",
+                        "name": "category",
+                        "schema": {
+                            "enum": [
+                                "electronics",
+                                "tools",
+                                "accessories",
+                                "robotics",
+                                "power",
+                                "components"
+                            ],
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/items.ListData"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/items.ListData"
+                                }
+                            }
+                        },
+                        "description": "OK",
+                        "headers": {
+                            "Link": {
+                                "description": "RFC 8288 pagination links",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "422": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unprocessable Entity"
+                    }
+                },
+                "summary": "List items",
+                "tags": [
+                    "items"
+                ]
+            }
+        },
+        "/profile": {
+            "delete": {
+                "description": "Deletes the authenticated user's profile",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Delete profile",
+                "tags": [
+                    "profile"
+                ]
+            },
+            "get": {
+                "description": "Returns the authenticated user's profile",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_http_v1_profile.Profile"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_http_v1_profile.Profile"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Get profile",
+                "tags": [
+                    "profile"
+                ]
+            },
+            "patch": {
+                "description": "Partially updates the authenticated user's profile",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/profile.UpdateInput",
+                                        "summary": "body",
+                                        "description": "Profile update request body"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "description": "Profile update request body",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_http_v1_profile.Profile"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_http_v1_profile.Profile"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "422": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unprocessable Entity"
+                    },
+                    "500": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Update profile",
+                "tags": [
+                    "profile"
+                ]
+            },
+            "post": {
+                "description": "Creates a new user profile",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/profile.CreateInput",
+                                        "summary": "body",
+                                        "description": "Profile creation request body"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "description": "Profile creation request body",
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_http_v1_profile.Profile"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_http_v1_profile.Profile"
+                                }
+                            }
+                        },
+                        "description": "Created",
+                        "headers": {
+                            "Location": {
+                                "description": "URI of the created profile",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "409": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Conflict"
+                    },
+                    "422": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Unprocessable Entity"
+                    },
+                    "500": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Create profile",
+                "tags": [
+                    "profile"
+                ]
+            }
+        }
+    },
+    "openapi": "3.1.0",
+    "servers": [
+        {
+            "description": "Local development server",
+            "url": "http://localhost:8080/v1"
+        }
+    ]
+}

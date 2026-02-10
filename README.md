@@ -1,2 +1,289 @@
-# echo-playground
-Echo playground
+# Echo Playground
+
+A REST API skeleton built with [Echo v5](https://github.com/labstack/echo/tree/v5), demonstrating Firebase Authentication, Firestore CRUD operations, and modern Go development workflow using [Just](https://github.com/casey/just) (task runner).
+
+It showcases structured logging, RFC 9457 Problem Details for errors, and a modular route layout that is ready to grow into a larger service.
+
+<img src="assets/gopher.svg" alt="Go Gopher mascot illustration" width="400">
+
+<sub>Gopher illustration from [free-gophers-pack](https://github.com/MariaLetta/free-gophers-pack) by Maria Letta</sub>
+
+## Features
+
+- Layered middleware architecture with security headers, CORS, request IDs, real IP detection, and structured access logs
+- Request-scoped slog logger with Google Cloud Trace correlation via [W3C Trace Context](https://www.w3.org/TR/trace-context/) `traceparent` header, falling back to request ID when no trace exists
+- [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457) for all error responses with optional field-level validation errors
+- Content negotiation supporting [JSON (RFC 8259)](https://datatracker.ietf.org/doc/html/rfc8259) and [CBOR (RFC 8949)](https://datatracker.ietf.org/doc/html/rfc8949) formats via `Accept` header
+- Cursor-based pagination with [RFC 8288 Link](https://datatracker.ietf.org/doc/html/rfc8288) headers
+- [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0) documentation with Swagger UI, generated via [swaggo/swag v2](https://github.com/swaggo/swag/tree/v2) annotations
+- Firebase Authentication with JWT validation via Echo middleware
+- Firestore integration with transaction-safe CRUD operations and audit logging
+- Health check endpoint (`/health`) for liveness probes
+
+## API Design Principles
+
+### URI Design
+
+- Use plural nouns for collections (`/users`, not `/user`)
+- Avoid verbs in URIs; let HTTP methods convey the action
+- Nest resources to express relationships (`/posts/{postId}/comments`); limit nesting to one level
+
+### HTTP Methods & Status Codes
+
+| Method | Purpose | Success Status |
+|--------|---------|----------------|
+| GET | Retrieve resource(s) | 200 OK |
+| POST | Create a resource | 201 Created |
+| PUT | Replace a resource entirely | 200 OK or 204 No Content |
+| PATCH | Partial update | 200 OK or 204 No Content |
+| DELETE | Remove a resource | 204 No Content |
+
+### Error Responses
+
+Errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457.html) and honor content negotiation:
+- `application/problem+json` when JSON is requested (default)
+- `application/problem+cbor` when CBOR is requested
+
+| Status | Use Case |
+|--------|----------|
+| 400 Bad Request | Malformed syntax, missing required fields |
+| 401 Unauthorized | Missing or invalid authentication |
+| 403 Forbidden | Authenticated but not authorized |
+| 404 Not Found | Resource does not exist |
+| 409 Conflict | Resource already exists |
+| 422 Unprocessable Entity | Validation failures on specific fields |
+
+### Content Negotiation
+
+- Default: `application/json` ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259.html))
+- Alternate: `application/cbor` ([RFC 8949](https://www.rfc-editor.org/rfc/rfc8949.html))
+- Format selected via `Accept` header with q-value support
+
+### Pagination
+
+- Cursor-based tokens for stability
+- Links provided via HTTP `Link` header per [RFC 8288](https://www.rfc-editor.org/rfc/rfc8288.html)
+
+## Requirements
+
+- Go 1.25+
+- [golangci-lint](https://golangci-lint.run/) v2 (for linting and formatting)
+- [Firebase CLI](https://firebase.google.com/docs/cli) (for emulators)
+- [Just](https://github.com/casey/just) command runner (optional)
+- [Podman Desktop](https://podman-desktop.io/) (for containerization, optional)
+
+## Go Workspace
+
+This project uses a [Go workspace](https://go.dev/doc/tutorial/workspaces) (`go.work`) to manage multiple modules:
+
+```go
+go 1.25.5
+
+use (
+    .
+    ./functions
+)
+```
+
+The workspace allows simultaneous development across modules. Commands like `go build`, `go test`, and `go mod tidy` operate on all workspace modules when run from the root.
+
+## Quick Start
+
+```bash
+go run ./cmd/server
+```
+
+Then visit:
+- `http://localhost:8080/health` - service health probe
+- `http://localhost:8080/api-docs` - interactive API explorer
+- `http://localhost:8080/api-docs/openapi.json` - generated OpenAPI schema
+
+Sample request:
+```bash
+curl -s localhost:8080/health | jq
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and customize as needed:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server listen port | `8080` |
+| `HOST` | Host address to bind to | `0.0.0.0` |
+| `LOG_LEVEL` | Log level (debug, info, warn, error) | `info` |
+| `FIREBASE_PROJECT_ID` | Firebase project ID (use `demo-*` prefix for emulator-only mode) | `demo-test-project` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON file (uses ADC if not set) | - |
+| `APP_ENVIRONMENT` | Environment label | `development` |
+| `APP_URL` | Base URL for the application | `http://localhost:8080` |
+
+## Project Layout
+
+```
+api-docs/              # Generated OpenAPI 3.1 spec (swagger.json, swagger.yaml, docs.go)
+cmd/server/            # Application entrypoint and HTTP server bootstrap
+internal/http/         # HTTP transport layer
+  docs/                # Swagger UI serving and spec route registration
+  health/              # Health check handler (unversioned)
+  v1/                  # Versioned API (v1)
+    hello/             # Hello endpoint handlers
+    items/             # Items endpoint handlers
+    profile/           # Profile endpoint handlers (requires auth)
+    routes/            # Route registration
+internal/platform/     # Cross-cutting infrastructure
+  auth/                # Firebase Auth middleware and JWT validation
+  firebase/            # Firebase Admin SDK initialization
+  logging/             # Structured logging with slog
+  middleware/          # Security headers, CORS, request ID
+  pagination/          # Cursor-based pagination
+  respond/             # Panic recovery and Problem Details
+  timeutil/            # Time formatting utilities
+  validate/            # go-playground/validator integration
+internal/service/      # Business logic and data access
+  profile/             # User profile service with Firestore backend
+internal/testutil/     # Test utilities (emulator helpers)
+functions/             # Cloud Functions (separate Go module)
+```
+
+## Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check route |
+| GET | `/v1/hello` | Default greeting |
+| POST | `/v1/hello` | Create a personalized greeting |
+| GET | `/v1/items` | List items with cursor-based pagination |
+| GET | `/v1/profile` | Get current user profile (requires auth) |
+| POST | `/v1/profile` | Create user profile (requires auth) |
+| PATCH | `/v1/profile` | Update user profile (requires auth) |
+| DELETE | `/v1/profile` | Delete user profile (requires auth) |
+
+## Development
+
+### Build and Test
+
+```bash
+go build -v ./...     # Build
+go test ./...         # Run tests
+go test -v ./...      # Verbose output
+golangci-lint run ./...  # Lint
+```
+
+### Firebase Emulators
+
+Firestore integration tests require Firebase emulators. Start them before running tests:
+
+```bash
+just emulators        # Start Auth and Firestore emulators
+```
+
+Emulator ports:
+- Auth: `localhost:7110`
+- Firestore: `localhost:7130`
+- Emulator UI: `localhost:4000`
+
+Tests auto-skip when emulators are unavailable. The `demo-test-project` project ID triggers emulator-only mode.
+
+### Justfile Commands
+
+| Command | Description |
+|---------|-------------|
+| `just build` | Build the application |
+| `just run` | Run the server |
+| `just test` | Run all tests |
+| `just lint` | Run linter |
+| `just check` | Full check (build + test + lint) |
+| `just qa` | Quality assurance (tidy + fix + build + test) |
+| `just docs` | Generate OpenAPI docs |
+| `just fmt-openapi` | Format OpenAPI spec annotations |
+| `just vuln` | Check for vulnerabilities |
+| `just install` | Download module dependencies |
+| `just fresh` | Recreate project from clean state |
+| `just emulators` | Start Firebase emulators for testing |
+
+Run `just` to see all available commands.
+
+### Dependencies
+
+```bash
+go mod download        # Download dependencies
+go get -u -t ./...     # Update dependencies
+go mod tidy            # Clean up go.mod
+```
+
+## Adding Routes
+
+1. Create a new package under `internal/http/v1/` (e.g., `users/handler.go`)
+2. Define your handler function with swag annotations for OpenAPI docs
+3. Add a registration function (`Register`) and call it from `routes.Register`
+4. Return errors using `respond` error helpers (`respond.Error400()`, etc.)
+5. Regenerate the OpenAPI spec: `just docs`
+
+## Container
+
+```bash
+just container-build      # Build image
+just container-up         # Run container detached
+just container-down       # Stop container
+```
+
+Or with Docker/Podman CLI:
+```bash
+docker build -t echo-playground:latest .
+docker run --rm -p 8080:8080 --env-file .env echo-playground:latest
+```
+
+## Deployment
+
+### Google Cloud Run
+
+```bash
+# Build and push
+gcloud builds submit --tag REGION-docker.pkg.dev/PROJECT_ID/REPO/echo-playground:latest
+
+# Deploy with automatic base image updates
+gcloud run deploy echo-playground \
+  --image REGION-docker.pkg.dev/PROJECT_ID/REPO/echo-playground:latest \
+  --platform managed \
+  --region REGION \
+  --base-image go125 \
+  --automatic-updates
+
+# Deploy from source with automatic base image updates
+gcloud run deploy echo-playground \
+  --source . \
+  --platform managed \
+  --region REGION \
+  --base-image go125 \
+  --automatic-updates
+```
+
+The `--base-image` and `--automatic-updates` flags enable [automatic base image updates](https://cloud.google.com/run/docs/configuring/services/automatic-base-image-updates), allowing Google to apply security patches to the OS and runtime without rebuilding or redeploying.
+
+Set a `FIREBASE_PROJECT_ID` environment variable to enable trace correlation in Cloud Logging.
+
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+
+| Workflow | Description |
+|----------|-------------|
+| `app-ci.yml` | Build, tests, and coverage report |
+| `app-lint.yml` | Code quality (golangci-lint) |
+| `labeler.yml` | Automatic PR labeling |
+| `labeler-manual.yml` | Manual labeling for historical PRs |
+| `dependabot-auto-merge.yml` | Auto-merge Dependabot minor/patch updates |
+
+Dependabot is configured in `.github/dependabot.yml` for automated dependency updates.
+
+## Contributing
+
+See [AGENTS.md](AGENTS.md) for coding guidelines and conventions.
+
+## License
+
+MIT
