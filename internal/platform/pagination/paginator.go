@@ -15,6 +15,17 @@ type Result[T any] struct {
 }
 
 // Paginate applies cursor-based pagination to a slice of items.
+//
+// Parameters:
+//   - items: The full slice of items to paginate
+//   - cursor: The decoded cursor from the request
+//   - limit: Maximum items per page
+//   - cursorType: Type identifier for cursor validation (e.g., "item", "user")
+//   - getID: Function to extract the ID from an item
+//   - baseURL: Base URL path for Link header (e.g., "/items")
+//   - query: Additional query parameters to preserve in links
+//
+// Returns a Result containing the page of items and pagination metadata.
 func Paginate[T any](
 	items []T,
 	cursor Cursor,

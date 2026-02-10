@@ -1,12 +1,14 @@
 package profile
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
 
 	"github.com/janisto/echo-playground/internal/platform/auth"
+	applog "github.com/janisto/echo-playground/internal/platform/logging"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	"github.com/janisto/echo-playground/internal/platform/timeutil"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
@@ -34,6 +36,7 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 //	@Failure		401		{object}	respond.ProblemDetails
 //	@Failure		409		{object}	respond.ProblemDetails
 //	@Failure		422		{object}	respond.ProblemDetails
+//	@Failure		500		{object}	respond.ProblemDetails
 //	@Header			201		{string}	Location	"URI of the created profile"
 //	@Security		BearerAuth
 //	@Router			/profile [post]
@@ -56,7 +59,8 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 			return respond.Error401("unauthorized")
 		}
 
-		profile, err := svc.Create(c.Request().Context(), user.UID, profilesvc.CreateParams{
+		ctx := c.Request().Context()
+		profile, err := svc.Create(ctx, user.UID, profilesvc.CreateParams{
 			Firstname:   input.Firstname,
 			Lastname:    input.Lastname,
 			Email:       input.Email,
@@ -65,7 +69,7 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 			Terms:       input.Terms,
 		})
 		if err != nil {
-			return mapServiceError(err)
+			return mapServiceError(ctx, err)
 		}
 
 		c.Response().Header().Set("Location", "/v1/profile")
@@ -83,6 +87,7 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Success		200	{object}	Profile
 //	@Failure		401	{object}	respond.ProblemDetails
 //	@Failure		404	{object}	respond.ProblemDetails
+//	@Failure		500	{object}	respond.ProblemDetails
 //	@Security		BearerAuth
 //	@Router			/profile [get]
 func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -92,9 +97,10 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 			return respond.Error401("unauthorized")
 		}
 
-		profile, err := svc.Get(c.Request().Context(), user.UID)
+		ctx := c.Request().Context()
+		profile, err := svc.Get(ctx, user.UID)
 		if err != nil {
-			return mapServiceError(err)
+			return mapServiceError(ctx, err)
 		}
 
 		return respond.Negotiate(c, http.StatusOK, toHTTPProfile(profile))
@@ -114,6 +120,7 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Failure		401		{object}	respond.ProblemDetails
 //	@Failure		404		{object}	respond.ProblemDetails
 //	@Failure		422		{object}	respond.ProblemDetails
+//	@Failure		500		{object}	respond.ProblemDetails
 //	@Security		BearerAuth
 //	@Router			/profile [patch]
 func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -131,7 +138,8 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 			return respond.Error401("unauthorized")
 		}
 
-		profile, err := svc.Update(c.Request().Context(), user.UID, profilesvc.UpdateParams{
+		ctx := c.Request().Context()
+		profile, err := svc.Update(ctx, user.UID, profilesvc.UpdateParams{
 			Firstname:   input.Firstname,
 			Lastname:    input.Lastname,
 			Email:       input.Email,
@@ -139,7 +147,7 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 			Marketing:   input.Marketing,
 		})
 		if err != nil {
-			return mapServiceError(err)
+			return mapServiceError(ctx, err)
 		}
 
 		return respond.Negotiate(c, http.StatusOK, toHTTPProfile(profile))
@@ -154,6 +162,7 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Success		204
 //	@Failure		401	{object}	respond.ProblemDetails
 //	@Failure		404	{object}	respond.ProblemDetails
+//	@Failure		500	{object}	respond.ProblemDetails
 //	@Security		BearerAuth
 //	@Router			/profile [delete]
 func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -163,21 +172,23 @@ func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
 			return respond.Error401("unauthorized")
 		}
 
-		if err := svc.Delete(c.Request().Context(), user.UID); err != nil {
-			return mapServiceError(err)
+		ctx := c.Request().Context()
+		if err := svc.Delete(ctx, user.UID); err != nil {
+			return mapServiceError(ctx, err)
 		}
 
 		return c.NoContent(http.StatusNoContent)
 	}
 }
 
-func mapServiceError(err error) error {
+func mapServiceError(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, profilesvc.ErrNotFound):
 		return respond.Error404("profile not found")
 	case errors.Is(err, profilesvc.ErrAlreadyExists):
 		return respond.Error409("profile already exists")
 	default:
+		applog.LogError(ctx, "unexpected service error", err)
 		return respond.Error500("internal error")
 	}
 }

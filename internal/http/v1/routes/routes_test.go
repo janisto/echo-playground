@@ -193,7 +193,7 @@ func TestProfileCRUD(t *testing.T) {
 	e := setupTestServer(verifier, svc)
 
 	// Create.
-	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phone_number":"+358401234567","marketing":true,"terms":true}`
+	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true,"terms":true}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")

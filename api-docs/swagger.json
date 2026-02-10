@@ -25,7 +25,7 @@
             },
             "internal_http_v1_profile.Profile": {
                 "properties": {
-                    "created_at": {
+                    "createdAt": {
                         "example": "2024-01-15T10:30:00.000Z",
                         "type": "string"
                     },
@@ -49,7 +49,7 @@
                         "example": true,
                         "type": "boolean"
                     },
-                    "phone_number": {
+                    "phoneNumber": {
                         "example": "+358401234567",
                         "type": "string"
                     },
@@ -57,7 +57,7 @@
                         "example": true,
                         "type": "boolean"
                     },
-                    "updated_at": {
+                    "updatedAt": {
                         "example": "2024-01-15T10:30:00.000Z",
                         "type": "string"
                     }
@@ -130,7 +130,7 @@
                     "marketing": {
                         "type": "boolean"
                     },
-                    "phone_number": {
+                    "phoneNumber": {
                         "type": "string"
                     },
                     "terms": {
@@ -141,8 +141,7 @@
                     "email",
                     "firstname",
                     "lastname",
-                    "phone_number",
-                    "terms"
+                    "phoneNumber"
                 ],
                 "type": "object"
             },
@@ -164,7 +163,7 @@
                     "marketing": {
                         "type": "boolean"
                     },
-                    "phone_number": {
+                    "phoneNumber": {
                         "type": "string"
                     }
                 },
@@ -474,6 +473,16 @@
                             }
                         },
                         "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
                     }
                 },
                 "security": [
@@ -542,6 +551,21 @@
                             }
                         },
                         "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
                     }
                 },
                 "security": [
@@ -651,6 +675,21 @@
                             }
                         },
                         "description": "Unprocessable Entity"
+                    },
+                    "500": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
                     }
                 },
                 "security": [
@@ -768,6 +807,21 @@
                             }
                         },
                         "description": "Unprocessable Entity"
+                    },
+                    "500": {
+                        "content": {
+                            "application/cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
                     }
                 },
                 "security": [

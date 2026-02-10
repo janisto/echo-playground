@@ -55,6 +55,9 @@ func LogError(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
 
 // LogFatal logs with emergency severity and terminates the process.
 // It attaches the error attribute when err is non-nil.
+//
+// NOTE: os.Exit does not run deferred functions. Use sparingly and only
+// for unrecoverable startup errors where cleanup is not required.
 func LogFatal(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
 	if err != nil {
 		attrs = append(attrs, slog.Any("error", err))

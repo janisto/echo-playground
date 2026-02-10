@@ -6,9 +6,9 @@ import (
 )
 
 type createInput struct {
-	Name  string `json:"name"         validate:"required,min=1,max=100"`
-	Email string `json:"email"        validate:"required,email"`
-	Phone string `json:"phone_number" validate:"required,e164"`
+	Name  string `json:"name"        validate:"required,min=1,max=100"`
+	Email string `json:"email"       validate:"required,email"`
+	Phone string `json:"phoneNumber" validate:"required,e164"`
 }
 
 type listInput struct {
@@ -64,7 +64,7 @@ func TestValidate_RequiredFields(t *testing.T) {
 
 	assertField(t, fieldMap, "name", "name is required")
 	assertField(t, fieldMap, "email", "email is required")
-	assertField(t, fieldMap, "phone_number", "phone_number is required")
+	assertField(t, fieldMap, "phoneNumber", "phoneNumber is required")
 }
 
 func TestValidate_InvalidEmail(t *testing.T) {
@@ -116,8 +116,8 @@ func TestValidate_InvalidE164(t *testing.T) {
 	if len(ve.Fields) != 1 {
 		t.Fatalf("expected 1 field error, got %d", len(ve.Fields))
 	}
-	if ve.Fields[0].Field != "phone_number" {
-		t.Fatalf("expected field 'phone_number', got %q", ve.Fields[0].Field)
+	if ve.Fields[0].Field != "phoneNumber" {
+		t.Fatalf("expected field 'phoneNumber', got %q", ve.Fields[0].Field)
 	}
 }
 
@@ -273,5 +273,83 @@ func assertField(t *testing.T, fields map[string]FieldError, name, expectedMsg s
 	}
 	if fe.Message != expectedMsg {
 		t.Fatalf("field %q: expected message %q, got %q", name, expectedMsg, fe.Message)
+	}
+}
+
+type customTagInput struct {
+	Value string `json:"value" validate:"required,ip"`
+}
+
+func TestValidate_DefaultBuildMessage(t *testing.T) {
+	v := New()
+	input := customTagInput{Value: "not-an-ip"}
+	err := v.Validate(input)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *ValidationError, got %T", err)
+	}
+	if len(ve.Fields) != 1 {
+		t.Fatalf("expected 1 field error, got %d", len(ve.Fields))
+	}
+	if ve.Fields[0].Message != "value failed on ip validation" {
+		t.Fatalf("expected default message format, got %q", ve.Fields[0].Message)
+	}
+}
+
+type noTagInput struct {
+	Name string `validate:"required"`
+}
+
+func TestValidate_FallbackToFieldName(t *testing.T) {
+	v := New()
+	input := noTagInput{}
+	err := v.Validate(input)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *ValidationError, got %T", err)
+	}
+	if ve.Fields[0].Field != "Name" {
+		t.Fatalf("expected field 'Name' (struct field name), got %q", ve.Fields[0].Field)
+	}
+}
+
+type dashTagInput struct {
+	Secret string `json:"-" validate:"required"`
+}
+
+func TestValidate_DashTagIgnored(t *testing.T) {
+	v := New()
+	input := dashTagInput{}
+	err := v.Validate(input)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *ValidationError, got %T", err)
+	}
+	if ve.Fields[0].Field != "Secret" {
+		t.Fatalf("expected field 'Secret', got %q", ve.Fields[0].Field)
+	}
+}
+
+func TestValidate_NonStructInput(t *testing.T) {
+	v := New()
+	err := v.Validate("not a struct")
+	if err == nil {
+		t.Fatal("expected error for non-struct input")
+	}
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *ValidationError, got %T", err)
+	}
+	if ve.Message == "" {
+		t.Fatal("expected non-empty message")
 	}
 }

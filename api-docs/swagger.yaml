@@ -17,7 +17,7 @@ components:
       type: object
     internal_http_v1_profile.Profile:
       properties:
-        created_at:
+        createdAt:
           example: "2024-01-15T10:30:00.000Z"
           type: string
         email:
@@ -35,13 +35,13 @@ components:
         marketing:
           example: true
           type: boolean
-        phone_number:
+        phoneNumber:
           example: "+358401234567"
           type: string
         terms:
           example: true
           type: boolean
-        updated_at:
+        updatedAt:
           example: "2024-01-15T10:30:00.000Z"
           type: string
       type: object
@@ -93,7 +93,7 @@ components:
           type: string
         marketing:
           type: boolean
-        phone_number:
+        phoneNumber:
           type: string
         terms:
           type: boolean
@@ -101,8 +101,7 @@ components:
       - email
       - firstname
       - lastname
-      - phone_number
-      - terms
+      - phoneNumber
       type: object
     profile.UpdateInput:
       properties:
@@ -118,7 +117,7 @@ components:
           type: string
         marketing:
           type: boolean
-        phone_number:
+        phoneNumber:
           type: string
       type: object
     respond.ErrorDetail:
@@ -314,6 +313,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Internal Server Error
       security:
       - BearerAuth: []
       summary: Delete profile
@@ -354,6 +359,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
+        "500":
+          content:
+            application/cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Internal Server Error
       security:
       - BearerAuth: []
       summary: Get profile
@@ -418,6 +432,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unprocessable Entity
+        "500":
+          content:
+            application/cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Internal Server Error
       security:
       - BearerAuth: []
       summary: Update profile
@@ -487,6 +510,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unprocessable Entity
+        "500":
+          content:
+            application/cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Internal Server Error
       security:
       - BearerAuth: []
       summary: Create profile

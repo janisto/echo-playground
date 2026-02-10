@@ -111,3 +111,48 @@ func TestPaginate_CursorNotFound(t *testing.T) {
 		t.Fatalf("expected 3 items, got %d", len(result.Items))
 	}
 }
+
+func TestPaginate_PrevCursorSecondPage(t *testing.T) {
+	items := makeItems(10)
+	first := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", nil)
+	cursor, err := DecodeCursor(first.NextCursor)
+	if err != nil {
+		t.Fatalf("decode cursor: %v", err)
+	}
+	second := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
+	if second.PrevCursor == "" {
+		t.Fatal("expected prev cursor on second page")
+	}
+	prev, err := DecodeCursor(second.PrevCursor)
+	if err != nil {
+		t.Fatalf("decode prev cursor: %v", err)
+	}
+	if prev.Value != "" {
+		t.Fatalf("expected empty prev cursor value for first page, got %q", prev.Value)
+	}
+}
+
+func TestPaginate_PrevCursorThirdPage(t *testing.T) {
+	items := makeItems(10)
+	first := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", nil)
+	c1, err := DecodeCursor(first.NextCursor)
+	if err != nil {
+		t.Fatalf("decode cursor: %v", err)
+	}
+	second := Paginate(items, c1, 3, "item", getTestID, "/items", nil)
+	c2, err := DecodeCursor(second.NextCursor)
+	if err != nil {
+		t.Fatalf("decode cursor: %v", err)
+	}
+	third := Paginate(items, c2, 3, "item", getTestID, "/items", nil)
+	if third.PrevCursor == "" {
+		t.Fatal("expected prev cursor on third page")
+	}
+	prev, err := DecodeCursor(third.PrevCursor)
+	if err != nil {
+		t.Fatalf("decode prev cursor: %v", err)
+	}
+	if prev.Value != "c" {
+		t.Fatalf("expected prev cursor to point to %q, got %q", "c", prev.Value)
+	}
+}

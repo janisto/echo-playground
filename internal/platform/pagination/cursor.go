@@ -11,8 +11,8 @@ var ErrInvalidCursor = errors.New("invalid cursor format")
 
 // Cursor represents a pagination position.
 type Cursor struct {
-	Type  string
-	Value string
+	Type  string // resource type identifier
+	Value string // last seen value (ID, timestamp, etc.)
 }
 
 // Encode returns a URL-safe opaque Base64 representation.

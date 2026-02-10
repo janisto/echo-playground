@@ -59,3 +59,61 @@ func TestBuildLinkHeader_PreservesQuery(t *testing.T) {
 		t.Fatalf("expected preserved limit param, got %q", link)
 	}
 }
+
+func TestBuildLinkHeader_URLEncoding(t *testing.T) {
+	q := url.Values{"filter": {"hello world"}}
+	link := BuildLinkHeader("/items", q, "next", "")
+
+	if !strings.Contains(link, "filter=hello+world") && !strings.Contains(link, "filter=hello%20world") {
+		t.Errorf("filter param should be URL encoded, got %q", link)
+	}
+}
+
+func TestBuildLinkHeader_MultipleQueryValues(t *testing.T) {
+	q := url.Values{"tag": {"a", "b", "c"}}
+	link := BuildLinkHeader("/items", q, "next", "")
+
+	if !strings.Contains(link, "tag=a") || !strings.Contains(link, "tag=b") || !strings.Contains(link, "tag=c") {
+		t.Errorf("all tag values should be present, got %q", link)
+	}
+}
+
+func TestBuildLinkHeader_CursorWithSpecialChars(t *testing.T) {
+	cursor := Cursor{Type: "item", Value: "abc/def+ghi=jkl"}.Encode()
+	link := BuildLinkHeader("/items", nil, cursor, "")
+
+	if !strings.Contains(link, "cursor=") {
+		t.Error("cursor param should be present")
+	}
+}
+
+func TestBuildLinkHeader_ReplacesExistingCursor(t *testing.T) {
+	q := url.Values{"cursor": {"old-cursor"}, "limit": {"10"}}
+	link := BuildLinkHeader("/items", q, "new-cursor", "")
+
+	if strings.Contains(link, "old-cursor") {
+		t.Error("old cursor should be replaced")
+	}
+	if !strings.Contains(link, "cursor=new-cursor") {
+		t.Error("new cursor should be present")
+	}
+	if !strings.Contains(link, "limit=10") {
+		t.Error("other params should be preserved")
+	}
+}
+
+func TestBuildLinkHeader_EmptyBaseURL(t *testing.T) {
+	link := BuildLinkHeader("", nil, "next", "")
+
+	if !strings.Contains(link, "<?cursor=next>") {
+		t.Errorf("should handle empty base URL, got %q", link)
+	}
+}
+
+func TestBuildLinkHeader_RelativePath(t *testing.T) {
+	link := BuildLinkHeader("/items", nil, "next", "")
+
+	if !strings.Contains(link, "</items?cursor=next>") {
+		t.Errorf("should handle relative path, got %q", link)
+	}
+}

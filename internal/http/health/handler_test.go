@@ -46,7 +46,7 @@ func TestHandler_ContentTypeJSON(t *testing.T) {
 	}
 }
 
-func TestHandler_CBORNotSupported(t *testing.T) {
+func TestHandler_CBOR(t *testing.T) {
 	e := echo.New()
 	e.GET("/health", Handler)
 
@@ -59,13 +59,14 @@ func TestHandler_CBORNotSupported(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	// Health endpoint uses c.JSON directly, so always returns JSON regardless of Accept.
+	ct := rec.Header().Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/cbor") {
+		t.Fatalf("expected application/cbor content type, got %q", ct)
+	}
+
 	var body Response
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		// May be CBOR if handler respects Accept header; try CBOR.
-		if cborErr := cbor.Unmarshal(rec.Body.Bytes(), &body); cborErr != nil {
-			t.Fatalf("failed to decode response as JSON or CBOR: json=%v cbor=%v", err, cborErr)
-		}
+	if err := cbor.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode CBOR response: %v", err)
 	}
 	if body.Status != "healthy" {
 		t.Fatalf("expected status 'healthy', got %q", body.Status)

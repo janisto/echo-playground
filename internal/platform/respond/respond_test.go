@@ -409,6 +409,53 @@ func TestWriteProblemNoHTMLEscaping(t *testing.T) {
 	}
 }
 
+// failWriter is an http.ResponseWriter that accepts WriteHeader but fails on Write.
+type failWriter struct {
+	header http.Header
+	status int
+}
+
+func (w *failWriter) Header() http.Header        { return w.header }
+func (w *failWriter) WriteHeader(statusCode int) { w.status = statusCode }
+func (w *failWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func TestWriteProblem_JSONEncodeError(t *testing.T) {
+	problem := ProblemDetails{
+		Type:   "about:blank",
+		Title:  "Bad Request",
+		Status: http.StatusBadRequest,
+		Detail: "test",
+	}
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := &failWriter{header: make(http.Header)}
+
+	writeProblem(w, req, problem)
+
+	if w.status != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.status)
+	}
+}
+
+func TestWriteProblem_CBOREncodeError(t *testing.T) {
+	problem := ProblemDetails{
+		Type:   "about:blank",
+		Title:  "Bad Request",
+		Status: http.StatusBadRequest,
+		Detail: "test",
+	}
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Accept", "application/cbor")
+	w := &failWriter{header: make(http.Header)}
+
+	writeProblem(w, req, problem)
+
+	if w.status != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.status)
+	}
+}
+
 // --- HTTPErrorHandler ---
 
 func TestHTTPErrorHandler_ProblemDetails(t *testing.T) {
@@ -855,6 +902,185 @@ func TestNegotiateCBOR(t *testing.T) {
 	}
 	if body["msg"] != "hello" {
 		t.Fatalf("expected 'hello', got %q", body["msg"])
+	}
+}
+
+func TestWriteProblemPreservesInstance(t *testing.T) {
+	problem := ProblemDetails{
+		Type:     "about:blank",
+		Title:    "Not Found",
+		Status:   http.StatusNotFound,
+		Detail:   "resource not found",
+		Instance: "/custom/instance",
+	}
+	req := httptest.NewRequest(http.MethodGet, "/other-path", nil)
+	rec := httptest.NewRecorder()
+
+	writeProblem(rec, req, problem)
+
+	var got ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if got.Instance != "/custom/instance" {
+		t.Fatalf("expected instance '/custom/instance', got %q", got.Instance)
+	}
+}
+
+func TestNegotiateJSON_Status(t *testing.T) {
+	e := echo.New()
+	e.GET("/test", func(c *echo.Context) error {
+		return Negotiate(c, http.StatusCreated, map[string]string{"id": "123"})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+}
+
+func TestHTTPErrorHandler_EchoHTTPErrorNonStandard(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.GET("/test", func(c *echo.Context) error {
+		return echo.NewHTTPError(http.StatusTooManyRequests, "rate limited")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", rec.Code)
+	}
+
+	var problem ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &problem); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if problem.Detail != "rate limited" {
+		t.Fatalf("expected detail 'rate limited', got %q", problem.Detail)
+	}
+}
+
+func TestHTTPErrorHandler_ValidationErrorCBOR(t *testing.T) {
+	e := echo.New()
+	e.Validator = validate.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+
+	type input struct {
+		Name string `json:"name" validate:"required"`
+	}
+
+	e.POST("/test", func(c *echo.Context) error {
+		var in input
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, in)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/cbor")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+cbor" {
+		t.Fatalf("expected application/problem+cbor, got %q", ct)
+	}
+
+	var problem ProblemDetails
+	if err := cbor.Unmarshal(rec.Body.Bytes(), &problem); err != nil {
+		t.Fatalf("failed to unmarshal CBOR: %v", err)
+	}
+	if len(problem.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(problem.Errors))
+	}
+}
+
+func TestHTTPErrorHandler_BareErrorCBOR(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.GET("/test", func(c *echo.Context) error {
+		return errors.New("something went wrong")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Accept", "application/cbor")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+
+	var problem ProblemDetails
+	if err := cbor.Unmarshal(rec.Body.Bytes(), &problem); err != nil {
+		t.Fatalf("failed to unmarshal CBOR: %v", err)
+	}
+	if problem.Detail != "internal server error" {
+		t.Fatalf("expected detail 'internal server error', got %q", problem.Detail)
+	}
+}
+
+func TestNegotiateCBOR_MarshalError(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.GET("/test", func(c *echo.Context) error {
+		return Negotiate(c, http.StatusOK, make(chan int))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Accept", "application/cbor")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for unmarshalable type, got %d", rec.Code)
+	}
+}
+
+func TestRecoverer_CommittedResponse(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.Use(Recoverer())
+	e.GET("/test", func(c *echo.Context) error {
+		c.Response().WriteHeader(http.StatusOK)
+		_, _ = c.Response().Write([]byte("partial"))
+		panic("late panic")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (committed), got %d", rec.Code)
+	}
+}
+
+func TestHTTPErrorHandler_CommittedResponse(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.GET("/test", func(c *echo.Context) error {
+		c.Response().WriteHeader(http.StatusOK)
+		_, _ = c.Response().Write([]byte("partial"))
+		return errors.New("late error")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (committed), got %d", rec.Code)
 	}
 }
 

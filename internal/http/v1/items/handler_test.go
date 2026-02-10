@@ -279,3 +279,37 @@ func TestListItems_EmptyCategory(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
+
+func TestListItems_BindError(t *testing.T) {
+	e := setupEcho()
+
+	req := httptest.NewRequest(http.MethodGet, "/items?limit=abc", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListItems_FilterCategoryWithPagination(t *testing.T) {
+	e := setupEcho()
+
+	req := httptest.NewRequest(http.MethodGet, "/items?category=electronics&limit=2", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var data ListData
+	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	for _, item := range data.Items {
+		if item.Category != "electronics" {
+			t.Fatalf("expected category 'electronics', got %q", item.Category)
+		}
+	}
+}

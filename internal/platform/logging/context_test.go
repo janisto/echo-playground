@@ -153,6 +153,51 @@ func TestContextWithTraceID_NilContext(t *testing.T) {
 	}
 }
 
+func TestLoggerFromContext_NilContext(t *testing.T) {
+	l := LoggerFromContext(nil) //nolint:staticcheck // intentional nil to test nil-safety
+	if l == nil {
+		t.Fatal("expected fallback to global logger for nil context")
+	}
+}
+
+func TestTraceIDFromContext_NilContext(t *testing.T) {
+	id := TraceIDFromContext(nil) //nolint:staticcheck // intentional nil to test nil-safety
+	if id != nil {
+		t.Fatal("expected nil for nil context")
+	}
+}
+
+func TestContextWithLogger_NilCtx(t *testing.T) {
+	logger := slog.Default()
+	ctx := contextWithLogger(nil, logger) //nolint:staticcheck // intentional nil to test nil-safety
+	if ctx == nil {
+		t.Fatal("expected non-nil context from nil input")
+	}
+	l := LoggerFromContext(ctx)
+	if l != logger {
+		t.Fatal("expected logger from context")
+	}
+}
+
+func TestContextWithTraceID_NilCtx(t *testing.T) {
+	ctx := contextWithTraceID(nil, "trace-nil-ctx") //nolint:staticcheck // intentional nil to test nil-safety
+	if ctx == nil {
+		t.Fatal("expected non-nil context from nil input")
+	}
+	id := TraceIDFromContext(ctx)
+	if id == nil || *id != "trace-nil-ctx" {
+		t.Fatalf("expected 'trace-nil-ctx', got %v", id)
+	}
+}
+
+func TestTraceIDFromContext_WithoutTraceID(t *testing.T) {
+	ctx := context.Background()
+	id := TraceIDFromContext(ctx)
+	if id != nil {
+		t.Fatal("expected nil for context without trace ID")
+	}
+}
+
 type errForTest string
 
 func (e errForTest) Error() string { return string(e) }

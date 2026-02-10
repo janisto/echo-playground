@@ -157,18 +157,26 @@ func ensureVary(h http.Header, values ...string) {
 // Uses application/problem+json (RFC 9457) by default.
 // Uses application/problem+cbor when CBOR is preferred via Accept header.
 func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails) {
+	if problem.Instance == "" {
+		problem.Instance = r.URL.Path
+	}
+
 	ensureVary(w.Header(), "Origin", "Accept")
 
 	if selectFormat(r.Header.Get("Accept")) {
 		w.Header().Set("Content-Type", "application/problem+cbor")
 		w.WriteHeader(problem.Status)
-		_ = cbor.NewEncoder(w).Encode(problem)
+		if err := cbor.NewEncoder(w).Encode(problem); err != nil {
+			slog.ErrorContext(r.Context(), "failed to encode problem+cbor", slog.Any("error", err))
+		}
 	} else {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(problem.Status)
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
-		_ = enc.Encode(problem)
+		if err := enc.Encode(problem); err != nil {
+			slog.ErrorContext(r.Context(), "failed to encode problem+json", slog.Any("error", err))
+		}
 	}
 }
 
