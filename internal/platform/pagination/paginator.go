@@ -5,12 +5,6 @@ import (
 	"strconv"
 )
 
-// DefaultLimit is the default number of items per page.
-const DefaultLimit = 20
-
-// MaxLimit is the maximum number of items per page.
-const MaxLimit = 100
-
 // Result holds the outcome of a pagination operation.
 type Result[T any] struct {
 	Items      []T
