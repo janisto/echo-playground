@@ -16,7 +16,7 @@ func TestRequestID_GeneratesUUID(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -36,7 +36,7 @@ func TestRequestID_PreservesValid(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set(HeaderXRequestID, "my-custom-id-123")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -54,7 +54,7 @@ func TestRequestID_RejectsEmpty(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set(HeaderXRequestID, "")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -73,7 +73,7 @@ func TestRequestID_RejectsTooLong(t *testing.T) {
 	})
 
 	longID := strings.Repeat("a", 129)
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set(HeaderXRequestID, longID)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -94,7 +94,7 @@ func TestRequestID_RejectsControlChars(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set(HeaderXRequestID, "id-with-\n-newline")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -114,7 +114,7 @@ func TestRequestID_SetsInContext(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set(HeaderXRequestID, "ctx-test-id")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

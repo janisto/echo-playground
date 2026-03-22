@@ -25,7 +25,7 @@ func setupEcho() *echo.Echo {
 func TestGetHello(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/hello", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -45,7 +45,7 @@ func TestGetHello(t *testing.T) {
 func TestGetHello_CBOR(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/hello", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -70,7 +70,7 @@ func TestCreateHello_Success(t *testing.T) {
 	e := setupEcho()
 
 	body := `{"name":"Alice"}`
-	req := httptest.NewRequest(http.MethodPost, "/hello", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -92,7 +92,7 @@ func TestCreateHello_MissingName(t *testing.T) {
 	e := setupEcho()
 
 	body := `{}`
-	req := httptest.NewRequest(http.MethodPost, "/hello", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -121,7 +121,7 @@ func TestCreateHello_NameTooLong(t *testing.T) {
 
 	name := strings.Repeat("a", 101)
 	body := `{"name":"` + name + `"}`
-	req := httptest.NewRequest(http.MethodPost, "/hello", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -134,7 +134,7 @@ func TestCreateHello_NameTooLong(t *testing.T) {
 func TestCreateHello_InvalidJSON(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodPost, "/hello", strings.NewReader(`{invalid`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(`{invalid`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -148,7 +148,7 @@ func TestCreateHello_CBOR(t *testing.T) {
 	e := setupEcho()
 
 	body := `{"name":"Bob"}`
-	req := httptest.NewRequest(http.MethodPost, "/hello", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()

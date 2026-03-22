@@ -25,7 +25,7 @@ func TestRequestLogger_EnrichesContext(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -45,7 +45,7 @@ func TestAccessLogger_LogsRequest(t *testing.T) {
 		return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -63,7 +63,7 @@ func TestRequestLogger_TraceparentHeader(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -81,7 +81,7 @@ func TestAccessLogger_ErrorPropagation(t *testing.T) {
 		return echo.NewHTTPError(http.StatusBadRequest, "bad")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/error", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/error", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

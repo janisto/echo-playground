@@ -27,7 +27,7 @@ func TestMiddleware_Success(t *testing.T) {
 		return c.JSON(http.StatusOK, map[string]string{"uid": u.UID})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Authorization", "Bearer valid-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -55,7 +55,7 @@ func TestMiddleware_MissingAuthHeader(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -79,7 +79,7 @@ func TestMiddleware_InvalidToken(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Authorization", "Bearer bad-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -99,7 +99,7 @@ func TestMiddleware_ExpiredToken(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Authorization", "Bearer expired-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -119,7 +119,7 @@ func TestMiddleware_CertificateFetchError(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Authorization", "Bearer some-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -144,7 +144,7 @@ func TestMiddleware_BadBearerFormat(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

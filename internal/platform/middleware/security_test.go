@@ -15,7 +15,7 @@ func TestSecurity_SetsHeaders(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -49,7 +49,7 @@ func TestSecurity_SkipPaths(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/api-docs/swagger.json", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/api-docs/swagger.json", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -70,7 +70,7 @@ func TestSecurity_NonSkipPath(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/hello", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/hello", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

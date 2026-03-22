@@ -15,7 +15,7 @@ func TestVary_AddsAcceptHeader(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -32,7 +32,7 @@ func TestVary_DoesNotDuplicateIfAlreadySet(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

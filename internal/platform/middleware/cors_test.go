@@ -15,7 +15,7 @@ func TestCORS_PreflightRequest(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodOptions, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/test", nil)
 	req.Header.Set("Origin", "http://example.com")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	rec := httptest.NewRecorder()
@@ -38,7 +38,7 @@ func TestCORS_SimpleRequest(t *testing.T) {
 		return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Origin", "http://example.com")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -60,7 +60,7 @@ func TestCORS_ExposedHeaders(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Origin", "http://example.com")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

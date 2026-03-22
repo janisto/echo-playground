@@ -171,7 +171,7 @@ func TestUnmarshalCBOR_InvalidMajorType(t *testing.T) {
 func TestAppendCBORTextString_ShortString(t *testing.T) {
 	s := "hello"
 	data := appendCBORTextString(nil, s)
-	if data[0] != 0x60+byte(len(s)) {
+	if data[0] != 0x60+byte(len(s)) { //nolint:gosec // G115: s is 5 bytes, fits in byte
 		t.Fatalf("expected direct length encoding, got 0x%02x", data[0])
 	}
 	if string(data[1:]) != s {

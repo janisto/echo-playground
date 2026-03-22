@@ -40,7 +40,7 @@ func TestHealthEndpoint(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupTestServer(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -62,7 +62,7 @@ func TestHelloGetEndpoint(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupTestServer(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/hello", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/hello", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -77,7 +77,7 @@ func TestHelloPostEndpoint(t *testing.T) {
 	e := setupTestServer(verifier, svc)
 
 	body := `{"name":"Integration"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/hello", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/hello", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -92,7 +92,7 @@ func TestItemsEndpoint(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupTestServer(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/items?limit=5", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/items?limit=5", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -111,7 +111,7 @@ func TestNotFoundReturns404(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupTestServer(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/nonexistent", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -136,7 +136,7 @@ func TestMethodNotAllowedReturns405(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupTestServer(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodDelete, "/v1/hello", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/hello", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -158,7 +158,7 @@ func TestRequestIDHeader(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupTestServer(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	req.Header.Set("X-Request-ID", "test-trace-id")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -178,7 +178,7 @@ func TestProfileRequiresAuth(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupTestServer(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/profile", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -194,7 +194,7 @@ func TestProfileCRUD(t *testing.T) {
 
 	// Create.
 	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true,"terms":true}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/profile", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -205,7 +205,7 @@ func TestProfileCRUD(t *testing.T) {
 	}
 
 	// Get.
-	req = httptest.NewRequest(http.MethodGet, "/v1/profile", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -215,7 +215,12 @@ func TestProfileCRUD(t *testing.T) {
 	}
 
 	// Update.
-	req = httptest.NewRequest(http.MethodPatch, "/v1/profile", strings.NewReader(`{"firstname":"Jane"}`))
+	req = httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPatch,
+		"/v1/profile",
+		strings.NewReader(`{"firstname":"Jane"}`),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
@@ -226,7 +231,7 @@ func TestProfileCRUD(t *testing.T) {
 	}
 
 	// Delete.
-	req = httptest.NewRequest(http.MethodDelete, "/v1/profile", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -245,7 +250,7 @@ func TestPanicRecovery(t *testing.T) {
 		panic("test panic")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
