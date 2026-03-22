@@ -28,7 +28,7 @@ Keep output and code/doc comments minimal and purposeful.
 - **Ask when unsure:** If requirements are ambiguous, seek clarification rather than guessing.
 - **Well-supported dependencies:** Prefer widely used, well-documented libraries with active maintenance. Ask permission before adding new dependencies.
 - **Security first:** Never exfiltrate secrets; avoid network calls unless explicitly required. Do not log PII or secrets.
-- **After editing code:** Run `go build ./...`, `go test ./...`, and `golangci-lint run ./...` to ensure build/test/lint compliance.
+- **After editing code:** Run `just build`, `just test`, and `just lint` to ensure build/test/lint compliance. Always use `just` recipes instead of raw `go` or `golangci-lint` commands so that `.env` is loaded and the pinned Go toolchain (`GOTOOLCHAIN`) is used.
 
 ---
 
@@ -55,7 +55,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo v5](https://gith
 - Logging: log/slog (stdlib)
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
 - OpenAPI: swaggo/swag v2 (OAS 3.1)
-- Task runner: [Just](https://github.com/casey/just) (optional)
+- Task runner: [Just](https://github.com/casey/just) (required for pinned Go toolchain)
 - Firebase CLI: Required for emulators (`just emulators`)
 
 ---
@@ -82,7 +82,9 @@ Key recipes:
 - `just gen-openapi` - Generate OpenAPI 3.1 spec
 - `just fmt-openapi` - Format swag annotations
 
-All commands in this document can be run via their corresponding `just` recipes.
+The Justfile uses `set dotenv-load` so all recipes automatically load `.env`. The `.env` sets `GOTOOLCHAIN` to pin the Go version, preventing automatic upgrades from a newer local Go installation. Always prefer `just` recipes over raw `go` or `golangci-lint` commands.
+
+Emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) are **commented out by default** in `.env`. Uncomment them only when emulators are running (`just emulators`), otherwise emulator-dependent tests will fail instead of being skipped.
 
 ---
 
@@ -517,7 +519,13 @@ Emulator configuration (from `firebase.json`):
 | Storage | 7140 |
 | Emulator UI | 4000 |
 
-Tests auto-skip when emulators are unavailable. The `demo-test-project` project ID triggers emulator-only mode (SDK will only communicate with local emulators).
+Tests auto-skip when emulators are unavailable (env vars unset or emulator unreachable). The `demo-test-project` project ID triggers emulator-only mode (SDK will only communicate with local emulators).
+
+To run emulator tests, uncomment `FIRESTORE_EMULATOR_HOST` and `FIREBASE_AUTH_EMULATOR_HOST` in `.env`, then start emulators:
+
+```bash
+just emulators
+```
 
 ---
 
@@ -536,6 +544,8 @@ Tests auto-skip when emulators are unavailable. The `demo-test-project` project 
 - Don't log secrets or PII; ensure logs redact sensitive fields.
 - Typical env vars:
   - `FIREBASE_PROJECT_ID` (use `demo-*` prefix for emulator-only mode in development)
+  - `FIRESTORE_EMULATOR_HOST` (commented out by default; uncomment when emulators are running)
+  - `FIREBASE_AUTH_EMULATOR_HOST` (commented out by default; uncomment when emulators are running)
   - `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON; uses ADC if not set)
   - `GOOGLE_CLOUD_PROJECT`, `GCP_PROJECT`, `GCLOUD_PROJECT`, or `PROJECT_ID` (for Cloud Trace correlation)
 

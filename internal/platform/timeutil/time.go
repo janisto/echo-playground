@@ -87,7 +87,12 @@ func appendCBORTextString(dst []byte, s string) []byte {
 	case n <= 0xff:
 		dst = append(dst, 0x78, byte(n))
 	default:
-		dst = append(dst, 0x79, byte(n>>8), byte(n))
+		dst = append(
+			dst,
+			0x79,
+			byte(n>>8), //nolint:gosec // G115: intentional byte extraction for CBOR 2-byte length
+			byte(n),    //nolint:gosec // G115: intentional byte extraction for CBOR 2-byte length
+		)
 	}
 	return append(dst, s...)
 }

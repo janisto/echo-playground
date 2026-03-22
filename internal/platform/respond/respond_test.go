@@ -322,7 +322,7 @@ func TestWriteProblemJSON(t *testing.T) {
 		Status: http.StatusNotFound,
 		Detail: "resource not found",
 	}
-	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/missing", nil)
 	rec := httptest.NewRecorder()
 
 	writeProblem(rec, req, problem)
@@ -353,7 +353,7 @@ func TestWriteProblemCBOR(t *testing.T) {
 		Status: http.StatusNotFound,
 		Detail: "resource not found",
 	}
-	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/missing", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 
@@ -377,7 +377,7 @@ func TestWriteProblemCBOR(t *testing.T) {
 
 func TestWriteProblemVaryHeaders(t *testing.T) {
 	problem := ProblemDetails{Type: "about:blank", Title: "Not Found", Status: 404}
-	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/missing", nil)
 	rec := httptest.NewRecorder()
 
 	writeProblem(rec, req, problem)
@@ -398,7 +398,7 @@ func TestWriteProblemNoHTMLEscaping(t *testing.T) {
 		Status: 400,
 		Detail: "param foo=<bar>&baz",
 	}
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 
 	writeProblem(rec, req, problem)
@@ -428,7 +428,7 @@ func TestWriteProblem_JSONEncodeError(t *testing.T) {
 		Status: http.StatusBadRequest,
 		Detail: "test",
 	}
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	w := &failWriter{header: make(http.Header)}
 
 	writeProblem(w, req, problem)
@@ -445,7 +445,7 @@ func TestWriteProblem_CBOREncodeError(t *testing.T) {
 		Status: http.StatusBadRequest,
 		Detail: "test",
 	}
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Accept", "application/cbor")
 	w := &failWriter{header: make(http.Header)}
 
@@ -465,7 +465,7 @@ func TestHTTPErrorHandler_ProblemDetails(t *testing.T) {
 		return Error404("item not found")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -495,7 +495,7 @@ func TestHTTPErrorHandler_EchoHTTPError(t *testing.T) {
 		return echo.NewHTTPError(http.StatusBadRequest, "bad input")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -532,7 +532,7 @@ func TestHTTPErrorHandler_ValidationError(t *testing.T) {
 		return c.JSON(http.StatusOK, in)
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/test", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -563,7 +563,7 @@ func TestHTTPErrorHandler_BareError(t *testing.T) {
 		return errors.New("something went wrong")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -587,7 +587,7 @@ func TestHTTPErrorHandler_NotFound(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = NewHTTPErrorHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/nonexistent", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -614,7 +614,7 @@ func TestHTTPErrorHandler_MethodNotAllowed(t *testing.T) {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	req := httptest.NewRequest(http.MethodDelete, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -641,7 +641,7 @@ func TestHTTPErrorHandler_CBORResponse(t *testing.T) {
 		return Error400("bad request")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -666,7 +666,7 @@ func TestHTTPErrorHandler_NotFoundCBOR(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = NewHTTPErrorHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/nonexistent", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -694,7 +694,7 @@ func TestHTTPErrorHandler_MethodNotAllowedCBOR(t *testing.T) {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -725,7 +725,7 @@ func TestRecovererReturnsProblemDetails(t *testing.T) {
 		panic("boom")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -756,7 +756,7 @@ func TestRecovererReturnsCBOR(t *testing.T) {
 		panic("boom")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -785,7 +785,7 @@ func TestRecovererWithErrorPanic(t *testing.T) {
 		panic(errors.New("wrapped error"))
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/panic-error", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic-error", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -810,7 +810,7 @@ func TestRecovererWithNonErrorPanic(t *testing.T) {
 		panic(42)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/panic-int", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic-int", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -843,7 +843,7 @@ func TestRecovererRePanicsOnErrAbortHandler(t *testing.T) {
 		}
 	}()
 
-	req := httptest.NewRequest(http.MethodGet, "/abort", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/abort", nil)
 	resp := httptest.NewRecorder()
 	e.ServeHTTP(resp, req)
 
@@ -858,7 +858,7 @@ func TestNegotiateJSON(t *testing.T) {
 		return Negotiate(c, http.StatusOK, map[string]string{"msg": "hello"})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -884,7 +884,7 @@ func TestNegotiateCBOR(t *testing.T) {
 		return Negotiate(c, http.StatusOK, map[string]string{"msg": "hello"})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -913,7 +913,7 @@ func TestWriteProblemPreservesInstance(t *testing.T) {
 		Detail:   "resource not found",
 		Instance: "/custom/instance",
 	}
-	req := httptest.NewRequest(http.MethodGet, "/other-path", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/other-path", nil)
 	rec := httptest.NewRecorder()
 
 	writeProblem(rec, req, problem)
@@ -933,7 +933,7 @@ func TestNegotiateJSON_Status(t *testing.T) {
 		return Negotiate(c, http.StatusCreated, map[string]string{"id": "123"})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -949,7 +949,7 @@ func TestHTTPErrorHandler_EchoHTTPErrorNonStandard(t *testing.T) {
 		return echo.NewHTTPError(http.StatusTooManyRequests, "rate limited")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -983,7 +983,7 @@ func TestHTTPErrorHandler_ValidationErrorCBOR(t *testing.T) {
 		return c.JSON(http.StatusOK, in)
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/test", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
@@ -1012,7 +1012,7 @@ func TestHTTPErrorHandler_BareErrorCBOR(t *testing.T) {
 		return errors.New("something went wrong")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -1037,7 +1037,7 @@ func TestNegotiateCBOR_MarshalError(t *testing.T) {
 		return Negotiate(c, http.StatusOK, make(chan int))
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -1057,7 +1057,7 @@ func TestRecoverer_CommittedResponse(t *testing.T) {
 		panic("late panic")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -1075,7 +1075,7 @@ func TestHTTPErrorHandler_CommittedResponse(t *testing.T) {
 		return errors.New("late error")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

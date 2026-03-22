@@ -15,7 +15,7 @@ func TestHandler_ReturnsHealthy(t *testing.T) {
 	e := echo.New()
 	e.GET("/health", Handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -36,7 +36,7 @@ func TestHandler_ContentTypeJSON(t *testing.T) {
 	e := echo.New()
 	e.GET("/health", Handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -50,7 +50,7 @@ func TestHandler_CBOR(t *testing.T) {
 	e := echo.New()
 	e.GET("/health", Handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

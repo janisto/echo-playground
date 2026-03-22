@@ -13,7 +13,7 @@ func TestRegister_SwaggerUI(t *testing.T) {
 	e := echo.New()
 	Register(e, "testdata/swagger.json")
 
-	req := httptest.NewRequest(http.MethodGet, "/api-docs", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -32,7 +32,7 @@ func TestRegister_SwaggerUIContainsSpecURL(t *testing.T) {
 	e := echo.New()
 	Register(e, "api-docs/swagger.json")
 
-	req := httptest.NewRequest(http.MethodGet, "/api-docs", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -49,7 +49,7 @@ func TestRegister_OpenAPISpec(t *testing.T) {
 	e := echo.New()
 	Register(e, "testdata/swagger.json")
 
-	req := httptest.NewRequest(http.MethodGet, "/api-docs/openapi.json", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs/openapi.json", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

@@ -26,7 +26,7 @@ func setupEcho() *echo.Echo {
 func TestListItems_DefaultLimit(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -49,7 +49,7 @@ func TestListItems_DefaultLimit(t *testing.T) {
 func TestListItems_CustomLimit(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?limit=5", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=5", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -69,7 +69,7 @@ func TestListItems_CustomLimit(t *testing.T) {
 func TestListItems_FilterCategory(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?category=tools&limit=100", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?category=tools&limit=100", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -94,7 +94,7 @@ func TestListItems_FilterCategory(t *testing.T) {
 func TestListItems_InvalidCategory(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?category=invalid", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?category=invalid", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -106,7 +106,7 @@ func TestListItems_InvalidCategory(t *testing.T) {
 func TestListItems_InvalidCursor(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?cursor=!!!invalid!!!", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor=!!!invalid!!!", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -127,7 +127,7 @@ func TestListItems_CursorTypeMismatch(t *testing.T) {
 	e := setupEcho()
 
 	cursor := pagination.Cursor{Type: "wrong", Value: "item-001"}.Encode()
-	req := httptest.NewRequest(http.MethodGet, "/items?cursor="+cursor, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor="+cursor, nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -140,7 +140,7 @@ func TestListItems_CursorUnknownItem(t *testing.T) {
 	e := setupEcho()
 
 	cursor := pagination.Cursor{Type: cursorType, Value: "nonexistent"}.Encode()
-	req := httptest.NewRequest(http.MethodGet, "/items?cursor="+cursor, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor="+cursor, nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -152,7 +152,7 @@ func TestListItems_CursorUnknownItem(t *testing.T) {
 func TestListItems_Pagination(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?limit=5", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=5", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -172,7 +172,7 @@ func TestListItems_Pagination(t *testing.T) {
 func TestListItems_LimitTooHigh(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?limit=101", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=101", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -184,7 +184,7 @@ func TestListItems_LimitTooHigh(t *testing.T) {
 func TestListItems_LimitZero(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?limit=0", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=0", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -205,7 +205,7 @@ func TestListItems_LimitZero(t *testing.T) {
 func TestListItems_CBOR(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?limit=3", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=3", nil)
 	req.Header.Set("Accept", "application/cbor")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -230,7 +230,7 @@ func TestListItems_PaginationSecondPage(t *testing.T) {
 	e := setupEcho()
 
 	// Get first page.
-	req := httptest.NewRequest(http.MethodGet, "/items?limit=5", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=5", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -247,7 +247,7 @@ func TestListItems_PaginationSecondPage(t *testing.T) {
 	lastID := first.Items[len(first.Items)-1].ID
 	cursor := pagination.Cursor{Type: cursorType, Value: lastID}.Encode()
 
-	req = httptest.NewRequest(http.MethodGet, "/items?limit=5&cursor="+cursor, nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=5&cursor="+cursor, nil)
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -270,7 +270,7 @@ func TestListItems_PaginationSecondPage(t *testing.T) {
 func TestListItems_EmptyCategory(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?category=", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?category=", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -283,7 +283,7 @@ func TestListItems_EmptyCategory(t *testing.T) {
 func TestListItems_BindError(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?limit=abc", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=abc", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -295,7 +295,7 @@ func TestListItems_BindError(t *testing.T) {
 func TestListItems_FilterCategoryWithPagination(t *testing.T) {
 	e := setupEcho()
 
-	req := httptest.NewRequest(http.MethodGet, "/items?category=electronics&limit=2", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?category=electronics&limit=2", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

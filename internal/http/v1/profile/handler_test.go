@@ -81,7 +81,12 @@ func TestCreateProfile_Success(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -115,7 +120,7 @@ func TestCreateProfile_Duplicate(t *testing.T) {
 
 	body := validCreateBody()
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -125,7 +130,7 @@ func TestCreateProfile_Duplicate(t *testing.T) {
 		t.Fatalf("first create: expected 201, got %d", rec.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(body))
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
@@ -142,7 +147,7 @@ func TestCreateProfile_ValidationError(t *testing.T) {
 	e := setupEcho(verifier, svc)
 
 	body := `{"firstname":"","lastname":"","email":"bad","phoneNumber":"bad","terms":true}`
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -167,7 +172,7 @@ func TestCreateProfile_TermsNotAccepted(t *testing.T) {
 	e := setupEcho(verifier, svc)
 
 	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","terms":false}`
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -183,7 +188,12 @@ func TestCreateProfile_Unauthorized(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	// No Authorization header
 	rec := httptest.NewRecorder()
@@ -200,7 +210,12 @@ func TestGetProfile_Success(t *testing.T) {
 	e := setupEcho(verifier, svc)
 
 	// Create first.
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -211,7 +226,7 @@ func TestGetProfile_Success(t *testing.T) {
 	}
 
 	// Get.
-	req = httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -234,7 +249,7 @@ func TestGetProfile_NotFound(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -250,7 +265,12 @@ func TestUpdateProfile_Success(t *testing.T) {
 	e := setupEcho(verifier, svc)
 
 	// Create first.
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -262,7 +282,7 @@ func TestUpdateProfile_Success(t *testing.T) {
 
 	// Update.
 	body := `{"firstname":"Jane"}`
-	req = httptest.NewRequest(http.MethodPatch, "/profile", strings.NewReader(body))
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
@@ -290,7 +310,7 @@ func TestUpdateProfile_NotFound(t *testing.T) {
 	e := setupEcho(verifier, svc)
 
 	body := `{"firstname":"Jane"}`
-	req := httptest.NewRequest(http.MethodPatch, "/profile", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -307,7 +327,12 @@ func TestDeleteProfile_Success(t *testing.T) {
 	e := setupEcho(verifier, svc)
 
 	// Create first.
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -318,7 +343,7 @@ func TestDeleteProfile_Success(t *testing.T) {
 	}
 
 	// Delete.
-	req = httptest.NewRequest(http.MethodDelete, "/profile", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -328,7 +353,7 @@ func TestDeleteProfile_Success(t *testing.T) {
 	}
 
 	// Verify deleted.
-	req = httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -343,7 +368,7 @@ func TestDeleteProfile_NotFound(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodDelete, "/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -358,7 +383,7 @@ func TestProfile_InvalidToken(t *testing.T) {
 	verifier := &auth.MockVerifier{Error: auth.ErrInvalidToken}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer bad-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -378,7 +403,7 @@ func TestProfile_CertificateFetchError(t *testing.T) {
 	verifier := &auth.MockVerifier{Error: auth.ErrCertificateFetch}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer some-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -398,7 +423,7 @@ func TestCreateProfile_InvalidJSON(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(`{invalid`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(`{invalid`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -414,7 +439,7 @@ func TestUpdateProfile_InvalidJSON(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPatch, "/profile", strings.NewReader(`{broken`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(`{broken`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -431,7 +456,7 @@ func TestUpdateProfile_ValidationError(t *testing.T) {
 	e := setupEcho(verifier, svc)
 
 	body := `{"email":"not-an-email"}`
-	req := httptest.NewRequest(http.MethodPatch, "/profile", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -455,7 +480,12 @@ func TestUpdateProfile_AllFields(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -466,7 +496,7 @@ func TestUpdateProfile_AllFields(t *testing.T) {
 	}
 
 	body := `{"firstname":"Jane","lastname":"Smith","email":"jane@example.com","phoneNumber":"+358409999999","marketing":false}`
-	req = httptest.NewRequest(http.MethodPatch, "/profile", strings.NewReader(body))
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
@@ -496,7 +526,12 @@ func TestCreateProfile_ResponseFields(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -535,7 +570,12 @@ func TestGetProfile_ResponseTimestamps(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -545,7 +585,7 @@ func TestGetProfile_ResponseTimestamps(t *testing.T) {
 		t.Fatalf("create: expected 201, got %d", rec.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -571,7 +611,12 @@ func TestCreateProfile_InternalServiceError(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -598,7 +643,7 @@ func TestGetProfile_InternalServiceError(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -615,7 +660,12 @@ func TestUpdateProfile_InternalServiceError(t *testing.T) {
 	svcOK := store
 	e := setupEcho(verifier, svcOK)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -632,7 +682,7 @@ func TestUpdateProfile_InternalServiceError(t *testing.T) {
 	e2 := setupEcho(verifier, svc)
 
 	body := `{"firstname":"Jane"}`
-	req = httptest.NewRequest(http.MethodPatch, "/profile", strings.NewReader(body))
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
@@ -649,7 +699,12 @@ func TestDeleteProfile_InternalServiceError(t *testing.T) {
 
 	e := setupEcho(verifier, store)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -665,7 +720,7 @@ func TestDeleteProfile_InternalServiceError(t *testing.T) {
 	}
 	e2 := setupEcho(verifier, svc)
 
-	req = httptest.NewRequest(http.MethodDelete, "/profile", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/profile", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec = httptest.NewRecorder()
 	e2.ServeHTTP(rec, req)
@@ -689,7 +744,7 @@ func TestGetProfile_NoUserInContext(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupEchoNoAuth(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -702,7 +757,12 @@ func TestCreateProfile_NoUserInContext(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupEchoNoAuth(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(validCreateBody()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/profile",
+		strings.NewReader(validCreateBody()),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -717,7 +777,7 @@ func TestUpdateProfile_NoUserInContext(t *testing.T) {
 	e := setupEchoNoAuth(svc)
 
 	body := `{"firstname":"Jane"}`
-	req := httptest.NewRequest(http.MethodPatch, "/profile", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -731,7 +791,7 @@ func TestDeleteProfile_NoUserInContext(t *testing.T) {
 	svc := profilesvc.NewMockStore()
 	e := setupEchoNoAuth(svc)
 
-	req := httptest.NewRequest(http.MethodDelete, "/profile", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/profile", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
