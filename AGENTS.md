@@ -197,7 +197,7 @@ internal/platform/     # Cross-cutting infrastructure
   validate/            # go-playground/validator integration
 internal/service/      # Business logic and data access
   profile/             # Profile service with Firestore backend
-internal/testutil/     # Test utilities (emulator helpers)
+internal/testutil/     # Test utilities (shared Echo fixture, emulator helpers)
 ```
 
 ---
@@ -454,11 +454,11 @@ Links provided via HTTP `Link` header per RFC 8288.
 
 ### Integration Test Pattern
 
+Use `testutil.NewTestEcho()` to create a pre-configured Echo instance with validator and error handler:
+
 ```go
 func TestMyFeature(t *testing.T) {
-    e := echo.New()
-    e.Validator = validate.New()
-    e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+    e := testutil.NewTestEcho()
     e.Use(middlewares...)
     v1 := e.Group("/v1")
     routes.Register(v1, verifier, svc)

@@ -14,14 +14,12 @@ import (
 	applog "github.com/janisto/echo-playground/internal/platform/logging"
 	appmiddleware "github.com/janisto/echo-playground/internal/platform/middleware"
 	"github.com/janisto/echo-playground/internal/platform/respond"
-	"github.com/janisto/echo-playground/internal/platform/validate"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
+	"github.com/janisto/echo-playground/internal/testutil"
 )
 
 func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo {
-	e := echo.New()
-	e.Validator = validate.New()
-	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+	e := testutil.NewTestEcho()
 	e.Use(
 		appmiddleware.RequestID(),
 		applog.RequestLogger(),
