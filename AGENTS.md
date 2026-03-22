@@ -84,7 +84,7 @@ Key recipes:
 
 The Justfile uses `set dotenv-load` so all recipes automatically load `.env`. The `.env` sets `GOTOOLCHAIN` to pin the Go version, preventing automatic upgrades from a newer local Go installation. Always prefer `just` recipes over raw `go` or `golangci-lint` commands.
 
-Emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) are **commented out by default** in `.env`. Uncomment them only when emulators are running (`just emulators`), otherwise emulator-dependent tests will fail instead of being skipped.
+Emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) are **commented out by default** in `.env`. These are only needed when running the server locally against emulators. Tests use hardcoded emulator addresses via `internal/testutil` and auto-skip when emulators are unreachable (TCP dial check), so `.env` changes are never required for testing.
 
 ---
 
@@ -519,9 +519,9 @@ Emulator configuration (from `firebase.json`):
 | Storage | 7140 |
 | Emulator UI | 4000 |
 
-Tests auto-skip when emulators are unavailable (env vars unset or emulator unreachable). The `demo-test-project` project ID triggers emulator-only mode (SDK will only communicate with local emulators).
+Tests auto-skip when emulators are unreachable (TCP dial check). The `internal/testutil` package provides hardcoded emulator addresses and `t.Setenv()` helpers, so no `.env` changes are needed for testing. The `demo-test-project` project ID triggers emulator-only mode (SDK will only communicate with local emulators).
 
-To run emulator tests, uncomment `FIRESTORE_EMULATOR_HOST` and `FIREBASE_AUTH_EMULATOR_HOST` in `.env`, then start emulators:
+To run emulator tests, start emulators:
 
 ```bash
 just emulators
@@ -544,8 +544,8 @@ just emulators
 - Don't log secrets or PII; ensure logs redact sensitive fields.
 - Typical env vars:
   - `FIREBASE_PROJECT_ID` (use `demo-*` prefix for emulator-only mode in development)
-  - `FIRESTORE_EMULATOR_HOST` (commented out by default; uncomment when emulators are running)
-  - `FIREBASE_AUTH_EMULATOR_HOST` (commented out by default; uncomment when emulators are running)
+  - `FIRESTORE_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
+  - `FIREBASE_AUTH_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
   - `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON; uses ADC if not set)
   - `GOOGLE_CLOUD_PROJECT`, `GCP_PROJECT`, `GCLOUD_PROJECT`, or `PROJECT_ID` (for Cloud Trace correlation)
 

@@ -8,11 +8,12 @@ import (
 )
 
 func TestInitializeClients(t *testing.T) {
-	testutil.RequireEmulator(t)
+	testutil.SkipIfEmulatorUnavailable(t)
+	testutil.SetupEmulator(t)
 
 	ctx := context.Background()
 	clients, err := InitializeClients(ctx, Config{
-		ProjectID: testutil.EmulatorProjectID,
+		ProjectID: testutil.ProjectID,
 	})
 	if err != nil {
 		t.Fatalf("InitializeClients failed: %v", err)

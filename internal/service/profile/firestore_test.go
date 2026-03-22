@@ -3,7 +3,6 @@ package profile
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 
 	"cloud.google.com/go/firestore"
@@ -13,27 +12,22 @@ import (
 
 func newTestStore(t *testing.T) (*FirestoreStore, func()) {
 	t.Helper()
-	testutil.RequireEmulator(t)
+	testutil.SkipIfEmulatorUnavailable(t)
+	testutil.SetupEmulator(t)
+	testutil.ClearEmulators(t)
 
 	ctx := context.Background()
-	client, err := firestore.NewClient(ctx, testutil.EmulatorProjectID)
+	client, err := firestore.NewClient(ctx, testutil.ProjectID)
 	if err != nil {
 		t.Fatalf("failed to create firestore client: %v", err)
 	}
 
 	store := NewFirestoreStore(client)
 	cleanup := func() {
-		docs, _ := client.Collection(profilesCollection).Documents(ctx).GetAll()
-		for _, doc := range docs {
-			_, _ = doc.Ref.Delete(ctx)
-		}
+		testutil.ClearFirestore(t)
 		_ = client.Close()
 	}
 	return store, cleanup
-}
-
-func TestMain(m *testing.M) {
-	os.Exit(m.Run())
 }
 
 func TestFirestoreStore_CreateAndGet(t *testing.T) {

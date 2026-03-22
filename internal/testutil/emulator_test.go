@@ -2,32 +2,42 @@ package testutil
 
 import (
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
-func TestRequireEmulator_NoHost(t *testing.T) {
-	t.Setenv("FIRESTORE_EMULATOR_HOST", "")
-
-	t.Run("sub", func(t *testing.T) {
-		RequireEmulator(t)
-	})
+func TestEmulatorAvailable_Unreachable(t *testing.T) {
+	if emulatorAvailable("127.0.0.1:1") {
+		t.Fatal("expected false for unreachable host")
+	}
 }
 
-func TestRequireEmulator_Unreachable(t *testing.T) {
-	t.Setenv("FIRESTORE_EMULATOR_HOST", "localhost:1")
-
-	t.Run("sub", func(t *testing.T) {
-		RequireEmulator(t)
-	})
-}
-
-func TestRequireEmulator_Reachable(t *testing.T) {
+func TestEmulatorAvailable_Reachable(t *testing.T) {
 	ts := httptest.NewServer(nil)
 	defer ts.Close()
 
-	t.Setenv("FIRESTORE_EMULATOR_HOST", ts.Listener.Addr().String())
+	if !emulatorAvailable(ts.Listener.Addr().String()) {
+		t.Fatal("expected true for reachable host")
+	}
+}
 
+func TestSkipIfEmulatorUnavailable(t *testing.T) {
+	if EmulatorAvailable() {
+		t.Skip("emulators are running; cannot test skip behavior")
+	}
 	t.Run("sub", func(t *testing.T) {
-		RequireEmulator(t)
+		SkipIfEmulatorUnavailable(t)
+		t.Fatal("expected test to be skipped")
 	})
+}
+
+func TestSetupEmulator(t *testing.T) {
+	SetupEmulator(t)
+
+	if got := os.Getenv("FIREBASE_AUTH_EMULATOR_HOST"); got != AuthEmulatorHost {
+		t.Fatalf("expected %s, got %s", AuthEmulatorHost, got)
+	}
+	if got := os.Getenv("FIRESTORE_EMULATOR_HOST"); got != FirestoreEmulatorHost {
+		t.Fatalf("expected %s, got %s", FirestoreEmulatorHost, got)
+	}
 }
