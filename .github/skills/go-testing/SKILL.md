@@ -31,7 +31,7 @@ internal/
 
 ## Integration Test Server Setup
 
-Create test servers using Echo:
+Use `testutil.NewTestEcho()` to create a pre-configured Echo instance with validator and error handler:
 
 ```go
 package routes_test
@@ -42,20 +42,16 @@ import (
     "net/http/httptest"
     "testing"
 
-    "github.com/labstack/echo/v5"
-
     "github.com/janisto/echo-playground/internal/http/health"
     "github.com/janisto/echo-playground/internal/http/v1/routes"
     applog "github.com/janisto/echo-playground/internal/platform/logging"
     appmiddleware "github.com/janisto/echo-playground/internal/platform/middleware"
     "github.com/janisto/echo-playground/internal/platform/respond"
-    "github.com/janisto/echo-playground/internal/platform/validate"
+    "github.com/janisto/echo-playground/internal/testutil"
 )
 
 func setupTestServer() *echo.Echo {
-    e := echo.New()
-    e.Validator = validate.New()
-    e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+    e := testutil.NewTestEcho()
     e.Use(
         appmiddleware.RequestID(),
         applog.RequestLogger(),

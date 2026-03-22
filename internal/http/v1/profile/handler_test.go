@@ -13,8 +13,8 @@ import (
 
 	"github.com/janisto/echo-playground/internal/platform/auth"
 	"github.com/janisto/echo-playground/internal/platform/respond"
-	"github.com/janisto/echo-playground/internal/platform/validate"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
+	"github.com/janisto/echo-playground/internal/testutil"
 )
 
 // errService wraps a real store and injects errors for specific operations.
@@ -63,9 +63,7 @@ func (s *errService) Delete(ctx context.Context, userID string) error {
 }
 
 func setupEcho(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo {
-	e := echo.New()
-	e.Validator = validate.New()
-	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+	e := testutil.NewTestEcho()
 
 	g := e.Group("", auth.Middleware(verifier))
 	Register(g, svc)
@@ -733,9 +731,7 @@ func TestDeleteProfile_InternalServiceError(t *testing.T) {
 // setupEchoNoAuth creates a test server without auth middleware.
 // This allows testing the handler-level auth checks directly.
 func setupEchoNoAuth(svc profilesvc.Service) *echo.Echo {
-	e := echo.New()
-	e.Validator = validate.New()
-	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+	e := testutil.NewTestEcho()
 	Register(e.Group(""), svc)
 	return e
 }

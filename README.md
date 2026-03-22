@@ -193,18 +193,18 @@ golangci-lint run ./...  # Lint
 
 ### Firebase Emulators
 
-Firestore integration tests require Firebase emulators. Start them before running tests:
+Integration tests for Auth and Firestore require running Firebase emulators:
 
 ```bash
 just emulators        # Start Auth and Firestore emulators
 ```
 
 Emulator ports:
-- Auth: `localhost:7110`
-- Firestore: `localhost:7130`
+- Auth: `127.0.0.1:7110`
+- Firestore: `127.0.0.1:7130`
 - Emulator UI: `localhost:4000`
 
-Tests auto-skip when emulators are unavailable. The `demo-test-project` project ID triggers emulator-only mode.
+Tests use hardcoded emulator addresses via `internal/testutil` and auto-skip when emulators are unreachable (TCP dial check). No `.env` changes are needed for testing. The `demo-test-project` project ID triggers emulator-only mode.
 
 ### Justfile Commands
 

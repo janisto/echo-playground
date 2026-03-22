@@ -11,13 +11,11 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/janisto/echo-playground/internal/platform/respond"
-	"github.com/janisto/echo-playground/internal/platform/validate"
+	"github.com/janisto/echo-playground/internal/testutil"
 )
 
 func setupEcho() *echo.Echo {
-	e := echo.New()
-	e.Validator = validate.New()
-	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+	e := testutil.NewTestEcho()
 	Register(e.Group(""))
 	return e
 }
