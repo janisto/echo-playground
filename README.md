@@ -77,7 +77,7 @@ Errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457.
 This project uses a [Go workspace](https://go.dev/doc/tutorial/workspaces) (`go.work`) to manage multiple modules:
 
 ```go
-go 1.25.5
+go 1.25.8
 
 use (
     .
