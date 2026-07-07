@@ -14,6 +14,8 @@ import (
 // userContextKey is the context key for the authenticated user.
 type userContextKey struct{}
 
+const echoUserKey = "user"
+
 // Middleware returns Echo middleware for Firebase authentication.
 // Applied at the group level to protect routes requiring authentication.
 func Middleware(verifier Verifier) echo.MiddlewareFunc {
@@ -41,7 +43,7 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 				return respond.Error401("invalid or expired token")
 			}
 
-			c.Set("user", user)
+			c.Set(echoUserKey, user)
 			ctx := context.WithValue(c.Request().Context(), userContextKey{}, user)
 			c.SetRequest(c.Request().WithContext(ctx))
 
@@ -70,7 +72,7 @@ func categorizeAuthError(err error) string {
 
 // UserFromEchoContext retrieves the authenticated user from Echo context.
 func UserFromEchoContext(c *echo.Context) (*FirebaseUser, error) {
-	return echo.ContextGet[*FirebaseUser](c, "user")
+	return echo.ContextGet[*FirebaseUser](c, echoUserKey)
 }
 
 // UserFromContext retrieves the authenticated user from standard context.

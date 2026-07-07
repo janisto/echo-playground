@@ -50,7 +50,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo v5](https://gith
 
 ### Tech & Tooling
 
-- Language/runtime: Go 1.25+
+- Language/runtime: Go 1.26+
 - Frameworks/libs: Echo v5, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
 - Logging: log/slog (stdlib)
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
@@ -92,7 +92,7 @@ Emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULAT
 
 ### Requirements
 
-- Go 1.25+
+- Go 1.26+
 - Firebase CLI (for emulators): `npm install -g firebase-tools`
 
 ### Install Dependencies
@@ -663,4 +663,3 @@ Swagger UI is served via an embedded HTML page in `internal/http/docs/`. Routes 
 - Clean up temporary files/scripts before finishing a task.
 - Do not invent paths/APIs/commands. Verify from repo or tooling.
 - For runnable code changes, run minimal tests to validate, report PASS/FAIL succinctly, and iterate up to three targeted fixes if needed.
-

@@ -1,14 +1,13 @@
 package profile
 
 import (
-	"context"
 	"errors"
 	"testing"
 )
 
 func TestMockStore_UpdateAllFields(t *testing.T) {
 	store := NewMockStore()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := store.Create(ctx, "user-1", CreateParams{
 		Firstname:   "John",
@@ -57,7 +56,7 @@ func TestMockStore_UpdateAllFields(t *testing.T) {
 
 func TestMockStore_CreateNormalizesInput(t *testing.T) {
 	store := NewMockStore()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	p, err := store.Create(ctx, "user-2", CreateParams{
 		Firstname:   "Alice",
@@ -80,7 +79,7 @@ func TestMockStore_CreateNormalizesInput(t *testing.T) {
 
 func TestMockStore_UpdatePartialFields(t *testing.T) {
 	store := NewMockStore()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := store.Create(ctx, "user-3", CreateParams{
 		Firstname:   "Bob",
@@ -109,7 +108,7 @@ func TestMockStore_UpdatePartialFields(t *testing.T) {
 
 func TestMockStore_UpdateNotFound(t *testing.T) {
 	store := NewMockStore()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	newFirst := "Jane"
 	_, err := store.Update(ctx, "nonexistent", UpdateParams{
@@ -122,7 +121,7 @@ func TestMockStore_UpdateNotFound(t *testing.T) {
 
 func TestMockStore_DeleteNotFound(t *testing.T) {
 	store := NewMockStore()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	err := store.Delete(ctx, "nonexistent")
 	if !errors.Is(err, ErrNotFound) {
@@ -132,7 +131,7 @@ func TestMockStore_DeleteNotFound(t *testing.T) {
 
 func TestMockStore_GetNotFound(t *testing.T) {
 	store := NewMockStore()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := store.Get(ctx, "nonexistent")
 	if !errors.Is(err, ErrNotFound) {
@@ -142,7 +141,7 @@ func TestMockStore_GetNotFound(t *testing.T) {
 
 func TestMockStore_DuplicateCreate(t *testing.T) {
 	store := NewMockStore()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := store.Create(ctx, "user-dup", CreateParams{
 		Firstname: "A", Lastname: "B", Email: "a@b.com", PhoneNumber: "+1", Terms: true,

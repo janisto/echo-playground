@@ -181,9 +181,9 @@ func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
 func mapServiceError(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, profilesvc.ErrNotFound):
-		return respond.Error404("profile not found")
+		return respond.Error404(profilesvc.ErrNotFound.Error())
 	case errors.Is(err, profilesvc.ErrAlreadyExists):
-		return respond.Error409("profile already exists")
+		return respond.Error409(profilesvc.ErrAlreadyExists.Error())
 	default:
 		applog.LogError(ctx, "unexpected service error", err)
 		return respond.Error500("internal error")

@@ -110,9 +110,9 @@ func TestProblemDetailsStatusCode(t *testing.T) {
 
 func TestProblemDetailsImplementsError(t *testing.T) {
 	var err error = Error404("not found")
-	var pd *ProblemDetails
-	if !errors.As(err, &pd) {
-		t.Fatal("expected ProblemDetails to be extractable via errors.As")
+	pd, ok := errors.AsType[*ProblemDetails](err)
+	if !ok {
+		t.Fatal("expected ProblemDetails to be extractable via errors.AsType")
 	}
 	if pd.Status != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", pd.Status)
@@ -259,60 +259,6 @@ func TestSelectFormatEdgeCases(t *testing.T) {
 	}
 }
 
-// --- ensureVary ---
-
-func TestEnsureVaryAddsValues(t *testing.T) {
-	h := make(http.Header)
-	ensureVary(h, "Origin", "Accept")
-	values := h.Values("Vary")
-	set := headerSet(values)
-	if _, ok := set["Origin"]; !ok {
-		t.Fatal("expected Vary to contain Origin")
-	}
-	if _, ok := set["Accept"]; !ok {
-		t.Fatal("expected Vary to contain Accept")
-	}
-}
-
-func TestEnsureVaryNoDuplicates(t *testing.T) {
-	h := make(http.Header)
-	h.Add("Vary", "Accept")
-	ensureVary(h, "Accept", "Origin")
-	count := countInHeader(h.Values("Vary"), "Accept")
-	if count != 1 {
-		t.Fatalf("expected Accept once, got %d", count)
-	}
-}
-
-func TestEnsureVaryMergesCommaSeparated(t *testing.T) {
-	h := make(http.Header)
-	h.Set("Vary", "Accept-Encoding, Accept-Language")
-	ensureVary(h, "Origin", "Accept")
-	set := headerSet(h.Values("Vary"))
-	for _, v := range []string{"Accept-Encoding", "Accept-Language", "Origin", "Accept"} {
-		if _, ok := set[v]; !ok {
-			t.Fatalf("expected Vary to contain %q", v)
-		}
-	}
-}
-
-func TestEnsureVaryEmptyInput(t *testing.T) {
-	h := make(http.Header)
-	ensureVary(h)
-	if len(h.Values("Vary")) != 0 {
-		t.Fatalf("expected no Vary header, got %v", h.Values("Vary"))
-	}
-}
-
-func TestEnsureVaryDuplicateInSingleCall(t *testing.T) {
-	h := make(http.Header)
-	ensureVary(h, "Accept", "Accept", "Origin")
-	count := countInHeader(h.Values("Vary"), "Accept")
-	if count != 1 {
-		t.Fatalf("expected Accept once, got %d", count)
-	}
-}
-
 // --- writeProblem ---
 
 func TestWriteProblemJSON(t *testing.T) {
@@ -406,6 +352,22 @@ func TestWriteProblemNoHTMLEscaping(t *testing.T) {
 	body := rec.Body.String()
 	if strings.Contains(body, `\u003c`) || strings.Contains(body, `\u003e`) || strings.Contains(body, `\u0026`) {
 		t.Fatalf("should not contain HTML-escaped characters: %s", body)
+	}
+}
+
+func TestNegotiateAddsVaryAccept(t *testing.T) {
+	e := echo.New()
+	e.GET("/test", func(c *echo.Context) error {
+		return Negotiate(c, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	set := headerSet(rec.Header().Values("Vary"))
+	if _, ok := set["Accept"]; !ok {
+		t.Fatal("expected Vary to contain Accept")
 	}
 }
 
@@ -1094,16 +1056,4 @@ func headerSet(values []string) map[string]struct{} {
 		}
 	}
 	return set
-}
-
-func countInHeader(values []string, target string) int {
-	count := 0
-	for _, v := range values {
-		for part := range strings.SplitSeq(v, ",") {
-			if strings.TrimSpace(part) == target {
-				count++
-			}
-		}
-	}
-	return count
 }

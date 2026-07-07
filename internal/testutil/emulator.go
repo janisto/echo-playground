@@ -53,9 +53,8 @@ func SetupEmulator(t *testing.T) {
 // ClearAccounts removes all users from the Auth emulator.
 func ClearAccounts(t *testing.T) {
 	t.Helper()
-	ctx := context.Background()
 	url := fmt.Sprintf("http://%s/emulator/v1/projects/%s/accounts", AuthEmulatorHost, ProjectID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodDelete, url, nil)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
@@ -69,13 +68,12 @@ func ClearAccounts(t *testing.T) {
 // ClearFirestore removes all documents from the Firestore emulator.
 func ClearFirestore(t *testing.T) {
 	t.Helper()
-	ctx := context.Background()
 	url := fmt.Sprintf(
 		"http://%s/emulator/v1/projects/%s/databases/(default)/documents",
 		FirestoreEmulatorHost,
 		ProjectID,
 	)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodDelete, url, nil)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
@@ -104,7 +102,6 @@ type SignUpResponse struct {
 // CreateTestUser creates a user in the emulator and returns the sign-up response.
 func CreateTestUser(t *testing.T, email, password string) *SignUpResponse {
 	t.Helper()
-	ctx := context.Background()
 	url := fmt.Sprintf(
 		"http://%s/identitytoolkit.googleapis.com/v1/accounts:signUp?key=%s",
 		AuthEmulatorHost,
@@ -117,7 +114,7 @@ func CreateTestUser(t *testing.T, email, password string) *SignUpResponse {
 		"returnSecureToken": true,
 	})
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}

@@ -2,7 +2,6 @@ package profile
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 )
@@ -31,8 +30,8 @@ func (m *MockStore) Create(_ context.Context, userID string, params CreateParams
 		ID:          userID,
 		Firstname:   params.Firstname,
 		Lastname:    params.Lastname,
-		Email:       strings.ToLower(strings.TrimSpace(params.Email)),
-		PhoneNumber: strings.TrimSpace(params.PhoneNumber),
+		Email:       normalizeEmail(params.Email),
+		PhoneNumber: normalizePhoneNumber(params.PhoneNumber),
 		Marketing:   params.Marketing,
 		Terms:       params.Terms,
 		CreatedAt:   now,
@@ -71,10 +70,10 @@ func (m *MockStore) Update(_ context.Context, userID string, params UpdateParams
 		p.Lastname = *params.Lastname
 	}
 	if params.Email != nil {
-		p.Email = strings.ToLower(strings.TrimSpace(*params.Email))
+		p.Email = normalizeEmail(*params.Email)
 	}
 	if params.PhoneNumber != nil {
-		p.PhoneNumber = strings.TrimSpace(*params.PhoneNumber)
+		p.PhoneNumber = normalizePhoneNumber(*params.PhoneNumber)
 	}
 	if params.Marketing != nil {
 		p.Marketing = *params.Marketing

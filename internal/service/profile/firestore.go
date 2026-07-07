@@ -38,6 +38,41 @@ type firestoreProfile struct {
 	UpdatedAt   time.Time `firestore:"updated_at"`
 }
 
+func newFirestoreProfile(params CreateParams, now time.Time) firestoreProfile {
+	return firestoreProfile{
+		Firstname:   params.Firstname,
+		Lastname:    params.Lastname,
+		Email:       normalizeEmail(params.Email),
+		PhoneNumber: normalizePhoneNumber(params.PhoneNumber),
+		Marketing:   params.Marketing,
+		Terms:       params.Terms,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+}
+
+func (p firestoreProfile) toProfile(userID string) *Profile {
+	return &Profile{
+		ID:          userID,
+		Firstname:   p.Firstname,
+		Lastname:    p.Lastname,
+		Email:       p.Email,
+		PhoneNumber: p.PhoneNumber,
+		Marketing:   p.Marketing,
+		Terms:       p.Terms,
+		CreatedAt:   p.CreatedAt,
+		UpdatedAt:   p.UpdatedAt,
+	}
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func normalizePhoneNumber(phoneNumber string) string {
+	return strings.TrimSpace(phoneNumber)
+}
+
 // FirestoreStore implements Service using Firestore with transactions.
 type FirestoreStore struct {
 	client *firestore.Client
@@ -64,32 +99,13 @@ func (s *FirestoreStore) Create(ctx context.Context, userID string, params Creat
 			return err
 		}
 
-		fp := firestoreProfile{
-			Firstname:   params.Firstname,
-			Lastname:    params.Lastname,
-			Email:       strings.ToLower(strings.TrimSpace(params.Email)),
-			PhoneNumber: strings.TrimSpace(params.PhoneNumber),
-			Marketing:   params.Marketing,
-			Terms:       params.Terms,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
+		fp := newFirestoreProfile(params, now)
 
 		if err := tx.Set(docRef, fp); err != nil {
 			return err
 		}
 
-		result = &Profile{
-			ID:          userID,
-			Firstname:   fp.Firstname,
-			Lastname:    fp.Lastname,
-			Email:       fp.Email,
-			PhoneNumber: fp.PhoneNumber,
-			Marketing:   fp.Marketing,
-			Terms:       fp.Terms,
-			CreatedAt:   fp.CreatedAt,
-			UpdatedAt:   fp.UpdatedAt,
-		}
+		result = fp.toProfile(userID)
 		return nil
 	})
 	if err != nil {
@@ -119,17 +135,7 @@ func (s *FirestoreStore) Get(ctx context.Context, userID string) (*Profile, erro
 		return nil, err
 	}
 
-	return &Profile{
-		ID:          userID,
-		Firstname:   fp.Firstname,
-		Lastname:    fp.Lastname,
-		Email:       fp.Email,
-		PhoneNumber: fp.PhoneNumber,
-		Marketing:   fp.Marketing,
-		Terms:       fp.Terms,
-		CreatedAt:   fp.CreatedAt,
-		UpdatedAt:   fp.UpdatedAt,
-	}, nil
+	return fp.toProfile(userID), nil
 }
 
 // Update updates a profile using a transaction for atomicity.
@@ -159,10 +165,10 @@ func (s *FirestoreStore) Update(ctx context.Context, userID string, params Updat
 			fp.Lastname = *params.Lastname
 		}
 		if params.Email != nil {
-			fp.Email = strings.ToLower(strings.TrimSpace(*params.Email))
+			fp.Email = normalizeEmail(*params.Email)
 		}
 		if params.PhoneNumber != nil {
-			fp.PhoneNumber = strings.TrimSpace(*params.PhoneNumber)
+			fp.PhoneNumber = normalizePhoneNumber(*params.PhoneNumber)
 		}
 		if params.Marketing != nil {
 			fp.Marketing = *params.Marketing
@@ -173,17 +179,7 @@ func (s *FirestoreStore) Update(ctx context.Context, userID string, params Updat
 			return err
 		}
 
-		result = &Profile{
-			ID:          userID,
-			Firstname:   fp.Firstname,
-			Lastname:    fp.Lastname,
-			Email:       fp.Email,
-			PhoneNumber: fp.PhoneNumber,
-			Marketing:   fp.Marketing,
-			Terms:       fp.Terms,
-			CreatedAt:   fp.CreatedAt,
-			UpdatedAt:   fp.UpdatedAt,
-		}
+		result = fp.toProfile(userID)
 		return nil
 	})
 	if err != nil {

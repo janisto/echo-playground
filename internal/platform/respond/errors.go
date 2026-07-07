@@ -5,6 +5,12 @@ import (
 	"net/http"
 )
 
+const (
+	problemTypeAboutBlank        = "about:blank"
+	problemDetailInternalError   = "internal server error"
+	problemDetailResourceMissing = "resource not found"
+)
+
 // ProblemDetails represents an RFC 9457 Problem Details response.
 type ProblemDetails struct {
 	Type     string        `json:"type"               cbor:"type"               example:"about:blank"`
@@ -37,8 +43,13 @@ func (p *ProblemDetails) StatusCode() int {
 
 // NewError creates a ProblemDetails error with the given status code and detail message.
 func NewError(status int, detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:   "about:blank",
+	p := newProblem(status, detail)
+	return &p
+}
+
+func newProblem(status int, detail string) ProblemDetails {
+	return ProblemDetails{
+		Type:   problemTypeAboutBlank,
 		Title:  http.StatusText(status),
 		Status: status,
 		Detail: detail,
