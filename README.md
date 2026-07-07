@@ -66,7 +66,7 @@ Errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457.
 
 ## Requirements
 
-- Go 1.25+
+- Go 1.26+
 - [golangci-lint](https://golangci-lint.run/) v2 (for linting and formatting)
 - [Firebase CLI](https://firebase.google.com/docs/cli) (for emulators)
 - [Just](https://github.com/casey/just) command runner (required for pinned Go toolchain)
@@ -74,28 +74,30 @@ Errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457.
 
 ## Go Version Pinning
 
-The project is pinned to **Go 1.25.x**. The `.env` file sets `GOTOOLCHAIN` to pin the local version, and CI workflows use `go-version: '1.25.x'` with `GOTOOLCHAIN: local` to prevent automatic upgrades.
+The project is pinned to **Go 1.26.x**. The ignored local `.env` file sets `GOTOOLCHAIN` to pin local recipes, and CI workflows use `go-version: '1.26.x'` with `GOTOOLCHAIN: local` to prevent automatic upgrades.
 
 To keep the same constraint locally, set `GOTOOLCHAIN` in `.env`:
 
 ```
-GOTOOLCHAIN=go1.25.8
+GOTOOLCHAIN=go1.26.4
 ```
 
-Since the Justfile uses `set dotenv-load`, all `just` recipes (build, test, lint, etc.) will use Go 1.25.8 even if a newer Go is installed on your system.
+Since the Justfile uses `set dotenv-load`, all `just` recipes (build, test, lint, etc.) will use Go 1.26.4 even if a newer Go is installed on your system.
 
-To upgrade to a new Go version (e.g., 1.26.x), update all of these in a single PR:
+To upgrade to a new Go version (e.g., 1.27.x), update all tracked version references in a single PR:
 
-1. `go.mod`, `go.work`, and `functions/go.mod` — `go` directive
-2. `.env` — `GOTOOLCHAIN` value
-3. `.github/workflows/app-ci.yml` and `app-lint.yml` — `go-version`
+1. `go.mod` and `functions/go.mod` — `go` directive
+2. `.github/workflows/app-ci.yml` and `app-lint.yml` — `go-version`
+3. `Dockerfile` — builder image and deployment examples
+
+Also update ignored local files such as `.env` and `go.work` when using them.
 
 ## Go Workspace
 
-This project uses a [Go workspace](https://go.dev/doc/tutorial/workspaces) (`go.work`) to manage multiple modules:
+For local development, use a [Go workspace](https://go.dev/doc/tutorial/workspaces) (`go.work`) to manage multiple modules:
 
 ```go
-go 1.25.8
+go 1.26.4
 
 use (
     .
@@ -268,7 +270,7 @@ gcloud run deploy echo-playground \
   --image REGION-docker.pkg.dev/PROJECT_ID/REPO/echo-playground:latest \
   --platform managed \
   --region REGION \
-  --base-image go125 \
+  --base-image go126 \
   --automatic-updates
 
 # Deploy from source with automatic base image updates
@@ -276,7 +278,7 @@ gcloud run deploy echo-playground \
   --source . \
   --platform managed \
   --region REGION \
-  --base-image go125 \
+  --base-image go126 \
   --automatic-updates
 ```
 

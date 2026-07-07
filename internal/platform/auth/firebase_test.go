@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -13,7 +12,7 @@ import (
 
 func newEmulatorAuthClient(t *testing.T) *fbauth.Client {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	app, err := firebase.NewApp(ctx, &firebase.Config{ProjectID: testutil.ProjectID})
 	if err != nil {
 		t.Fatalf("failed to create firebase app: %v", err)
@@ -48,7 +47,7 @@ func TestFirebaseVerifier_Verify_ValidToken(t *testing.T) {
 	result := testutil.CreateTestUser(t, "verify@example.com", "password123")
 
 	verifier := NewFirebaseVerifier(client)
-	user, err := verifier.Verify(context.Background(), result.IDToken)
+	user, err := verifier.Verify(t.Context(), result.IDToken)
 	if err != nil {
 		t.Fatalf("Verify failed: %v", err)
 	}
@@ -70,7 +69,7 @@ func TestFirebaseVerifier_Verify_InvalidToken(t *testing.T) {
 	client := newEmulatorAuthClient(t)
 	verifier := NewFirebaseVerifier(client)
 
-	_, err := verifier.Verify(context.Background(), "not-a-valid-token")
+	_, err := verifier.Verify(t.Context(), "not-a-valid-token")
 	if err == nil {
 		t.Fatal("expected error for invalid token")
 	}
@@ -85,7 +84,7 @@ func TestFirebaseVerifier_Verify_RevokedToken(t *testing.T) {
 	testutil.ClearEmulators(t)
 
 	client := newEmulatorAuthClient(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	result := testutil.CreateTestUser(t, "revoke@example.com", "password123")
 
@@ -109,7 +108,7 @@ func TestFirebaseVerifier_Verify_DisabledUser(t *testing.T) {
 	testutil.ClearAccounts(t)
 
 	client := newEmulatorAuthClient(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	result := testutil.CreateTestUser(t, "disabled@example.com", "password123")
 

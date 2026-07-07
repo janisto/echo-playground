@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -115,8 +114,12 @@ func main() {
 	defer cancel()
 
 	if err := sc.Start(sigCtx, e); err != nil {
-		log.Fatal(err)
+		applog.LogFatal(ctx, "server failed", err)
 	}
 
-	applog.LogInfo(ctx, "server exited")
+	if cause := context.Cause(sigCtx); cause != nil {
+		applog.LogInfo(ctx, "server exited", slog.Any("cause", cause))
+	} else {
+		applog.LogInfo(ctx, "server exited")
+	}
 }

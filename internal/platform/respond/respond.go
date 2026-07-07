@@ -13,7 +13,14 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/labstack/echo/v5"
 
+	"github.com/janisto/echo-playground/internal/platform/httpheader"
 	"github.com/janisto/echo-playground/internal/platform/validate"
+)
+
+const (
+	mediaTypeApplicationCBOR = "application/cbor"
+	mediaTypeProblemCBOR     = "application/problem+cbor"
+	mediaTypeProblemJSON     = "application/problem+json"
 )
 
 // mediaRange represents a parsed Accept header media range with quality value.
@@ -137,22 +144,6 @@ func selectFormat(header string) bool {
 	return false
 }
 
-// ensureVary adds values to the Vary header without duplicating existing entries.
-func ensureVary(h http.Header, values ...string) {
-	existing := make(map[string]struct{})
-	for _, v := range h.Values("Vary") {
-		for part := range strings.SplitSeq(v, ",") {
-			existing[strings.TrimSpace(part)] = struct{}{}
-		}
-	}
-	for _, v := range values {
-		if _, ok := existing[v]; !ok {
-			h.Add("Vary", v)
-			existing[v] = struct{}{}
-		}
-	}
-}
-
 // writeProblem writes a Problem Details response honoring content negotiation.
 // Uses application/problem+json (RFC 9457) by default.
 // Uses application/problem+cbor when CBOR is preferred via Accept header.
@@ -161,16 +152,16 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 		problem.Instance = r.URL.Path
 	}
 
-	ensureVary(w.Header(), "Origin", "Accept")
+	httpheader.AddVary(w.Header(), "Origin", "Accept")
 
 	if selectFormat(r.Header.Get("Accept")) {
-		w.Header().Set("Content-Type", "application/problem+cbor")
+		w.Header().Set("Content-Type", mediaTypeProblemCBOR)
 		w.WriteHeader(problem.Status)
 		if err := cbor.NewEncoder(w).Encode(problem); err != nil {
 			slog.ErrorContext(r.Context(), "failed to encode problem+cbor", slog.Any("error", err))
 		}
 	} else {
-		w.Header().Set("Content-Type", "application/problem+json")
+		w.Header().Set("Content-Type", mediaTypeProblemJSON)
 		w.WriteHeader(problem.Status)
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
@@ -182,12 +173,13 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 
 // Negotiate writes a response using content negotiation (JSON or CBOR).
 func Negotiate(c *echo.Context, status int, data any) error {
+	httpheader.AddVary(c.Response().Header(), "Accept")
 	if selectFormat(c.Request().Header.Get("Accept")) {
 		b, err := cbor.Marshal(data)
 		if err != nil {
 			return err
 		}
-		return c.Blob(status, "application/cbor", b)
+		return c.Blob(status, mediaTypeApplicationCBOR, b)
 	}
 	return c.JSON(status, data)
 }
@@ -214,13 +206,11 @@ func Recoverer() echo.MiddlewareFunc {
 						return
 					}
 
-					problem := ProblemDetails{
-						Type:   "about:blank",
-						Title:  http.StatusText(http.StatusInternalServerError),
-						Status: http.StatusInternalServerError,
-						Detail: "internal server error",
-					}
-					writeProblem(c.Response(), c.Request(), problem)
+					writeProblem(
+						c.Response(),
+						c.Request(),
+						newProblem(http.StatusInternalServerError, problemDetailInternalError),
+					)
 				}
 			}()
 			return next(c)
@@ -236,67 +226,47 @@ func NewHTTPErrorHandler() echo.HTTPErrorHandler {
 			return
 		}
 
-		var problem ProblemDetails
-
-		var pd *ProblemDetails
-		var he *echo.HTTPError
-		var ve *validate.ValidationError
-
-		switch {
-		case errors.As(err, &pd):
-			problem = *pd
-
-		case errors.As(err, &ve):
-			problem = ProblemDetails{
-				Type:   "about:blank",
-				Title:  http.StatusText(http.StatusUnprocessableEntity),
-				Status: http.StatusUnprocessableEntity,
-				Detail: ve.Message,
-			}
-			if len(ve.Fields) > 0 {
-				problem.Errors = make([]ErrorDetail, len(ve.Fields))
-				for i, f := range ve.Fields {
-					problem.Errors[i] = ErrorDetail{
-						Message:  f.Message,
-						Location: f.Field,
-						Value:    f.Value,
-					}
-				}
-			}
-
-		case errors.Is(err, echo.ErrNotFound):
-			problem = ProblemDetails{
-				Type:   "about:blank",
-				Title:  http.StatusText(http.StatusNotFound),
-				Status: http.StatusNotFound,
-				Detail: "resource not found",
-			}
-
-		case errors.Is(err, echo.ErrMethodNotAllowed):
-			problem = ProblemDetails{
-				Type:   "about:blank",
-				Title:  http.StatusText(http.StatusMethodNotAllowed),
-				Status: http.StatusMethodNotAllowed,
-				Detail: fmt.Sprintf("method %s not allowed", c.Request().Method),
-			}
-
-		case errors.As(err, &he):
-			problem = ProblemDetails{
-				Type:   "about:blank",
-				Title:  http.StatusText(he.Code),
-				Status: he.Code,
-				Detail: he.Message,
-			}
-
-		default:
-			problem = ProblemDetails{
-				Type:   "about:blank",
-				Title:  http.StatusText(http.StatusInternalServerError),
-				Status: http.StatusInternalServerError,
-				Detail: "internal server error",
-			}
-		}
-
-		writeProblem(c.Response(), c.Request(), problem)
+		writeProblem(c.Response(), c.Request(), problemFromError(c, err))
 	}
+}
+
+func problemFromError(c *echo.Context, err error) ProblemDetails {
+	if pd, ok := errors.AsType[*ProblemDetails](err); ok {
+		return *pd
+	}
+
+	if ve, ok := errors.AsType[*validate.ValidationError](err); ok {
+		problem := Error422(ve.Message, validationErrorDetails(ve)...)
+		return *problem
+	}
+
+	switch {
+	case errors.Is(err, echo.ErrNotFound):
+		return newProblem(http.StatusNotFound, problemDetailResourceMissing)
+
+	case errors.Is(err, echo.ErrMethodNotAllowed):
+		return newProblem(http.StatusMethodNotAllowed, fmt.Sprintf("method %s not allowed", c.Request().Method))
+	}
+
+	if he, ok := errors.AsType[*echo.HTTPError](err); ok {
+		return newProblem(he.Code, he.Message)
+	}
+
+	return newProblem(http.StatusInternalServerError, problemDetailInternalError)
+}
+
+func validationErrorDetails(ve *validate.ValidationError) []ErrorDetail {
+	if len(ve.Fields) == 0 {
+		return nil
+	}
+
+	details := make([]ErrorDetail, len(ve.Fields))
+	for i, f := range ve.Fields {
+		details[i] = ErrorDetail{
+			Message:  f.Message,
+			Location: f.Field,
+			Value:    f.Value,
+		}
+	}
+	return details
 }

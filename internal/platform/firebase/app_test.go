@@ -1,7 +1,6 @@
 package firebase
 
 import (
-	"context"
 	"testing"
 
 	"github.com/janisto/echo-playground/internal/testutil"
@@ -11,7 +10,7 @@ func TestInitializeClients(t *testing.T) {
 	testutil.SkipIfEmulatorUnavailable(t)
 	testutil.SetupEmulator(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	clients, err := InitializeClients(ctx, Config{
 		ProjectID: testutil.ProjectID,
 	})

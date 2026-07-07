@@ -2,23 +2,15 @@ package logging
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
 )
 
-func TestLoggerFromContext_Nil(t *testing.T) {
-	l := LoggerFromContext(context.TODO())
-	if l == nil {
-		t.Fatal("expected fallback to global logger")
-	}
-}
-
 func TestLoggerFromContext_WithLogger(t *testing.T) {
 	var buf bytes.Buffer
 	customLogger := slog.New(slog.NewJSONHandler(&buf, nil))
-	ctx := contextWithLogger(context.Background(), customLogger)
+	ctx := contextWithLogger(t.Context(), customLogger)
 
 	l := LoggerFromContext(ctx)
 	if l != customLogger {
@@ -27,22 +19,15 @@ func TestLoggerFromContext_WithLogger(t *testing.T) {
 }
 
 func TestLoggerFromContext_WithoutLogger(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	l := LoggerFromContext(ctx)
 	if l == nil {
 		t.Fatal("expected fallback to global logger")
 	}
 }
 
-func TestTraceIDFromContext_Nil(t *testing.T) {
-	id := TraceIDFromContext(context.TODO())
-	if id != nil {
-		t.Fatal("expected nil for nil context")
-	}
-}
-
 func TestTraceIDFromContext_WithTraceID(t *testing.T) {
-	ctx := contextWithTraceID(context.Background(), "trace-abc")
+	ctx := contextWithTraceID(t.Context(), "trace-abc")
 	id := TraceIDFromContext(ctx)
 	if id == nil {
 		t.Fatal("expected non-nil trace ID")
@@ -53,7 +38,7 @@ func TestTraceIDFromContext_WithTraceID(t *testing.T) {
 }
 
 func TestTraceIDFromContext_EmptyTraceID(t *testing.T) {
-	ctx := contextWithTraceID(context.Background(), "")
+	ctx := contextWithTraceID(t.Context(), "")
 	id := TraceIDFromContext(ctx)
 	if id != nil {
 		t.Fatal("expected nil for empty trace ID")
@@ -63,7 +48,7 @@ func TestTraceIDFromContext_EmptyTraceID(t *testing.T) {
 func TestLogInfo(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	ctx := contextWithLogger(context.Background(), logger)
+	ctx := contextWithLogger(t.Context(), logger)
 
 	LogInfo(ctx, "test info", slog.String("key", "val"))
 
@@ -82,7 +67,7 @@ func TestLogInfo(t *testing.T) {
 func TestLogWarn(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	ctx := contextWithLogger(context.Background(), logger)
+	ctx := contextWithLogger(t.Context(), logger)
 
 	LogWarn(ctx, "test warn")
 
@@ -98,7 +83,7 @@ func TestLogWarn(t *testing.T) {
 func TestLogError_WithError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	ctx := contextWithLogger(context.Background(), logger)
+	ctx := contextWithLogger(t.Context(), logger)
 
 	LogError(ctx, "test error", errForTest("boom"))
 
@@ -117,7 +102,7 @@ func TestLogError_WithError(t *testing.T) {
 func TestLogError_NilError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	ctx := contextWithLogger(context.Background(), logger)
+	ctx := contextWithLogger(t.Context(), logger)
 
 	LogError(ctx, "no error", nil)
 
@@ -130,9 +115,9 @@ func TestLogError_NilError(t *testing.T) {
 	}
 }
 
-func TestContextWithLogger_NilContext(t *testing.T) {
+func TestContextWithLogger(t *testing.T) {
 	logger := slog.Default()
-	ctx := contextWithLogger(context.TODO(), logger)
+	ctx := contextWithLogger(t.Context(), logger)
 	if ctx == nil {
 		t.Fatal("expected non-nil context")
 	}
@@ -142,8 +127,8 @@ func TestContextWithLogger_NilContext(t *testing.T) {
 	}
 }
 
-func TestContextWithTraceID_NilContext(t *testing.T) {
-	ctx := contextWithTraceID(context.TODO(), "test-id")
+func TestContextWithTraceID(t *testing.T) {
+	ctx := contextWithTraceID(t.Context(), "test-id")
 	if ctx == nil {
 		t.Fatal("expected non-nil context")
 	}
@@ -191,7 +176,7 @@ func TestContextWithTraceID_NilCtx(t *testing.T) {
 }
 
 func TestTraceIDFromContext_WithoutTraceID(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	id := TraceIDFromContext(ctx)
 	if id != nil {
 		t.Fatal("expected nil for context without trace ID")

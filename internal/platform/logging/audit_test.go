@@ -2,7 +2,6 @@ package logging
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -11,7 +10,7 @@ import (
 func TestLogAuditEvent(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	ctx := contextWithLogger(context.Background(), logger)
+	ctx := contextWithLogger(t.Context(), logger)
 
 	LogAuditEvent(ctx, "create", "user-123", "profile", "profile-123", "success", nil)
 
@@ -42,7 +41,7 @@ func TestLogAuditEvent(t *testing.T) {
 func TestLogAuditEvent_WithDetails(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	ctx := contextWithLogger(context.Background(), logger)
+	ctx := contextWithLogger(t.Context(), logger)
 
 	details := map[string]any{"error": "not_found"}
 	LogAuditEvent(ctx, "delete", "user-456", "profile", "profile-456", "failure", details)

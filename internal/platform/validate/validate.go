@@ -58,8 +58,7 @@ func (av *AppValidator) Validate(i any) error {
 		return nil
 	}
 
-	var ve validator.ValidationErrors
-	if errors.As(err, &ve) {
+	if ve, ok := errors.AsType[validator.ValidationErrors](err); ok {
 		fields := make([]FieldError, len(ve))
 		for idx, fe := range ve {
 			fields[idx] = FieldError{

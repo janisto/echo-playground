@@ -46,10 +46,7 @@ func TestValidate_RequiredFields(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Message != "validation failed" {
 		t.Fatalf("expected 'validation failed', got %q", ve.Message)
 	}
@@ -79,10 +76,7 @@ func TestValidate_InvalidEmail(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if len(ve.Fields) != 1 {
 		t.Fatalf("expected 1 field error, got %d", len(ve.Fields))
 	}
@@ -109,10 +103,7 @@ func TestValidate_InvalidE164(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if len(ve.Fields) != 1 {
 		t.Fatalf("expected 1 field error, got %d", len(ve.Fields))
 	}
@@ -133,10 +124,7 @@ func TestValidate_MinMax(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for limit=101")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if len(ve.Fields) != 1 {
 		t.Fatalf("expected 1 field error, got %d", len(ve.Fields))
 	}
@@ -155,10 +143,7 @@ func TestValidate_MinNegative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for limit=-1")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Fields[0].Field != "limit" {
 		t.Fatalf("expected field 'limit', got %q", ve.Fields[0].Field)
 	}
@@ -179,10 +164,7 @@ func TestValidate_Oneof(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for invalid category")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Fields[0].Field != "category" {
 		t.Fatalf("expected field 'category', got %q", ve.Fields[0].Field)
 	}
@@ -198,10 +180,7 @@ func TestValidate_QueryTagNames(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Fields[0].Field != "limit" {
 		t.Fatalf("expected query tag name 'limit', got %q", ve.Fields[0].Field)
 	}
@@ -214,10 +193,7 @@ func TestValidate_ParamTagNames(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Fields[0].Field != "id" {
 		t.Fatalf("expected param tag name 'id', got %q", ve.Fields[0].Field)
 	}
@@ -230,10 +206,7 @@ func TestValidate_MixedTags(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if len(ve.Fields) != 2 {
 		t.Fatalf("expected 2 field errors, got %d", len(ve.Fields))
 	}
@@ -276,6 +249,15 @@ func assertField(t *testing.T, fields map[string]FieldError, name, expectedMsg s
 	}
 }
 
+func validationError(t *testing.T, err error) *ValidationError {
+	t.Helper()
+	ve, ok := errors.AsType[*ValidationError](err)
+	if !ok {
+		t.Fatalf("expected *ValidationError, got %T", err)
+	}
+	return ve
+}
+
 type customTagInput struct {
 	Value string `json:"value" validate:"required,ip"`
 }
@@ -287,10 +269,7 @@ func TestValidate_DefaultBuildMessage(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if len(ve.Fields) != 1 {
 		t.Fatalf("expected 1 field error, got %d", len(ve.Fields))
 	}
@@ -310,10 +289,7 @@ func TestValidate_FallbackToFieldName(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Fields[0].Field != "Name" {
 		t.Fatalf("expected field 'Name' (struct field name), got %q", ve.Fields[0].Field)
 	}
@@ -330,10 +306,7 @@ func TestValidate_DashTagIgnored(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Fields[0].Field != "Secret" {
 		t.Fatalf("expected field 'Secret', got %q", ve.Fields[0].Field)
 	}
@@ -345,10 +318,7 @@ func TestValidate_NonStructInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-struct input")
 	}
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
+	ve := validationError(t, err)
 	if ve.Message == "" {
 		t.Fatal("expected non-empty message")
 	}

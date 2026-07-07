@@ -2,7 +2,6 @@ package logging
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -52,7 +51,7 @@ func TestGCPHandler_LevelMapping(t *testing.T) {
 				},
 			})
 			logger := slog.New(&gcpHandler{Handler: h})
-			logger.Log(context.TODO(), tt.level, "test message")
+			logger.Log(t.Context(), tt.level, "test message")
 
 			var entry map[string]any
 			if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {

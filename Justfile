@@ -86,7 +86,7 @@ fix:
 # Check for vulnerabilities
 [group('qa')]
 vuln:
-    govulncheck ./...
+    go tool govulncheck ./...
 
 # Quality assurance: tidy, fix, build, and test
 [group('qa')]

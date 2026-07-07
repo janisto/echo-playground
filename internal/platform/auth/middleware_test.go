@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -182,7 +181,7 @@ func TestExtractBearerToken(t *testing.T) {
 
 func TestUserFromContext_Standard(t *testing.T) {
 	// Without context value, should return nil.
-	ctx := context.Background()
+	ctx := t.Context()
 	got := UserFromContext(ctx)
 	if got != nil {
 		t.Fatal("expected nil for context without user")

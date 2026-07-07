@@ -16,7 +16,7 @@ func newTestStore(t *testing.T) (*FirestoreStore, func()) {
 	testutil.SetupEmulator(t)
 	testutil.ClearEmulators(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	client, err := firestore.NewClient(ctx, testutil.ProjectID)
 	if err != nil {
 		t.Fatalf("failed to create firestore client: %v", err)
@@ -34,7 +34,7 @@ func TestFirestoreStore_CreateAndGet(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	params := CreateParams{
 		Firstname:   "John",
@@ -77,7 +77,7 @@ func TestFirestoreStore_CreateAndGet(t *testing.T) {
 func TestFirestoreStore_CreateDuplicate(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	params := CreateParams{
 		Firstname: "Jane",
@@ -99,7 +99,7 @@ func TestFirestoreStore_CreateDuplicate(t *testing.T) {
 func TestFirestoreStore_GetNotFound(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := store.Get(ctx, "nonexistent")
 	if !errors.Is(err, ErrNotFound) {
@@ -110,7 +110,7 @@ func TestFirestoreStore_GetNotFound(t *testing.T) {
 func TestFirestoreStore_Update(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	params := CreateParams{
 		Firstname:   "Alice",
@@ -161,7 +161,7 @@ func TestFirestoreStore_Update(t *testing.T) {
 func TestFirestoreStore_UpdateNotFound(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	newName := "Ghost"
 	_, err := store.Update(ctx, "nonexistent", UpdateParams{Firstname: &newName})
@@ -173,7 +173,7 @@ func TestFirestoreStore_UpdateNotFound(t *testing.T) {
 func TestFirestoreStore_UpdateLastnameOnly(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	params := CreateParams{
 		Firstname: "Bob",
@@ -202,7 +202,7 @@ func TestFirestoreStore_UpdateLastnameOnly(t *testing.T) {
 func TestFirestoreStore_Delete(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	params := CreateParams{
 		Firstname: "Charlie",
@@ -227,7 +227,7 @@ func TestFirestoreStore_Delete(t *testing.T) {
 func TestFirestoreStore_DeleteNotFound(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	err := store.Delete(ctx, "nonexistent")
 	if !errors.Is(err, ErrNotFound) {
