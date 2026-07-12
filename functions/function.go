@@ -38,7 +38,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req Request
+	var req *Request
 	if r.Method == http.MethodPost {
 		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || mediaType != "application/json" {
@@ -57,13 +57,20 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid JSON request body", http.StatusBadRequest)
 			return
 		}
+		if req == nil {
+			http.Error(w, "request body must contain one JSON object", http.StatusBadRequest)
+			return
+		}
 		if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 			http.Error(w, "request body must contain one JSON object", http.StatusBadRequest)
 			return
 		}
 	}
 
-	name := req.Name
+	var name string
+	if req != nil {
+		name = req.Name
+	}
 	if name == "" {
 		name = r.URL.Query().Get("name")
 	}

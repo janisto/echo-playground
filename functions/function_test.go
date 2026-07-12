@@ -35,6 +35,10 @@ func TestHelloHandler(t *testing.T) {
 			contentType: "application/json", wantStatus: http.StatusBadRequest,
 		},
 		{
+			name: "null", method: http.MethodPost, target: "/", body: `null`,
+			contentType: "application/json", wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:        "unknown field",
 			method:      http.MethodPost,
 			target:      "/",
