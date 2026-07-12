@@ -8,11 +8,10 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/janisto/echo-observability v0.1.0
-	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.2.1
-	github.com/swaggo/swag/v2 v2.0.0-rc5
 	go.uber.org/zap v1.28.0
 	google.golang.org/grpc v1.82.0
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -63,6 +62,7 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
 	github.com/sv-tools/openapi v0.4.0 // indirect
+	github.com/swaggo/swag/v2 v2.0.0-rc5 // indirect
 	github.com/urfave/cli/v2 v2.27.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
@@ -76,6 +76,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/mod v0.38.0 // indirect
@@ -87,7 +88,7 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect
-	golang.org/x/vuln v1.5.0 // indirect
+	golang.org/x/vuln v1.6.0 // indirect
 	google.golang.org/api v0.288.0 // indirect
 	google.golang.org/appengine/v2 v2.0.6 // indirect
 	google.golang.org/genproto v0.0.0-20260706201446-f0a921348800 // indirect
@@ -95,7 +96,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
 tool (

@@ -21,7 +21,7 @@ func TestSecurity_SetsHeaders(t *testing.T) {
 
 	expected := map[string]string{
 		"Cache-Control":                "no-store",
-		"Content-Security-Policy":      "frame-ancestors 'none'",
+		"Content-Security-Policy":      "default-src 'none'; frame-ancestors 'none'",
 		"Cross-Origin-Opener-Policy":   "same-origin",
 		"Cross-Origin-Resource-Policy": "same-origin",
 		"Referrer-Policy":              "strict-origin-when-cross-origin",
@@ -42,14 +42,14 @@ func TestSecurity_SetsHeaders(t *testing.T) {
 	}
 }
 
-func TestSecurity_SkipPaths(t *testing.T) {
+func TestSecurity_DocsPolicy(t *testing.T) {
 	e := echo.New()
-	e.Use(Security("/v1/api-docs"))
-	e.GET("/v1/api-docs/swagger.json", func(c *echo.Context) error {
+	e.Use(Security())
+	e.GET("/api-docs", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/api-docs/swagger.json", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -57,25 +57,27 @@ func TestSecurity_SkipPaths(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	cc := rec.Header().Get("Cache-Control")
-	if cc != "" {
-		t.Fatalf("expected no Cache-Control for skipped path, got %q", cc)
+	csp := rec.Header().Get("Content-Security-Policy")
+	if csp != contentSecurityPolicy("/api-docs") {
+		t.Fatalf("unexpected docs CSP %q", csp)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("expected docs to retain no-store, got %q", cc)
 	}
 }
 
-func TestSecurity_NonSkipPath(t *testing.T) {
+func TestSecurity_DoesNotTreatPrefixAsDocs(t *testing.T) {
 	e := echo.New()
-	e.Use(Security("/v1/api-docs"))
-	e.GET("/v1/hello", func(c *echo.Context) error {
+	e.Use(Security())
+	e.GET("/api-docs-anything", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, nil)
 	})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/hello", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs-anything", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	cc := rec.Header().Get("Cache-Control")
-	if cc != "no-store" {
-		t.Fatalf("expected 'no-store' for non-skipped path, got %q", cc)
+	if csp := rec.Header().Get("Content-Security-Policy"); csp != "default-src 'none'; frame-ancestors 'none'" {
+		t.Fatalf("unexpected API CSP %q", csp)
 	}
 }

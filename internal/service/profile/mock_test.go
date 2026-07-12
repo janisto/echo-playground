@@ -15,7 +15,6 @@ func TestMockStore_UpdateAllFields(t *testing.T) {
 		Email:       "  John@Example.com  ",
 		PhoneNumber: " +358401234567 ",
 		Marketing:   false,
-		Terms:       true,
 	})
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
@@ -43,8 +42,8 @@ func TestMockStore_UpdateAllFields(t *testing.T) {
 	if updated.Lastname != "Smith" {
 		t.Fatalf("expected lastname 'Smith', got %q", updated.Lastname)
 	}
-	if updated.Email != "jane@example.com" {
-		t.Fatalf("expected lowercase email 'jane@example.com', got %q", updated.Email)
+	if updated.Email != "Jane@Example.com" {
+		t.Fatalf("expected preserved email 'Jane@Example.com', got %q", updated.Email)
 	}
 	if updated.PhoneNumber != "+358409876543" {
 		t.Fatalf("expected phone '+358409876543', got %q", updated.PhoneNumber)
@@ -54,7 +53,7 @@ func TestMockStore_UpdateAllFields(t *testing.T) {
 	}
 }
 
-func TestMockStore_CreateNormalizesInput(t *testing.T) {
+func TestMockStore_CreatePreservesInput(t *testing.T) {
 	store := NewMockStore()
 	ctx := t.Context()
 
@@ -64,16 +63,15 @@ func TestMockStore_CreateNormalizesInput(t *testing.T) {
 		Email:       "  ALICE@Example.COM  ",
 		PhoneNumber: "  +1234567890  ",
 		Marketing:   true,
-		Terms:       true,
 	})
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
-	if p.Email != "alice@example.com" {
-		t.Fatalf("expected lowercase trimmed email, got %q", p.Email)
+	if p.Email != "  ALICE@Example.COM  " {
+		t.Fatalf("expected preserved email, got %q", p.Email)
 	}
-	if p.PhoneNumber != "+1234567890" {
-		t.Fatalf("expected trimmed phone, got %q", p.PhoneNumber)
+	if p.PhoneNumber != "  +1234567890  " {
+		t.Fatalf("expected preserved phone, got %q", p.PhoneNumber)
 	}
 }
 
@@ -144,15 +142,36 @@ func TestMockStore_DuplicateCreate(t *testing.T) {
 	ctx := t.Context()
 
 	_, err := store.Create(ctx, "user-dup", CreateParams{
-		Firstname: "A", Lastname: "B", Email: "a@b.com", PhoneNumber: "+1", Terms: true,
+		Firstname: "A", Lastname: "B", Email: "a@b.com", PhoneNumber: "+1",
 	})
 	if err != nil {
 		t.Fatalf("first create failed: %v", err)
 	}
 	_, err = store.Create(ctx, "user-dup", CreateParams{
-		Firstname: "C", Lastname: "D", Email: "c@d.com", PhoneNumber: "+2", Terms: true,
+		Firstname: "C", Lastname: "D", Email: "c@d.com", PhoneNumber: "+2",
 	})
 	if !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("expected ErrAlreadyExists, got %v", err)
+	}
+}
+
+func TestMockStore_ReturnsCopies(t *testing.T) {
+	store := NewMockStore()
+	created, err := store.Create(t.Context(), "copy-user", CreateParams{
+		Firstname:   "Original",
+		Lastname:    "User",
+		Email:       "original@example.com",
+		PhoneNumber: "+358401234567",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	created.Firstname = "Mutated"
+	got, err := store.Get(t.Context(), "copy-user")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Firstname != "Original" {
+		t.Fatalf("store leaked internal pointer: %#v", got)
 	}
 }

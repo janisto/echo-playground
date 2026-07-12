@@ -39,9 +39,6 @@ components:
         phoneNumber:
           example: "+358401234567"
           type: string
-        terms:
-          example: true
-          type: boolean
         updatedAt:
           example: "2024-01-15T10:30:00.000Z"
           type: string
@@ -67,8 +64,7 @@ components:
           example: Alpha Widget
           type: string
         price:
-          example: 29.99
-          type: number
+          $ref: '#/components/schemas/items.Money'
       type: object
     items.ListData:
       properties:
@@ -80,6 +76,15 @@ components:
         total:
           example: 30
           type: integer
+      type: object
+    items.Money:
+      properties:
+        amountMinor:
+          example: 2999
+          type: integer
+        currency:
+          example: EUR
+          type: string
       type: object
     profile.CreateInput:
       properties:
@@ -102,9 +107,6 @@ components:
         phoneNumber:
           example: "+358401234567"
           type: string
-        terms:
-          example: true
-          type: boolean
       required:
       - email
       - firstname
@@ -141,9 +143,6 @@ components:
         message:
           example: firstname is required
           type: string
-        value:
-          example: ""
-          type: string
       type: object
     respond.ProblemDetails:
       properties:
@@ -170,14 +169,15 @@ components:
       type: object
   securitySchemes:
     BearerAuth:
-      in: header
-      name: Authorization
-      type: apiKey
+      bearerFormat: JWT
+      scheme: bearer
+      type: http
 externalDocs:
   description: ""
   url: ""
 info:
-  description: Example API built with Echo v5
+  description: Example API built with Echo v5. CBOR is supported for responses through
+    content negotiation.
   title: Echo Playground API
   version: "1.0"
 openapi: 3.1.0
@@ -210,7 +210,7 @@ paths:
         description: Greeting request body
         required: true
       responses:
-        "201":
+        "200":
           content:
             application/cbor:
               schema:
@@ -218,22 +218,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/hello.Data'
-          description: Created
+          description: OK
         "400":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Bad Request
-        "422":
+        "413":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unprocessable Entity
@@ -285,19 +303,19 @@ paths:
                 type: string
         "400":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Bad Request
         "422":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unprocessable Entity
@@ -312,22 +330,40 @@ paths:
           description: No Content
         "401":
           content:
-            application/json:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
         "404":
           content:
-            application/json:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
         "500":
           content:
-            application/json:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Internal Server Error
+        "503":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Service Unavailable
       security:
       - BearerAuth: []
       summary: Delete profile
@@ -347,31 +383,40 @@ paths:
           description: OK
         "401":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
         "404":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
         "500":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Internal Server Error
+        "503":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Service Unavailable
       security:
       - BearerAuth: []
       summary: Get profile
@@ -400,49 +445,76 @@ paths:
           description: OK
         "400":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Bad Request
         "401":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
         "404":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
-        "422":
+        "413":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unprocessable Entity
         "500":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Internal Server Error
+        "503":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Service Unavailable
       security:
       - BearerAuth: []
       summary: Update profile
@@ -476,54 +548,81 @@ paths:
                 type: string
         "400":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Bad Request
         "401":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
         "409":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Conflict
-        "422":
+        "413":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unprocessable Entity
         "500":
           content:
-            application/cbor:
+            application/problem+cbor:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Internal Server Error
+        "503":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Service Unavailable
       security:
       - BearerAuth: []
       summary: Create profile
       tags:
       - profile
 servers:
-- description: Local development server
-  url: http://localhost:8080/v1
+- description: Version 1 API
+  url: /v1

@@ -2,7 +2,6 @@ package validate
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -14,7 +13,6 @@ import (
 type FieldError struct {
 	Field   string
 	Message string
-	Value   string
 }
 
 // ValidationError is returned when input validation fails.
@@ -70,7 +68,6 @@ func (av *AppValidator) Validate(i any) error {
 			fields[idx] = FieldError{
 				Field:   fe.Field(),
 				Message: buildMessage(fe),
-				Value:   fmt.Sprintf("%v", fe.Value()),
 			}
 		}
 		return &ValidationError{

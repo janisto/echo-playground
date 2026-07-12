@@ -73,8 +73,8 @@ func TestCreateHello_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
 	var data Data
@@ -142,6 +142,18 @@ func TestCreateHello_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateHello_RejectsUnknownAndTrailingJSON(t *testing.T) {
+	for _, body := range []string{`{"name":"Ada","unknown":true}`, `{"name":"Ada"} {}`} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		setupEcho().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %q: expected 400, got %d", body, rec.Code)
+		}
+	}
+}
+
 func TestCreateHello_CBOR(t *testing.T) {
 	e := setupEcho()
 
@@ -152,8 +164,8 @@ func TestCreateHello_CBOR(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "application/cbor" {
 		t.Fatalf("expected application/cbor, got %q", ct)

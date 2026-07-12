@@ -1,4 +1,4 @@
-name: App code quality (linting and formatting)
+name: App code quality
 
 on:
   push:
@@ -8,21 +8,17 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint:
+  lint-root:
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
@@ -31,7 +27,42 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9.3.0
+      - name: Lint root module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.11
+
+  lint-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.5.0
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+          cache-dependency-path: functions/go.sum
+
+      - name: Lint function module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.11
+          working-directory: functions
+
+  lint:
+    if: ${{ always() }}
+    needs:
+      - lint-root
+      - lint-functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all lint jobs
+        env:
+          ROOT: ${{ needs['lint-root'].result }}
+          FUNCTIONS: ${{ needs['lint-functions'].result }}
+        run: |
+          test "$ROOT" = success
+          test "$FUNCTIONS" = success

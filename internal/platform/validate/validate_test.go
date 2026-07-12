@@ -95,9 +95,6 @@ func TestValidate_InvalidEmail(t *testing.T) {
 	if ve.Fields[0].Message != "email must be a valid email address" {
 		t.Fatalf("unexpected message: %s", ve.Fields[0].Message)
 	}
-	if ve.Fields[0].Value != "not-an-email" {
-		t.Fatalf("expected value 'not-an-email', got %q", ve.Fields[0].Value)
-	}
 }
 
 func TestValidate_InvalidE164(t *testing.T) {

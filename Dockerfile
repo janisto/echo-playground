@@ -4,14 +4,7 @@
 # Uses multi-stage build with official Go and distroless images.
 # See: https://docs.docker.com/language/golang/build-images/
 #
-# Cloud Run automatic base image updates:
-# Deploy with automatic base image updates so Google can patch the base without a rebuild:
-#   gcloud run deploy echo-playground \
-#     --image REGION-docker.pkg.dev/PROJECT_ID/REPO/echo-playground:latest \
-#     --platform managed \
-#     --region REGION \
-#     --base-image go126 \
-#     --automatic-updates
+# Rebuild this image for Go standard-library and base-image security updates.
 
 # Builder image: includes Go toolchain for compilation
 ARG GO_IMAGE=golang:1.26-trixie
@@ -22,18 +15,17 @@ ARG VERSION=dev
 
 FROM ${GO_IMAGE} AS builder
 
+ARG VERSION=dev
+
 # CGO_ENABLED=0: Static binary required for distroless
 # GOOS=linux: Explicit target OS for cross-build environments (Cloud Run is Linux)
 ENV CGO_ENABLED=0 GOOS=linux
 
 WORKDIR /app
 
-# Install dependencies first (better layer caching)
-# Uses bind mounts for go.mod/go.sum and cache mount for Go module cache
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=bind,source=go.mod,target=go.mod \
-    --mount=type=bind,source=go.sum,target=go.sum \
-    go mod download -x
+# Install dependencies first so source-only changes reuse this layer.
+COPY go.mod go.sum ./
+RUN go mod download
 
 # Copy source and build
 COPY . .
@@ -43,9 +35,9 @@ COPY . .
 # -buildvcs=false: Avoid VCS info embedding (cleaner CI builds without .git)
 # -trimpath: Remove file system paths from binary for reproducibility
 # -ldflags: Inject version and strip debug info for smaller binary
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -mod=readonly -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /app/server ./cmd/server
+RUN go build -mod=readonly -buildvcs=false -trimpath \
+    -ldflags="-s -w -X main.Version=${VERSION}" \
+    -o /app/server ./cmd/server
 
 # Runtime stage: uses minimal distroless image
 FROM ${RUNTIME_IMAGE} AS runtime
@@ -54,6 +46,8 @@ FROM ${RUNTIME_IMAGE} AS runtime
 ARG RUNTIME_IMAGE
 ARG VERSION
 LABEL org.opencontainers.image.base.name="${RUNTIME_IMAGE}" \
+      org.opencontainers.image.revision="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/janisto/echo-playground" \
       org.opencontainers.image.version="${VERSION}"
 
 # Copy the compiled binary with explicit permissions

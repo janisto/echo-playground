@@ -21,9 +21,7 @@ func (m *MockVerifier) Verify(_ context.Context, _ string) (*FirebaseUser, error
 // TestUser returns a standard test user.
 func TestUser() *FirebaseUser {
 	return &FirebaseUser{
-		UID:           "test-user-123",
-		Email:         "test@example.com",
-		EmailVerified: true,
+		UID: "test-user-123",
 	}
 }
 

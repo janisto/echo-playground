@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v5"
@@ -28,6 +29,13 @@ func TestCORS_PreflightRequest(t *testing.T) {
 	acao := rec.Header().Get("Access-Control-Allow-Origin")
 	if acao != "*" {
 		t.Fatalf("expected Access-Control-Allow-Origin '*', got %q", acao)
+	}
+	methods := rec.Header().Get("Access-Control-Allow-Methods")
+	if !strings.Contains(methods, http.MethodPatch) || strings.Contains(methods, http.MethodPut) {
+		t.Fatalf("unexpected allowed methods %q", methods)
+	}
+	if credentials := rec.Header().Get("Access-Control-Allow-Credentials"); credentials != "" {
+		t.Fatalf("credentialed CORS must remain disabled, got %q", credentials)
 	}
 }
 

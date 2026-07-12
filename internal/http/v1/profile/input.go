@@ -7,7 +7,6 @@ type CreateInput struct {
 	Email       string `json:"email"       validate:"required,email"         example:"john@example.com"`
 	PhoneNumber string `json:"phoneNumber" validate:"required,e164"          example:"+358401234567"`
 	Marketing   bool   `json:"marketing"                                     example:"true"`
-	Terms       bool   `json:"terms"                                         example:"true"`
 }
 
 // UpdateInput for PATCH /profile.
@@ -17,4 +16,12 @@ type UpdateInput struct {
 	Email       *string `json:"email,omitempty"       validate:"omitempty,email"         example:"john@example.com"`
 	PhoneNumber *string `json:"phoneNumber,omitempty" validate:"omitempty,e164"          example:"+358401234567"`
 	Marketing   *bool   `json:"marketing,omitempty"                                      example:"true"`
+}
+
+func (i UpdateInput) Empty() bool {
+	return i.Firstname == nil &&
+		i.Lastname == nil &&
+		i.Email == nil &&
+		i.PhoneNumber == nil &&
+		i.Marketing == nil
 }

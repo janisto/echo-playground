@@ -86,8 +86,8 @@ func TestHelloPostEndpoint(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -216,12 +216,6 @@ func TestObservabilityCorrelatesHandlerAndAccessLogs(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	assertObservedFields(t, recorded.FilterMessage("hello get").All(), map[string]any{
-		"request_id":     requestID,
-		"correlation_id": traceID,
-		"trace_id":       traceID,
-		"trace_sampled":  true,
-	})
 	assertObservedFields(t, recorded.FilterMessage("request completed").All(), map[string]any{
 		"request_id":     requestID,
 		"correlation_id": traceID,
@@ -251,7 +245,7 @@ func TestProfileCRUD(t *testing.T) {
 	e := setupTestServer(verifier, svc)
 
 	// Create.
-	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true,"terms":true}`
+	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true}`
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")

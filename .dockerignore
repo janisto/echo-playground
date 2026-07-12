@@ -1,6 +1,8 @@
 # Git
 .git
 .gitignore
+.github
+.agents
 
 # IDE
 .idea
@@ -13,10 +15,10 @@
 *.out
 coverage.out
 coverage.html
+**/*_test.go
 
 # Documentation
 *.md
-!README.md
 LICENSE
 
 # Functions (separate deployment)
@@ -29,7 +31,6 @@ assets/
 # Local env files
 .env
 .env.*
-!.env.example
 
 # Go workspace (local development only)
 go.work
@@ -37,3 +38,11 @@ go.work.sum
 
 # Justfile (local development only)
 Justfile
+
+# Development and Firebase configuration
+.firebaserc
+.golangci.yml
+firebase.json
+firestore.indexes.json
+firestore.rules
+api-docs/swagger.yaml

@@ -1,8 +1,11 @@
 package testutil
 
 import (
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -39,5 +42,21 @@ func TestSetupEmulator(t *testing.T) {
 	}
 	if got := os.Getenv("FIRESTORE_EMULATOR_HOST"); got != FirestoreEmulatorHost {
 		t.Fatalf("expected %s, got %s", FirestoreEmulatorHost, got)
+	}
+}
+
+func TestSuccessfulResponseError(t *testing.T) {
+	if err := successfulResponseError(&http.Response{StatusCode: http.StatusNoContent}, "cleanup"); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+
+	err := successfulResponseError(&http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Status:     "500 Internal Server Error",
+		Body:       io.NopCloser(strings.NewReader("emulator failed")),
+	}, "cleanup")
+	if err == nil || !strings.Contains(err.Error(), "cleanup: unexpected status 500") ||
+		!strings.Contains(err.Error(), "emulator failed") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

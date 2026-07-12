@@ -11,9 +11,6 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/respond"
 )
 
-// userContextKey is the context key for the authenticated user.
-type userContextKey struct{}
-
 const echoUserKey = "user"
 
 // Middleware returns Echo middleware for Firebase authentication.
@@ -23,8 +20,6 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 		return func(c *echo.Context) error {
 			token, err := ExtractBearerToken(c.Request().Header.Get("Authorization"))
 			if err != nil {
-				obs.Logger(c.Request().Context()).Warn("auth failed: missing or invalid header",
-					zap.String("reason", "no_token"))
 				c.Response().Header().Set("WWW-Authenticate", "Bearer")
 				return respond.Error401("missing or invalid authorization header")
 			}
@@ -32,20 +27,22 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 			user, err := verifier.Verify(c.Request().Context(), token)
 			if err != nil {
 				reason := categorizeAuthError(err)
-				obs.Logger(c.Request().Context()).Warn("auth failed: token verification failed",
-					zap.String("reason", reason))
-
-				if errors.Is(err, ErrCertificateFetch) {
+				if errors.Is(err, ErrAuthUnavailable) || errors.Is(err, ErrCertificateFetch) {
+					obs.Logger(c.Request().Context()).Error(
+						"authentication dependency failed",
+						zap.String("reason", reason),
+					)
 					c.Response().Header().Set("Retry-After", "30")
 					return respond.Error503("authentication service temporarily unavailable")
+				}
+				if errors.Is(err, context.Canceled) {
+					return err
 				}
 				c.Response().Header().Set("WWW-Authenticate", "Bearer")
 				return respond.Error401("invalid or expired token")
 			}
 
 			c.Set(echoUserKey, user)
-			ctx := context.WithValue(c.Request().Context(), userContextKey{}, user)
-			c.SetRequest(c.Request().WithContext(ctx))
 
 			return next(c)
 		}
@@ -63,6 +60,8 @@ func categorizeAuthError(err error) string {
 		return "user_disabled"
 	case errors.Is(err, ErrCertificateFetch):
 		return "certificate_fetch_failed"
+	case errors.Is(err, ErrAuthUnavailable):
+		return "dependency_unavailable"
 	case errors.Is(err, ErrInvalidToken):
 		return "invalid_token"
 	default:
@@ -73,11 +72,4 @@ func categorizeAuthError(err error) string {
 // UserFromEchoContext retrieves the authenticated user from Echo context.
 func UserFromEchoContext(c *echo.Context) (*FirebaseUser, error) {
 	return echo.ContextGet[*FirebaseUser](c, echoUserKey)
-}
-
-// UserFromContext retrieves the authenticated user from standard context.
-// Returns nil if no user is authenticated.
-func UserFromContext(ctx context.Context) *FirebaseUser {
-	user, _ := ctx.Value(userContextKey{}).(*FirebaseUser)
-	return user
 }

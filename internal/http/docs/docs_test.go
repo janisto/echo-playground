@@ -11,7 +11,7 @@ import (
 
 func TestRegister_SwaggerUI(t *testing.T) {
 	e := echo.New()
-	Register(e, "testdata/swagger.json")
+	Register(e, []byte(`{"openapi":"3.1.0"}`))
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs", nil)
 	rec := httptest.NewRecorder()
@@ -28,26 +28,28 @@ func TestRegister_SwaggerUI(t *testing.T) {
 	}
 }
 
-func TestRegister_SwaggerUIContainsSpecURL(t *testing.T) {
+func TestRegister_SwaggerInit(t *testing.T) {
 	e := echo.New()
-	Register(e, "api-docs/swagger.json")
+	Register(e, []byte(`{"openapi":"3.1.0"}`))
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs/swagger-init.js", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "/api-docs/openapi.json") {
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/javascript") {
+		t.Fatalf("expected JavaScript content type, got %q", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "/api-docs/openapi.json") {
 		t.Fatal("expected swagger UI to reference /api-docs/openapi.json")
 	}
 }
 
 func TestRegister_OpenAPISpec(t *testing.T) {
 	e := echo.New()
-	Register(e, "testdata/swagger.json")
+	Register(e, []byte(`{"openapi":"3.1.0"}`))
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs/openapi.json", nil)
 	rec := httptest.NewRecorder()

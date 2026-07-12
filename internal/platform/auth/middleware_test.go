@@ -133,6 +133,26 @@ func TestMiddleware_CertificateFetchError(t *testing.T) {
 	}
 }
 
+func TestMiddleware_AuthDependencyUnavailable(t *testing.T) {
+	verifier := &MockVerifier{Error: ErrAuthUnavailable}
+	e := echo.New()
+	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+	e.Use(Middleware(verifier))
+	e.GET("/test", func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) })
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "30" {
+		t.Fatalf("expected Retry-After 30, got %q", got)
+	}
+}
+
 func TestMiddleware_BadBearerFormat(t *testing.T) {
 	verifier := &MockVerifier{User: TestUser()}
 
@@ -165,6 +185,8 @@ func TestExtractBearerToken(t *testing.T) {
 		{"empty", "", "", true},
 		{"no bearer prefix", "Token abc", "", true},
 		{"only bearer", "Bearer", "", true},
+		{"empty token", "Bearer ", "", true},
+		{"extra component", "Bearer token extra", "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -179,15 +201,6 @@ func TestExtractBearerToken(t *testing.T) {
 	}
 }
 
-func TestUserFromContext_Standard(t *testing.T) {
-	// Without context value, should return nil.
-	ctx := t.Context()
-	got := UserFromContext(ctx)
-	if got != nil {
-		t.Fatal("expected nil for context without user")
-	}
-}
-
 func TestCategorizeAuthError(t *testing.T) {
 	tests := []struct {
 		err  error
@@ -197,6 +210,7 @@ func TestCategorizeAuthError(t *testing.T) {
 		{ErrTokenRevoked, "token_revoked"},
 		{ErrUserDisabled, "user_disabled"},
 		{ErrCertificateFetch, "certificate_fetch_failed"},
+		{ErrAuthUnavailable, "dependency_unavailable"},
 		{ErrInvalidToken, "invalid_token"},
 		{ErrNoToken, "unknown"},
 	}

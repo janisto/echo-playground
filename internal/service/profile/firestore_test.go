@@ -42,7 +42,6 @@ func TestFirestoreStore_CreateAndGet(t *testing.T) {
 		Email:       "  John.Doe@Example.COM  ",
 		PhoneNumber: " +1234567890 ",
 		Marketing:   true,
-		Terms:       true,
 	}
 
 	created, err := store.Create(ctx, "user-001", params)
@@ -52,11 +51,11 @@ func TestFirestoreStore_CreateAndGet(t *testing.T) {
 	if created.ID != "user-001" {
 		t.Fatalf("expected ID user-001, got %q", created.ID)
 	}
-	if created.Email != "john.doe@example.com" {
-		t.Fatalf("expected normalized email, got %q", created.Email)
+	if created.Email != "  John.Doe@Example.COM  " {
+		t.Fatalf("expected preserved email, got %q", created.Email)
 	}
-	if created.PhoneNumber != "+1234567890" {
-		t.Fatalf("expected trimmed phone, got %q", created.PhoneNumber)
+	if created.PhoneNumber != " +1234567890 " {
+		t.Fatalf("expected preserved phone, got %q", created.PhoneNumber)
 	}
 	if created.CreatedAt.IsZero() {
 		t.Fatal("expected non-zero CreatedAt")
@@ -69,8 +68,8 @@ func TestFirestoreStore_CreateAndGet(t *testing.T) {
 	if got.Firstname != "John" {
 		t.Fatalf("expected firstname John, got %q", got.Firstname)
 	}
-	if got.Email != "john.doe@example.com" {
-		t.Fatalf("expected email john.doe@example.com, got %q", got.Email)
+	if got.Email != "  John.Doe@Example.COM  " {
+		t.Fatalf("expected preserved email, got %q", got.Email)
 	}
 }
 
@@ -83,7 +82,6 @@ func TestFirestoreStore_CreateDuplicate(t *testing.T) {
 		Firstname: "Jane",
 		Lastname:  "Doe",
 		Email:     "jane@example.com",
-		Terms:     true,
 	}
 
 	if _, err := store.Create(ctx, "user-dup", params); err != nil {
@@ -118,10 +116,13 @@ func TestFirestoreStore_Update(t *testing.T) {
 		Email:       "alice@example.com",
 		PhoneNumber: "+1111111111",
 		Marketing:   false,
-		Terms:       true,
 	}
 	if _, err := store.Create(ctx, "user-upd", params); err != nil {
 		t.Fatalf("Create failed: %v", err)
+	}
+	docRef := store.client.Collection(profilesCollection).Doc("user-upd")
+	if _, err := docRef.Set(ctx, map[string]any{"future_field": "preserve-me"}, firestore.MergeAll); err != nil {
+		t.Fatalf("seed unknown field: %v", err)
 	}
 
 	newFirst := "Alicia"
@@ -144,17 +145,21 @@ func TestFirestoreStore_Update(t *testing.T) {
 	if updated.Lastname != "Smith" {
 		t.Fatalf("expected lastname Smith (unchanged), got %q", updated.Lastname)
 	}
-	if updated.Email != "alicia@example.com" {
-		t.Fatalf("expected normalized email, got %q", updated.Email)
+	if updated.Email != "  Alicia@Example.COM  " {
+		t.Fatalf("expected preserved email, got %q", updated.Email)
 	}
-	if updated.PhoneNumber != "+2222222222" {
-		t.Fatalf("expected trimmed phone, got %q", updated.PhoneNumber)
+	if updated.PhoneNumber != " +2222222222 " {
+		t.Fatalf("expected preserved phone, got %q", updated.PhoneNumber)
 	}
 	if !updated.Marketing {
 		t.Fatal("expected marketing to be updated to true")
 	}
-	if !updated.Terms {
-		t.Fatal("expected terms to remain true")
+	doc, err := docRef.Get(ctx)
+	if err != nil {
+		t.Fatalf("read updated document: %v", err)
+	}
+	if got := doc.Data()["future_field"]; got != "preserve-me" {
+		t.Fatalf("unknown field was not preserved: %v", got)
 	}
 }
 
@@ -179,7 +184,6 @@ func TestFirestoreStore_UpdateLastnameOnly(t *testing.T) {
 		Firstname: "Bob",
 		Lastname:  "Builder",
 		Email:     "bob@example.com",
-		Terms:     true,
 	}
 	if _, err := store.Create(ctx, "user-ln", params); err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -208,7 +212,6 @@ func TestFirestoreStore_Delete(t *testing.T) {
 		Firstname: "Charlie",
 		Lastname:  "Brown",
 		Email:     "charlie@example.com",
-		Terms:     true,
 	}
 	if _, err := store.Create(ctx, "user-del", params); err != nil {
 		t.Fatalf("Create failed: %v", err)
