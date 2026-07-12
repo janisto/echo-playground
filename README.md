@@ -211,8 +211,9 @@ release workflow rather than `latest`.
 
 ## CI
 
-GitHub Actions use least-privilege read tokens and explicitly pinned action versions. By project convention,
-`actions/setup-go` uses the exact `v6.5.0` release tag; other third-party actions use full commit SHAs. Required jobs cover:
+GitHub Actions use least-privilege read tokens and exact release tags, such as `actions/checkout@v7.0.0` and
+`actions/setup-go@v6.5.0`, for consistent, readable Dependabot updates. This convention accepts mutable upstream tags
+instead of immutable commit pins. Required jobs cover:
 
 - root and function build/test/race checks;
 - Auth and Firestore emulator tests with fail-on-missing behavior;
