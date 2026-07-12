@@ -1,6 +1,7 @@
 package timeutil
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -28,9 +29,9 @@ func (t *Time) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return nil
 	}
-	s := string(data)
-	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
-		s = s[1 : len(s)-1]
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
 	}
 	parsed, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
@@ -130,6 +131,9 @@ func decodeCBORTextString(data []byte) (string, error) {
 	}
 	if len(data) < offset+length {
 		return "", errors.New("timeutil: truncated CBOR text string")
+	}
+	if len(data) != offset+length {
+		return "", errors.New("timeutil: trailing CBOR data")
 	}
 	return string(data[offset : offset+length]), nil //nolint:gosec // G602 false positive: bounds checked above
 }

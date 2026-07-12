@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
@@ -71,7 +72,7 @@ func setupEcho(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo {
 }
 
 func validCreateBody() string {
-	return `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true,"terms":true}`
+	return `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true}`
 }
 
 func TestCreateProfile_Success(t *testing.T) {
@@ -95,8 +96,8 @@ func TestCreateProfile_Success(t *testing.T) {
 	}
 
 	location := rec.Header().Get("Location")
-	if location != "/v1/profile" {
-		t.Fatalf("expected Location '/v1/profile', got %q", location)
+	if location != "/profile" {
+		t.Fatalf("expected Location '/profile', got %q", location)
 	}
 
 	var p Profile
@@ -144,7 +145,7 @@ func TestCreateProfile_ValidationError(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	e := setupEcho(verifier, svc)
 
-	body := `{"firstname":"","lastname":"","email":"bad","phoneNumber":"bad","terms":true}`
+	body := `{"firstname":"","lastname":"","email":"bad","phoneNumber":"bad"}`
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -161,23 +162,6 @@ func TestCreateProfile_ValidationError(t *testing.T) {
 	}
 	if len(problem.Errors) == 0 {
 		t.Fatal("expected validation errors")
-	}
-}
-
-func TestCreateProfile_TermsNotAccepted(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	e := setupEcho(verifier, svc)
-
-	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","terms":false}`
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer test-token")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d; body: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -299,6 +283,22 @@ func TestUpdateProfile_Success(t *testing.T) {
 	}
 	if p.Lastname != "Doe" {
 		t.Fatalf("expected lastname 'Doe' (unchanged), got %q", p.Lastname)
+	}
+}
+
+func TestUpdateProfile_RejectsEmptyPatch(t *testing.T) {
+	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := profilesvc.NewMockStore()
+	e := setupEcho(verifier, svc)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -552,9 +552,6 @@ func TestCreateProfile_ResponseFields(t *testing.T) {
 	if !p.Marketing {
 		t.Fatal("expected marketing true")
 	}
-	if !p.Terms {
-		t.Fatal("expected terms true")
-	}
 	if p.CreatedAt.IsZero() {
 		t.Fatal("expected non-zero createdAt")
 	}
@@ -793,5 +790,20 @@ func TestDeleteProfile_NoUserInContext(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMapServiceError_Deadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+
+	err := mapServiceError(ctx, errors.New("wrapped SDK deadline"))
+	problem, ok := errors.AsType[*respond.ProblemDetails](err)
+	if !ok {
+		t.Fatalf("expected ProblemDetails, got %T", err)
+	}
+	if problem.Status != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", problem.Status)
 	}
 }

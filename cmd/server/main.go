@@ -3,141 +3,79 @@ package main
 import (
 	"context"
 	"errors"
-	"net/http"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/janisto/echo-observability"
-	_ "github.com/joho/godotenv/autoload"
-	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 	"go.uber.org/zap"
-
-	"github.com/janisto/echo-playground/internal/http/docs"
-	"github.com/janisto/echo-playground/internal/http/health"
-	"github.com/janisto/echo-playground/internal/http/v1/routes"
-	"github.com/janisto/echo-playground/internal/platform/auth"
-	"github.com/janisto/echo-playground/internal/platform/firebase"
-	appmiddleware "github.com/janisto/echo-playground/internal/platform/middleware"
-	"github.com/janisto/echo-playground/internal/platform/respond"
-	"github.com/janisto/echo-playground/internal/platform/validate"
-	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 )
 
-//	@title						Echo Playground API
-//	@version					1.0
-//	@description				Example API built with Echo v5
-//	@servers.url				http://localhost:8080/v1
-//	@servers.description		Local development server
-//	@securityDefinitions.apikey	BearerAuth
-//	@in							header
-//	@name						Authorization
+//	@title				Echo Playground API
+//	@version			1.0
+//	@description		Example API built with Echo v5. CBOR is supported for responses through content negotiation.
+//	@servers.url		/v1
+//	@servers.description	Version 1 API
 
 // Version can be overridden at build time: -ldflags "-X main.Version=1.2.3"
 var Version = "dev"
 
 func main() {
+	if err := run(context.Background()); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "echo-playground: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(parent context.Context) (runErr error) {
+	cfg, err := loadConfig(os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	logger, err := obs.NewLogger(obs.LoggerConfig{
-		Preset:    obs.PresetGCP,
-		AddCaller: true,
+		Preset:      obs.PresetGCP,
+		Level:       cfg.LogLevel,
+		AddCaller:   true,
+		Development: cfg.Environment == environmentDevelopment,
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("create logger: %w", err)
 	}
 	defer func() {
-		if syncErr := logger.Sync(); syncErr != nil && !errors.Is(syncErr, syscall.ENOTTY) {
-			logger.Error("logger sync error", zap.Error(syncErr))
+		if syncErr := logger.Sync(); syncErr != nil &&
+			!errors.Is(syncErr, syscall.ENOTTY) &&
+			!errors.Is(syncErr, syscall.EINVAL) {
+			runErr = errors.Join(runErr, fmt.Errorf("sync logger: %w", syncErr))
 		}
 	}()
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	firebaseProjectID := os.Getenv("FIREBASE_PROJECT_ID")
-	if firebaseProjectID == "" {
-		if os.Getenv("APP_ENVIRONMENT") == "development" {
-			firebaseProjectID = "demo-test-project"
-			logger.Warn("using demo-test-project for local development")
-		} else {
-			logger.Fatal("FIREBASE_PROJECT_ID environment variable is required")
-		}
-	}
-
-	firebaseClients, err := firebase.InitializeClients(ctx, firebase.Config{
-		ProjectID: firebaseProjectID,
-	})
+	firebaseClients, err := newFirebaseClients(ctx, cfg, logger)
 	if err != nil {
-		logger.Fatal("firebase init failed", zap.Error(err))
+		return err
 	}
 	defer func() {
 		if closeErr := firebaseClients.Close(); closeErr != nil {
-			logger.Error("firebase close error", zap.Error(closeErr))
+			runErr = errors.Join(runErr, fmt.Errorf("close Firebase clients: %w", closeErr))
 		}
 	}()
 
-	verifier := auth.NewFirebaseVerifier(firebaseClients.Auth)
-	profileService := profilesvc.NewFirestoreStore(firebaseClients.Firestore)
+	e := newEcho(cfg, logger, firebaseClients)
+	sc := newStartConfig(cfg)
 
-	e := echo.New()
-	e.Validator = validate.New()
-	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
-	e.IPExtractor = echo.ExtractIPFromRealIPHeader()
-
-	e.Use(
-		obs.RequestContext(obs.RequestContextConfig{
-			Logger: logger,
-			Preset: obs.PresetGCP,
-		}),
-		obs.AccessLogger(obs.AccessLoggerConfig{
-			Logger: logger,
-			Preset: obs.PresetGCP,
-		}),
-		appmiddleware.Security("/api-docs"),
-		appmiddleware.Vary(),
-		appmiddleware.CORS(),
-		middleware.BodyLimit(1<<20),
-		respond.Recoverer(logger),
-	)
-
-	e.GET("/health", health.Handler)
-	docs.Register(e, "api-docs/swagger.json")
-
-	v1 := e.Group("/v1")
-	routes.Register(v1, verifier, profileService)
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	logger.Info("server starting", zap.String("addr", cfg.Address), zap.String("version", Version))
+	if err := sc.Start(ctx, e); err != nil {
+		return fmt.Errorf("serve HTTP: %w", err)
 	}
 
-	logger.Info("server starting",
-		zap.String("addr", ":"+port),
-		zap.String("version", Version))
-
-	sc := echo.StartConfig{
-		Address:         ":" + port,
-		GracefulTimeout: 10 * time.Second,
-		BeforeServeFunc: func(s *http.Server) error {
-			s.ReadTimeout = 5 * time.Second
-			s.ReadHeaderTimeout = 2 * time.Second
-			s.WriteTimeout = 10 * time.Second
-			s.IdleTimeout = 60 * time.Second
-			s.MaxHeaderBytes = 64 << 10
-			return nil
-		},
-	}
-
-	sigCtx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
-	if err := sc.Start(sigCtx, e); err != nil {
-		logger.Fatal("server failed", zap.Error(err))
-	}
-
-	if cause := context.Cause(sigCtx); cause != nil {
+	if cause := context.Cause(ctx); cause != nil {
 		logger.Info("server exited", zap.Error(cause))
 	} else {
 		logger.Info("server exited")
 	}
+	return nil
 }

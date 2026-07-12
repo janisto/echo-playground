@@ -3,7 +3,6 @@ package profile
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -33,7 +32,6 @@ type firestoreProfile struct {
 	Email       string    `firestore:"email"`
 	PhoneNumber string    `firestore:"phone_number"`
 	Marketing   bool      `firestore:"marketing"`
-	Terms       bool      `firestore:"terms"`
 	CreatedAt   time.Time `firestore:"created_at"`
 	UpdatedAt   time.Time `firestore:"updated_at"`
 }
@@ -42,10 +40,9 @@ func newFirestoreProfile(params CreateParams, now time.Time) firestoreProfile {
 	return firestoreProfile{
 		Firstname:   params.Firstname,
 		Lastname:    params.Lastname,
-		Email:       normalizeEmail(params.Email),
-		PhoneNumber: normalizePhoneNumber(params.PhoneNumber),
+		Email:       params.Email,
+		PhoneNumber: params.PhoneNumber,
 		Marketing:   params.Marketing,
-		Terms:       params.Terms,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -59,18 +56,9 @@ func (p firestoreProfile) toProfile(userID string) *Profile {
 		Email:       p.Email,
 		PhoneNumber: p.PhoneNumber,
 		Marketing:   p.Marketing,
-		Terms:       p.Terms,
 		CreatedAt:   p.CreatedAt,
 		UpdatedAt:   p.UpdatedAt,
 	}
-}
-
-func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-
-func normalizePhoneNumber(phoneNumber string) string {
-	return strings.TrimSpace(phoneNumber)
 }
 
 // FirestoreStore implements Service using Firestore with transactions.
@@ -83,31 +71,15 @@ func NewFirestoreStore(client *firestore.Client) *FirestoreStore {
 	return &FirestoreStore{client: client}
 }
 
-// Create creates a new profile using a transaction to prevent duplicates.
+// Create atomically creates a profile if it does not already exist.
 func (s *FirestoreStore) Create(ctx context.Context, userID string, params CreateParams) (*Profile, error) {
 	docRef := s.client.Collection(profilesCollection).Doc(userID)
 	now := time.Now().UTC()
-
-	var result *Profile
-
-	err := s.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		doc, err := tx.Get(docRef)
-		if err == nil && doc.Exists() {
-			return ErrAlreadyExists
-		}
-		if err != nil && status.Code(err) != codes.NotFound {
-			return err
-		}
-
-		fp := newFirestoreProfile(params, now)
-
-		if err := tx.Set(docRef, fp); err != nil {
-			return err
-		}
-
-		result = fp.toProfile(userID)
-		return nil
-	})
+	fp := newFirestoreProfile(params, now)
+	_, err := docRef.Create(ctx, fp)
+	if status.Code(err) == codes.AlreadyExists {
+		err = ErrAlreadyExists
+	}
 	if err != nil {
 		audit.LogEvent(ctx, "create", userID, "profile", userID, "failure",
 			map[string]any{"error": categorizeError(err)})
@@ -116,7 +88,7 @@ func (s *FirestoreStore) Create(ctx context.Context, userID string, params Creat
 
 	audit.LogEvent(ctx, "create", userID, "profile", userID, "success", nil)
 
-	return result, nil
+	return fp.toProfile(userID), nil
 }
 
 // Get retrieves a profile by user ID.
@@ -165,17 +137,17 @@ func (s *FirestoreStore) Update(ctx context.Context, userID string, params Updat
 			fp.Lastname = *params.Lastname
 		}
 		if params.Email != nil {
-			fp.Email = normalizeEmail(*params.Email)
+			fp.Email = *params.Email
 		}
 		if params.PhoneNumber != nil {
-			fp.PhoneNumber = normalizePhoneNumber(*params.PhoneNumber)
+			fp.PhoneNumber = *params.PhoneNumber
 		}
 		if params.Marketing != nil {
 			fp.Marketing = *params.Marketing
 		}
 		fp.UpdatedAt = time.Now().UTC()
 
-		if err := tx.Set(docRef, fp); err != nil {
+		if err := tx.Update(docRef, profileUpdates(params, fp.UpdatedAt)); err != nil {
 			return err
 		}
 
@@ -191,6 +163,26 @@ func (s *FirestoreStore) Update(ctx context.Context, userID string, params Updat
 	audit.LogEvent(ctx, "update", userID, "profile", userID, "success", nil)
 
 	return result, nil
+}
+
+func profileUpdates(params UpdateParams, updatedAt time.Time) []firestore.Update {
+	updates := make([]firestore.Update, 0, 6)
+	if params.Firstname != nil {
+		updates = append(updates, firestore.Update{Path: "firstname", Value: *params.Firstname})
+	}
+	if params.Lastname != nil {
+		updates = append(updates, firestore.Update{Path: "lastname", Value: *params.Lastname})
+	}
+	if params.Email != nil {
+		updates = append(updates, firestore.Update{Path: "email", Value: *params.Email})
+	}
+	if params.PhoneNumber != nil {
+		updates = append(updates, firestore.Update{Path: "phone_number", Value: *params.PhoneNumber})
+	}
+	if params.Marketing != nil {
+		updates = append(updates, firestore.Update{Path: "marketing", Value: *params.Marketing})
+	}
+	return append(updates, firestore.Update{Path: "updated_at", Value: updatedAt})
 }
 
 // Delete removes a profile using a transaction to ensure it exists.

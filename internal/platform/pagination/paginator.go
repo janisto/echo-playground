@@ -1,9 +1,16 @@
 package pagination
 
 import (
+	"errors"
 	"net/url"
 	"strconv"
 )
+
+// ErrCursorNotFound indicates that a cursor no longer references an item.
+var ErrCursorNotFound = errors.New("cursor not found")
+
+// DefaultLimit is the default page size for list endpoints.
+const DefaultLimit = 20
 
 // Result holds the outcome of a pagination operation.
 type Result[T any] struct {
@@ -34,16 +41,21 @@ func Paginate[T any](
 	getID func(T) string,
 	baseURL string,
 	query url.Values,
-) Result[T] {
+) (Result[T], error) {
 	total := len(items)
 
 	startIdx := 0
 	if cursor.Value != "" {
+		found := false
 		for i, item := range items {
 			if getID(item) == cursor.Value {
 				startIdx = i + 1
+				found = true
 				break
 			}
+		}
+		if !found {
+			return Result[T]{}, ErrCursorNotFound
 		}
 	}
 
@@ -78,5 +90,5 @@ func Paginate[T any](
 		LinkHeader: linkHeader,
 		NextCursor: nextCursor,
 		PrevCursor: prevCursor,
-	}
+	}, nil
 }

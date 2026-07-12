@@ -73,10 +73,16 @@ Key recipes:
 - `just fmt` - Apply formatters
 - `just fix` - Run linter and apply formatters
 - `just check` - Full check (build + test + lint)
+- `just check-all` - Build, test, and lint both Go modules
+- `just functions-check` - Build, test, and lint the separate function module
+- `just test-race` / `just functions-test-race` - Race-test each module
 - `just qa` - Quality assurance (tidy + fix + build + test)
 - `just vuln` - Check for vulnerabilities
+- `just functions-vuln` - Check the function module for vulnerabilities
+- `just update` - Update root dependencies, root Go tools, and the function module
+- `just functions-update` - Update only the function module
 - `just install` - Download module dependencies (alias for download)
-- `just fresh` - Recreate project from clean state
+- `just fresh` - Recreate the root module from clean state
 - `just emulators` - Start Firebase emulators (Auth + Firestore)
 - `just docs` - Generate OpenAPI 3.1 spec (alias for gen-openapi)
 - `just gen-openapi` - Generate OpenAPI 3.1 spec
@@ -84,7 +90,8 @@ Key recipes:
 
 The Justfile uses `set dotenv-load` so all recipes automatically load `.env`. The `.env` sets `GOTOOLCHAIN` to pin the Go version, preventing automatic upgrades from a newer local Go installation. Always prefer `just` recipes over raw `go` or `golangci-lint` commands.
 
-Emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) are **commented out by default** in `.env`. These are only needed when running the server locally against emulators. Tests use hardcoded emulator addresses via `internal/testutil` and auto-skip when emulators are unreachable (TCP dial check), so `.env` changes are never required for testing.
+Emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) are **commented out by default** in `.env`. These are only needed when running the server locally against emulators. Tests use hardcoded emulator addresses via `internal/testutil` and auto-skip when emulators are unreachable. CI sets `REQUIRE_FIREBASE_EMULATORS=1`, which makes missing emulators a hard failure.
+The application rejects both emulator variables outside development because Firebase Auth emulator mode accepts unsigned test tokens.
 
 ---
 
@@ -176,8 +183,12 @@ golangci-lint run --fix ./...
 ## Project Structure
 
 ```
+.agents/skills/        # Reusable project-specific agent skills
+.github/agents/       # GitHub Copilot custom-agent profiles
 cmd/server/            # Application entrypoint and HTTP server bootstrap
-api-docs/              # Generated OpenAPI 3.1 spec (swagger.json, swagger.yaml, docs.go)
+cmd/openapi/           # Deterministic generated OpenAPI normalization
+api-docs/              # Embedded generated OpenAPI 3.1 JSON and YAML
+functions/             # Independent Functions Framework Go module
 internal/http/         # HTTP transport layer
   docs/                # Swagger UI serving and spec route registration
   health/              # Health check handler (unversioned)
@@ -200,6 +211,40 @@ internal/service/      # Business logic and data access
 internal/testutil/     # Test utilities (shared Echo fixture, emulator helpers)
 ```
 
+Repository-wide instructions live in this file. Task-specific, portable skills live at
+`.agents/skills/<skill-name>/SKILL.md`. GitHub Copilot custom-agent profiles remain in `.github/agents/` because that is
+the product's supported discovery location.
+
+The repository follows these upstream conventions:
+
+- [AGENTS.md](https://github.com/agentsmd/agents.md) is the canonical open format for repository agent instructions,
+  stewarded by the Agentic AI Foundation under the Linux Foundation.
+- [Agent Skills](https://github.com/agentskills/agentskills) is the canonical specification and documentation source for
+  the required `SKILL.md` filename and `name` and `description` frontmatter. The rendered
+  [format specification](https://agentskills.io/specification) provides the detailed schema and validation rules, while
+  [GitHub's Agent Skills documentation](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills) lists
+  `.agents/skills/` as a supported project discovery location.
+
+Use `readme-maintenance` for README audits and `openapi-contract` for generated API contract work. Do not duplicate those
+workflows in custom-agent profiles. Each skill also keeps Codex UI metadata in `agents/openai.yaml`; regenerate it with
+the `skill-creator` tooling whenever a skill name, description, or default prompt changes.
+
+Current task-specific guidance:
+
+| Name | Location | Purpose |
+|---|---|---|
+| `echo-endpoint` | `.agents/skills/echo-endpoint/` | Implement or change Echo v5 endpoints |
+| `go-testing` | `.agents/skills/go-testing/` | Write and review tests in either Go module |
+| `pagination-endpoint` | `.agents/skills/pagination-endpoint/` | Implement cursor-paginated list endpoints |
+| `readme-maintenance` | `.agents/skills/readme-maintenance/` | Reconcile README claims with the repository |
+| `openapi-contract` | `.agents/skills/openapi-contract/` | Maintain generated OpenAPI and Swagger UI contracts |
+| `security-review` | `.github/agents/security-review.agent.md` | Run an evidence-based GitHub Copilot security audit with a prompt-level read-only boundary |
+
+Repository automation under `.github/` independently checks both Go modules, required Firebase emulators,
+vulnerabilities, generated OpenAPI drift, the final container, and root and function lint. Third-party actions are pinned
+to full commit SHAs. Dependabot covers both Go modules, GitHub Actions, and Docker; labeler configuration treats
+`.agents/**/*.md` and `.github/**/*.md` as documentation.
+
 ---
 
 ## Architecture Principles
@@ -215,6 +260,7 @@ The `internal/platform/` packages provide shared infrastructure used by HTTP han
 | `firebase` | Firebase Admin SDK initialization (Auth + Firestore clients) | Firebase Admin SDK |
 | `middleware` | HTTP middleware (CORS, security headers, vary) | Echo |
 | `pagination` | Cursor encoding/decoding, link header generation | Standard library only |
+| `request` | Strict single-object JSON request decoding | Echo, standard library |
 | `respond` | Panic recovery, Problem Details error responses, content negotiation | Echo, fxamacker/cbor |
 | `timeutil` | Time formatting constants | Standard library only |
 | `validate` | Request validation via go-playground/validator | go-playground/validator, Echo |
@@ -256,12 +302,14 @@ func getHandler(c *echo.Context) error {
 
 ### Input Binding and Validation
 
-Use `c.Bind()` + `c.Validate()` with struct tags:
+Use a source-specific decoder plus `c.Validate()`. Use `request.DecodeJSON` for JSON bodies,
+`echo.BindQueryParams` for query DTOs, and the corresponding path binder for path DTOs. Avoid
+generic `c.Bind`, which can merge multiple sources.
 
 ```go
 func createHandler(c *echo.Context) error {
     var input CreateInput
-    if err := c.Bind(&input); err != nil {
+    if err := request.DecodeJSON(c, &input); err != nil {
         return err
     }
     if err := c.Validate(&input); err != nil {
@@ -339,7 +387,7 @@ access logger so downstream middleware failures and panics retain request correl
 ```go
 func createHandler(c *echo.Context) error {
     var input CreateInput
-    if err := c.Bind(&input); err != nil {
+    if err := request.DecodeJSON(c, &input); err != nil {
         return err
     }
     if err := c.Validate(&input); err != nil {
@@ -396,8 +444,11 @@ func createHandler(c *echo.Context) error {
 | 403 Forbidden | Authenticated but not authorized |
 | 404 Not Found | Resource does not exist |
 | 405 Method Not Allowed | HTTP method not supported for resource |
+| 413 Content Too Large | Request body exceeds the global 1 MiB limit |
+| 415 Unsupported Media Type | Body is not `application/json` |
 | 422 Unprocessable Entity | Validation failures on specific fields |
 | 500 Internal Server Error | Unexpected server error |
+| 503 Service Unavailable | Authentication dependency or request deadline failure |
 
 ### Error Responses
 
@@ -422,13 +473,14 @@ All errors use RFC 9457 Problem Details format:
 
 **Requests:**
 - Set `Content-Type: application/json` for JSON request bodies
-- Set `Content-Type: application/cbor` for CBOR request bodies
+- CBOR request bodies are not supported; CBOR is response-only
 
 **Responses:**
 - Default: `application/json` (RFC 8259)
 - Alternate: `application/cbor` (RFC 8949)
 - Errors: `application/problem+json` (RFC 9457) or `application/problem+cbor` (extension)
 - Format selected via `Accept` header
+- Apply the most-specific matching media range before comparing effective quality values; a specific `q=0` overrides a broader range when another supported representation remains
 - Error format is controlled by `Accept` header, not request `Content-Type`
 
 ### Timestamps
@@ -518,18 +570,43 @@ Emulator configuration (from `firebase.json`):
 | Service | Port |
 |---------|------|
 | Auth | 7110 |
-| Functions | 7120 |
 | Firestore | 7130 |
-| Storage | 7140 |
 | Emulator UI | 4000 |
 
-Tests auto-skip when emulators are unreachable (TCP dial check). The `internal/testutil` package provides hardcoded emulator addresses and `t.Setenv()` helpers, so no `.env` changes are needed for testing. The `demo-test-project` project ID triggers emulator-only mode (SDK will only communicate with local emulators).
+Tests auto-skip when emulators are unreachable (TCP dial check). The `internal/testutil` package provides hardcoded emulator addresses and `t.Setenv()` helpers, so no `.env` changes are needed for testing. In development with `demo-test-project` and no emulator hosts, the public application starts but protected routes return 503. Firebase clients are initialized only when both Auth and Firestore emulator hosts are configured together.
+Configuration must reject emulator hosts outside development. Emulator HTTP helpers must validate response status before decoding or assuming cleanup succeeded.
+
+`firestore.rules` deliberately denies all client SDK access. The server uses the Firebase Admin SDK, which bypasses
+Security Rules and is authorized through IAM; do not loosen the rules merely to make server-side emulator tests pass.
 
 To run emulator tests, start emulators:
 
 ```bash
 just emulators
 ```
+
+---
+
+## Go Function Deployment
+
+The `functions/` module is intentionally a minimal, independent Google Functions Framework example.
+Keep its handler at the module root beside `functions/go.mod`. Do not import Echo or the root application
+architecture into it.
+Its POST handler requires `Content-Type: application/json`, one JSON object, and known fields only.
+
+Firebase CLI cannot deploy Go source functions. `firebase deploy` is not a valid deployment path for this
+module; Firebase CLI is used only for Auth and Firestore emulators. Deploy the function with Google Cloud CLI:
+
+```bash
+gcloud run deploy echo-playground-hello \
+  --source functions \
+  --function Hello \
+  --base-image go126 \
+  --region REGION
+```
+
+Validate the module independently with `just functions-check`, `just functions-test-race`, and
+`just functions-vuln`. Run the registered target locally with `just functions-run 8081`.
 
 ---
 
@@ -547,7 +624,7 @@ just emulators
 - Access config through environment variables; don't hardcode secrets in business logic.
 - Don't log secrets or PII; ensure logs redact sensitive fields.
 - Typical env vars:
-  - `FIREBASE_PROJECT_ID` (use `demo-*` prefix for emulator-only mode in development)
+  - `FIREBASE_PROJECT_ID` (`demo-test-project` is the local development default)
   - `FIRESTORE_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
   - `FIREBASE_AUTH_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
   - `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON; uses ADC if not set)
@@ -598,7 +675,6 @@ The project uses [swaggo/swag v2](https://github.com/swaggo/swag/tree/v2) to gen
 |------|---------|
 | `api-docs/swagger.json` | OpenAPI 3.1 spec (JSON), served at `/api-docs/openapi.json` |
 | `api-docs/swagger.yaml` | Same spec in YAML |
-| `api-docs/docs.go` | Swag registry (auto-generated, not imported by the app) |
 
 ### Generating the spec
 
@@ -609,7 +685,9 @@ just docs
 or equivalently:
 
 ```bash
-go tool swag init --v3.1 --parseInternal -g cmd/server/main.go -o api-docs
+go tool swag init --quiet --v3.1 --parseInternal --outputTypes json,yaml \
+  -g cmd/server/main.go -o api-docs >/dev/null
+go run ./cmd/openapi
 ```
 
 `--parseInternal` is required because all handlers live under `internal/`.
@@ -632,17 +710,19 @@ Regenerate after any of these changes:
 
 ### Annotation conventions
 
-- General API info (`@title`, `@servers.url`, `@securityDefinitions.apikey`) lives in `cmd/server/main.go`.
+- General API info (`@title`, `@servers.url`) lives in `cmd/server/main.go`.
 - Operation annotations (`@Summary`, `@Param`, `@Success`, `@Failure`, `@Security`, `@Router`) go on the handler function.
 - Do NOT use `@Accept json` on handler annotations. swag v2 has a bug ([swaggo/swag#2142](https://github.com/swaggo/swag/issues/2142)) where `@Accept json` combined with `@Param body` generates a `oneOf` with an empty object schema, breaking Swagger UI examples. swag defaults to `application/json` for body params, so omitting `@Accept` produces the correct spec.
 - Use `@Produce json,application/cbor` for endpoints supporting content negotiation.
 - Use `@Failure` with `respond.ProblemDetails` for error responses.
 - Use `@Security BearerAuth` on protected routes.
 - The generated `api-docs/` files must be committed.
+- `just docs` applies deterministic bearer-auth and Problem Details media-type corrections after swag generation.
 
 ### Swagger UI
 
-Swagger UI is served via an embedded HTML page in `internal/http/docs/`. Routes are registered in `cmd/server/main.go` via `docs.Register(e, "api-docs/swagger.json")`.
+Swagger UI and its initialization script are embedded in `internal/http/docs/`. Generated OpenAPI JSON is embedded
+by `api-docs/embed.go` and registered by application composition with `docs.Register(e, apidocs.OpenAPIJSON)`.
 
 | URL | Purpose |
 |-----|---------|

@@ -73,7 +73,8 @@ func parseAccept(header string) []mediaRange {
 
 // selectFormat determines the preferred response format based on Accept header.
 // Returns true for CBOR, false for JSON (default).
-// Per RFC 9110: q-value is the primary ranking factor, specificity is tie-breaker.
+// Per RFC 9110, the most-specific range determines each format's effective quality;
+// the effective qualities are then compared, with specificity breaking ties.
 func selectFormat(header string) bool {
 	ranges := parseAccept(header)
 	if len(ranges) == 0 {
@@ -84,10 +85,6 @@ func selectFormat(header string) bool {
 	cborSpecificity, jsonSpecificity := 0, 0
 
 	for _, mr := range ranges {
-		if mr.q == 0 {
-			continue
-		}
-
 		specificity := 0
 		matchesCBOR, matchesJSON := false, false
 
@@ -268,6 +265,9 @@ func problemFromError(c *echo.Context, err error) ProblemDetails {
 	if he, ok := errors.AsType[*echo.HTTPError](err); ok {
 		return newProblem(he.Code, he.Message)
 	}
+	if status := echo.StatusCode(err); status != 0 {
+		return newProblem(status, http.StatusText(status))
+	}
 
 	return newProblem(http.StatusInternalServerError, problemDetailInternalError)
 }
@@ -282,7 +282,6 @@ func validationErrorDetails(ve *validate.ValidationError) []ErrorDetail {
 		details[i] = ErrorDetail{
 			Message:  f.Message,
 			Location: f.Field,
-			Value:    f.Value,
 		}
 	}
 	return details

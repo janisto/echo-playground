@@ -1,4 +1,4 @@
-name: App build, tests and coverage
+name: App build, tests and deployable artifacts
 
 on:
   push:
@@ -8,40 +8,68 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GOTOOLCHAIN: local
+
 jobs:
-  ci:
+  unit:
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Go
-        uses: actions/setup-go@v6.5.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.26.x'
           check-latest: true
           cache: true
+          cache-dependency-path: |
+            go.sum
+            functions/go.sum
 
-      - name: Validate Go toolchain
+      - name: Validate toolchain
         run: go version
 
-      - name: Install dependencies
-        run: go mod download
+      - name: Download both modules
+        run: |
+          go mod download
+          (cd functions && GOWORK=off go mod download)
 
-      - name: Build
-        run: go build -v ./...
+      - name: Build both modules
+        run: |
+          go build -v ./...
+          (cd functions && GOWORK=off go build -v ./...)
 
-      - name: Run tests with coverage
+      - name: Test root module with coverage
         run: go test -v -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Test function module
+        run: cd functions && GOWORK=off go test -v ./...
+
+      - name: Smoke-test Functions Framework target
+        run: |
+          (cd functions && GOWORK=off go build -o /tmp/functions-server ./cmd/server)
+          FUNCTION_TARGET=Hello PORT=18081 /tmp/functions-server &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent 'http://127.0.0.1:18081/?name=CI' > function-response.json; then
+              break
+            fi
+            sleep 1
+          done
+          jq -e '.message == "Hello, CI!"' function-response.json
+
+      - name: Race detector
+        run: |
+          go test -race ./...
+          (cd functions && GOWORK=off go test -race ./...)
 
       - name: Generate coverage artifacts
         run: |
@@ -56,16 +84,117 @@ jobs:
             echo
             echo "Total coverage: ${total}"
             echo
-            echo '```'
-            cat coverage-summary.txt
-            echo '```'
+            sed 's/^/    /' coverage-summary.txt
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-report
           path: |
             coverage.out
             coverage.html
             coverage-summary.txt
+
+  firebase-emulators:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: '24'
+
+      - name: Run required emulator tests
+        env:
+          REQUIRE_FIREBASE_EMULATORS: '1'
+        run: >-
+          npx --yes firebase-tools@15.22.1 emulators:exec
+          --project demo-test-project
+          --only auth,firestore
+          "go test -count=1 ./..."
+
+  vulnerability:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.x'
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            functions/go.sum
+
+      - name: Scan root module
+        run: go tool govulncheck ./...
+
+      - name: Scan function module
+        run: cd functions && GOWORK=off go tool -modfile=../go.mod govulncheck ./...
+
+  generated-openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: Regenerate OpenAPI
+        run: |
+          go tool swag init --quiet --v3.1 --parseInternal --outputTypes json,yaml -g cmd/server/main.go -o api-docs >/dev/null
+          go run ./cmd/openapi
+
+      - name: Reject generated drift
+        run: git diff --exit-code -- api-docs
+
+      - name: Validate OpenAPI semantics
+        run: go test ./api-docs
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build production image
+        run: docker build --build-arg VERSION=ci-smoke -t echo-playground:ci .
+
+      - name: Probe production image
+        run: |
+          docker run -d --rm --name echo-playground-ci \
+            -e APP_ENVIRONMENT=development \
+            -e FIREBASE_PROJECT_ID=demo-test-project \
+            -p 18080:8080 echo-playground:ci
+          trap 'docker stop echo-playground-ci' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:18080/api-docs >/dev/null
+          curl --fail --silent http://127.0.0.1:18080/api-docs/openapi.json |
+            jq -e '.openapi == "3.1.0" and .components.securitySchemes.BearerAuth.type == "http"'
+          docker logs echo-playground-ci 2>&1 | grep '"version":"ci-smoke"'

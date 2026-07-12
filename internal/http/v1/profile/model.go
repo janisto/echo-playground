@@ -10,7 +10,6 @@ type Profile struct {
 	Email       string        `json:"email"       example:"john@example.com"`
 	PhoneNumber string        `json:"phoneNumber" example:"+358401234567"`
 	Marketing   bool          `json:"marketing"   example:"true"`
-	Terms       bool          `json:"terms"       example:"true"`
 	CreatedAt   timeutil.Time `json:"createdAt"   example:"2024-01-15T10:30:00.000Z"`
 	UpdatedAt   timeutil.Time `json:"updatedAt"   example:"2024-01-15T10:30:00.000Z"`
 }

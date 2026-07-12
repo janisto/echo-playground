@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/janisto/echo-playground/internal/platform/auth"
+	"github.com/janisto/echo-playground/internal/platform/request"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	"github.com/janisto/echo-playground/internal/platform/timeutil"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
@@ -35,23 +36,22 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 //	@Failure		400		{object}	respond.ProblemDetails
 //	@Failure		401		{object}	respond.ProblemDetails
 //	@Failure		409		{object}	respond.ProblemDetails
+//	@Failure		413		{object}	respond.ProblemDetails
+//	@Failure		415		{object}	respond.ProblemDetails
 //	@Failure		422		{object}	respond.ProblemDetails
 //	@Failure		500		{object}	respond.ProblemDetails
+//	@Failure		503		{object}	respond.ProblemDetails
 //	@Header			201		{string}	Location	"URI of the created profile"
 //	@Security		BearerAuth
 //	@Router			/profile [post]
 func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		var input CreateInput
-		if err := c.Bind(&input); err != nil {
+		if err := request.DecodeJSON(c, &input); err != nil {
 			return err
 		}
 		if err := c.Validate(&input); err != nil {
 			return err
-		}
-
-		if !input.Terms {
-			return respond.Error422("terms must be accepted")
 		}
 
 		user, err := auth.UserFromEchoContext(c)
@@ -66,13 +66,12 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 			Email:       input.Email,
 			PhoneNumber: input.PhoneNumber,
 			Marketing:   input.Marketing,
-			Terms:       input.Terms,
 		})
 		if err != nil {
 			return mapServiceError(ctx, err)
 		}
 
-		c.Response().Header().Set("Location", "/v1/profile")
+		c.Response().Header().Set("Location", c.Request().URL.Path)
 		return respond.Negotiate(c, http.StatusCreated, toHTTPProfile(profile))
 	}
 }
@@ -87,6 +86,7 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Failure		401	{object}	respond.ProblemDetails
 //	@Failure		404	{object}	respond.ProblemDetails
 //	@Failure		500	{object}	respond.ProblemDetails
+//	@Failure		503	{object}	respond.ProblemDetails
 //	@Security		BearerAuth
 //	@Router			/profile [get]
 func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -117,18 +117,24 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Failure		400		{object}	respond.ProblemDetails
 //	@Failure		401		{object}	respond.ProblemDetails
 //	@Failure		404		{object}	respond.ProblemDetails
+//	@Failure		413		{object}	respond.ProblemDetails
+//	@Failure		415		{object}	respond.ProblemDetails
 //	@Failure		422		{object}	respond.ProblemDetails
 //	@Failure		500		{object}	respond.ProblemDetails
+//	@Failure		503		{object}	respond.ProblemDetails
 //	@Security		BearerAuth
 //	@Router			/profile [patch]
 func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		var input UpdateInput
-		if err := c.Bind(&input); err != nil {
+		if err := request.DecodeJSON(c, &input); err != nil {
 			return err
 		}
 		if err := c.Validate(&input); err != nil {
 			return err
+		}
+		if input.Empty() {
+			return respond.Error422("at least one field must be provided")
 		}
 
 		user, err := auth.UserFromEchoContext(c)
@@ -157,10 +163,12 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Summary		Delete profile
 //	@Description	Deletes the authenticated user's profile
 //	@Tags			profile
+//	@Produce		json,application/cbor
 //	@Success		204
 //	@Failure		401	{object}	respond.ProblemDetails
 //	@Failure		404	{object}	respond.ProblemDetails
 //	@Failure		500	{object}	respond.ProblemDetails
+//	@Failure		503	{object}	respond.ProblemDetails
 //	@Security		BearerAuth
 //	@Router			/profile [delete]
 func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -181,6 +189,10 @@ func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
 
 func mapServiceError(ctx context.Context, err error) error {
 	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return respond.Error503("request deadline exceeded")
+	case errors.Is(ctx.Err(), context.Canceled):
+		return context.Canceled
 	case errors.Is(err, profilesvc.ErrNotFound):
 		return respond.Error404(profilesvc.ErrNotFound.Error())
 	case errors.Is(err, profilesvc.ErrAlreadyExists):
@@ -199,7 +211,6 @@ func toHTTPProfile(p *profilesvc.Profile) Profile {
 		Email:       p.Email,
 		PhoneNumber: p.PhoneNumber,
 		Marketing:   p.Marketing,
-		Terms:       p.Terms,
 		CreatedAt:   timeutil.Time{Time: p.CreatedAt},
 		UpdatedAt:   timeutil.Time{Time: p.UpdatedAt},
 	}

@@ -30,16 +30,15 @@ func (m *MockStore) Create(_ context.Context, userID string, params CreateParams
 		ID:          userID,
 		Firstname:   params.Firstname,
 		Lastname:    params.Lastname,
-		Email:       normalizeEmail(params.Email),
-		PhoneNumber: normalizePhoneNumber(params.PhoneNumber),
+		Email:       params.Email,
+		PhoneNumber: params.PhoneNumber,
 		Marketing:   params.Marketing,
-		Terms:       params.Terms,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
 	m.profiles[userID] = p
 
-	return p, nil
+	return cloneProfile(p), nil
 }
 
 func (m *MockStore) Get(_ context.Context, userID string) (*Profile, error) {
@@ -51,7 +50,7 @@ func (m *MockStore) Get(_ context.Context, userID string) (*Profile, error) {
 		return nil, ErrNotFound
 	}
 
-	return p, nil
+	return cloneProfile(p), nil
 }
 
 func (m *MockStore) Update(_ context.Context, userID string, params UpdateParams) (*Profile, error) {
@@ -70,17 +69,17 @@ func (m *MockStore) Update(_ context.Context, userID string, params UpdateParams
 		p.Lastname = *params.Lastname
 	}
 	if params.Email != nil {
-		p.Email = normalizeEmail(*params.Email)
+		p.Email = *params.Email
 	}
 	if params.PhoneNumber != nil {
-		p.PhoneNumber = normalizePhoneNumber(*params.PhoneNumber)
+		p.PhoneNumber = *params.PhoneNumber
 	}
 	if params.Marketing != nil {
 		p.Marketing = *params.Marketing
 	}
 	p.UpdatedAt = time.Now().UTC()
 
-	return p, nil
+	return cloneProfile(p), nil
 }
 
 func (m *MockStore) Delete(_ context.Context, userID string) error {
@@ -97,3 +96,8 @@ func (m *MockStore) Delete(_ context.Context, userID string) error {
 }
 
 var _ Service = (*MockStore)(nil)
+
+func cloneProfile(p *Profile) *Profile {
+	copy := *p
+	return &copy
+}

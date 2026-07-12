@@ -34,7 +34,7 @@ func Register(g *echo.Group) {
 //	@Router			/items [get]
 func listHandler(c *echo.Context) error {
 	var input ListInput
-	if err := c.Bind(&input); err != nil {
+	if err := echo.BindQueryParams(c, &input); err != nil {
 		return err
 	}
 	if err := c.Validate(&input); err != nil {
@@ -57,24 +57,23 @@ func listHandler(c *echo.Context) error {
 
 	filtered := filterItems(mockItems, input.Category)
 
-	if cursor.Value != "" && findItemIndex(filtered, cursor.Value) == -1 {
-		return respond.Error400("cursor references unknown item")
-	}
-
 	query := url.Values{}
 	if input.Category != "" {
 		query.Set("category", input.Category)
 	}
 
-	result := pagination.Paginate(
+	result, err := pagination.Paginate(
 		filtered,
 		cursor,
 		limit,
 		cursorType,
 		func(item Item) string { return item.ID },
-		"/v1/items",
+		c.Request().URL.Path,
 		query,
 	)
+	if err != nil {
+		return respond.Error400("cursor references unknown item")
+	}
 
 	if result.LinkHeader != "" {
 		c.Response().Header().Set("Link", result.LinkHeader)
@@ -91,11 +90,5 @@ func filterItems(items []Item, category string) []Item {
 	}
 	return slices.DeleteFunc(slices.Clone(items), func(item Item) bool {
 		return item.Category != category
-	})
-}
-
-func findItemIndex(items []Item, id string) int {
-	return slices.IndexFunc(items, func(item Item) bool {
-		return item.ID == id
 	})
 }

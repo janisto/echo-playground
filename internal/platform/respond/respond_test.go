@@ -17,6 +17,15 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/validate"
 )
 
+func FuzzSelectFormat(f *testing.F) {
+	f.Add("")
+	f.Add("application/json")
+	f.Add("application/cbor;q=0.9, application/json;q=1")
+	f.Fuzz(func(_ *testing.T, accept string) {
+		_ = selectFormat(accept)
+	})
+}
+
 // --- ProblemDetails constructors ---
 
 func TestNewError(t *testing.T) {
@@ -71,7 +80,7 @@ func TestErrorConstructors(t *testing.T) {
 func TestError422WithFields(t *testing.T) {
 	fields := []ErrorDetail{
 		{Message: "name is required", Location: "name"},
-		{Message: "email must be valid", Location: "email", Value: "bad"},
+		{Message: "email must be valid", Location: "email"},
 	}
 	p := Error422("validation failed", fields...)
 	if p.Status != http.StatusUnprocessableEntity {
@@ -251,6 +260,21 @@ func TestSelectFormatEdgeCases(t *testing.T) {
 		{"no matching type", "image/png, text/plain", false},
 		{"CBOR excluded JSON accepted", "application/cbor;q=0, application/json;q=1.0", false},
 		{"JSON excluded CBOR accepted", "application/json;q=0, application/cbor;q=1.0", true},
+		{
+			"specific JSON exclusion overrides application wildcard",
+			"application/*;q=1, application/json;q=0",
+			true,
+		},
+		{
+			"specific CBOR exclusion overrides application wildcard",
+			"application/*;q=1, application/cbor;q=0",
+			false,
+		},
+		{
+			"specific problem JSON exclusion overrides wildcard",
+			"*/*;q=1, application/problem+json;q=0",
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -477,6 +501,30 @@ func TestHTTPErrorHandler_EchoHTTPError(t *testing.T) {
 	}
 	if problem.Detail != "bad input" {
 		t.Fatalf("expected detail 'bad input', got %q", problem.Detail)
+	}
+}
+
+func TestHTTPErrorHandler_EchoStatusCoderSentinels(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "body too large", err: echo.ErrStatusRequestEntityTooLarge, status: http.StatusRequestEntityTooLarge},
+		{name: "unsupported media", err: echo.ErrUnsupportedMediaType, status: http.StatusUnsupportedMediaType},
+		{name: "too many requests", err: echo.ErrTooManyRequests, status: http.StatusTooManyRequests},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			e.HTTPErrorHandler = NewHTTPErrorHandler()
+			e.GET("/", func(*echo.Context) error { return tt.err })
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+			if rec.Code != tt.status {
+				t.Fatalf("expected %d, got %d: %s", tt.status, rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 

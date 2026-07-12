@@ -1,24 +1,27 @@
 # Auto-label PRs based on changed file paths
 # Docs: https://github.com/actions/labeler
 
-
 # Internal changes in app folders
 app:
   - changed-files:
       - any-glob-to-any-file:
           - 'cmd/**'
           - 'internal/**'
+          - 'api-docs/**'
 
 # Functions changes in functions folder
 functions:
   - changed-files:
       - any-glob-to-any-file: 'functions/**'
 
-# Documentation changes in README.md
+# Documentation and repository guidance
 documentation:
   - changed-files:
       - any-glob-to-any-file:
           - 'README.md'
+          - 'AGENTS.md'
+          - '.github/**/*.md'
+          - '.agents/**/*.md'
 
 # Branch-name based labels
 feature:

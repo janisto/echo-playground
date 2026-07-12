@@ -6,13 +6,12 @@ import (
 	"strings"
 
 	fbauth "firebase.google.com/go/v4/auth"
+	"firebase.google.com/go/v4/errorutils"
 )
 
 // FirebaseUser represents an authenticated user.
 type FirebaseUser struct {
-	UID           string
-	Email         string
-	EmailVerified bool
+	UID string
 }
 
 // Error types for authentication failures.
@@ -23,6 +22,7 @@ var (
 	ErrTokenRevoked     = errors.New("token revoked")
 	ErrUserDisabled     = errors.New("user disabled")
 	ErrCertificateFetch = errors.New("failed to fetch certificates")
+	ErrAuthUnavailable  = errors.New("authentication service unavailable")
 )
 
 // Verifier validates tokens and returns user information.
@@ -46,37 +46,38 @@ func (v *FirebaseVerifier) Verify(ctx context.Context, idToken string) (*Firebas
 	if err != nil {
 		switch {
 		case fbauth.IsCertificateFetchFailed(err):
-			return nil, ErrCertificateFetch
+			return nil, errors.Join(ErrCertificateFetch, ErrAuthUnavailable, err)
 		case fbauth.IsIDTokenExpired(err):
-			return nil, ErrTokenExpired
+			return nil, errors.Join(ErrTokenExpired, err)
 		case fbauth.IsIDTokenRevoked(err):
-			return nil, ErrTokenRevoked
+			return nil, errors.Join(ErrTokenRevoked, err)
 		case fbauth.IsUserDisabled(err):
-			return nil, ErrUserDisabled
+			return nil, errors.Join(ErrUserDisabled, err)
 		case fbauth.IsIDTokenInvalid(err):
-			return nil, ErrInvalidToken
+			return nil, errors.Join(ErrInvalidToken, err)
+		case errors.Is(err, context.Canceled), errorutils.IsCancelled(err):
+			return nil, errors.Join(context.Canceled, err)
+		case errors.Is(err, context.DeadlineExceeded), errorutils.IsDeadlineExceeded(err):
+			return nil, errors.Join(ErrAuthUnavailable, context.DeadlineExceeded, err)
+		case errorutils.IsUnavailable(err), errorutils.IsInternal(err), errorutils.IsUnknown(err):
+			return nil, errors.Join(ErrAuthUnavailable, err)
 		default:
-			return nil, ErrInvalidToken
+			return nil, errors.Join(ErrAuthUnavailable, err)
 		}
 	}
 
-	email, _ := token.Claims["email"].(string)
-	verified, _ := token.Claims["email_verified"].(bool)
-
 	return &FirebaseUser{
-		UID:           token.UID,
-		Email:         email,
-		EmailVerified: verified,
+		UID: token.UID,
 	}, nil
 }
 
 // ExtractBearerToken extracts the token from Authorization header.
 func ExtractBearerToken(header string) (string, error) {
-	if header == "" {
-		return "", ErrNoToken
-	}
-	parts := strings.SplitN(header, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+	parts := strings.Fields(header)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") || parts[1] == "" {
+		if header == "" {
+			return "", ErrNoToken
+		}
 		return "", ErrInvalidToken
 	}
 	return parts[1], nil

@@ -1,8 +1,8 @@
 # Echo Playground
 
-A REST API skeleton built with [Echo v5](https://github.com/labstack/echo/tree/v5), demonstrating Firebase Authentication, Firestore CRUD operations, and modern Go development workflow using [Just](https://github.com/casey/just) (task runner).
-
-It showcases structured logging, RFC 9457 Problem Details for errors, and a modular route layout that is ready to grow into a larger service.
+A compact, high-quality REST API example built with [Echo v5](https://github.com/labstack/echo/tree/v5) and Go 1.26.
+It demonstrates HTTP contracts, structured observability, Firebase Authentication, Firestore CRUD, OpenAPI 3.1,
+and production-shaped verification without pretending to be a complete production platform.
 
 <img src="assets/gopher.svg" alt="Go Gopher mascot illustration" width="400">
 
@@ -10,326 +10,223 @@ It showcases structured logging, RFC 9457 Problem Details for errors, and a modu
 
 ## Features
 
-- Layered middleware architecture with security headers, CORS, real IP detection, request correlation, and structured access logs
-- Request-scoped Zap logging through [echo-observability](https://pkg.go.dev/github.com/janisto/echo-observability), with validated request IDs and [W3C Trace Context](https://www.w3.org/TR/trace-context/) correlation
-- [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457) for all error responses with optional field-level validation errors
-- Content negotiation supporting [JSON (RFC 8259)](https://datatracker.ietf.org/doc/html/rfc8259) and [CBOR (RFC 8949)](https://datatracker.ietf.org/doc/html/rfc8949) formats via `Accept` header
-- Cursor-based pagination with [RFC 8288 Link](https://datatracker.ietf.org/doc/html/rfc8288) headers
-- [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0) documentation with Swagger UI, generated via [swaggo/swag v2](https://github.com/swaggo/swag/tree/v2) annotations
-- Firebase Authentication with JWT validation via Echo middleware
-- Firestore integration with transaction-safe CRUD operations and audit logging
-- Health check endpoint (`/health`) for liveness probes
+- Echo v5 with strict single-object JSON decoding, bounded request bodies, request deadlines, server timeouts, panic recovery, CORS, and security headers
+- Request-scoped Zap logging through [echo-observability](https://pkg.go.dev/github.com/janisto/echo-observability)
+- RFC 9457 Problem Details with JSON and CBOR response negotiation
+- Cursor pagination with RFC 8288 `Link` headers
+- Firebase ID-token validation with revocation checks and explicit dependency-failure handling
+- Firestore CRUD with atomic create, field-specific transactional PATCH, and audit events
+- Generated and embedded OpenAPI 3.1 JSON, semantically matched YAML, and SRI-pinned Swagger UI
+- A separate minimal Google Functions Framework example
+- Required CI checks for both Go modules, emulators, race detection, vulnerabilities, generated artifacts, and the final image
 
-## API Design Principles
+## HTTP contract
 
-### URI Design
+JSON is the only supported request-body format. Successful and error responses use JSON by default and CBOR when
+the `Accept` header prefers `application/cbor`.
+Negotiation follows RFC 9110 specificity and quality rules, so an explicit `q=0` exclusion overrides a broader
+range when another supported representation remains. Requests with no supported range retain the documented JSON fallback.
 
-- Use plural nouns for collections (`/users`, not `/user`)
-- Avoid verbs in URIs; let HTTP methods convey the action
-- Nest resources to express relationships (`/posts/{postId}/comments`); limit nesting to one level
+Errors use:
 
-### HTTP Methods & Status Codes
+- `application/problem+json`
+- `application/problem+cbor`
 
-| Method | Purpose | Success Status |
-|--------|---------|----------------|
-| GET | Retrieve resource(s) | 200 OK |
-| POST | Create a resource | 201 Created |
-| PUT | Replace a resource entirely | 200 OK or 204 No Content |
-| PATCH | Partial update | 200 OK or 204 No Content |
-| DELETE | Remove a resource | 204 No Content |
+Malformed input returns 400. Valid input that fails field or PATCH semantics returns 422. The `/health`
+endpoint is dependency-free liveness; it does not claim Firebase readiness.
 
-### Error Responses
-
-Errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457.html) and honor content negotiation:
-- `application/problem+json` when JSON is requested (default)
-- `application/problem+cbor` when CBOR is requested
-
-| Status | Use Case |
-|--------|----------|
-| 400 Bad Request | Malformed syntax, missing required fields |
-| 401 Unauthorized | Missing or invalid authentication |
-| 403 Forbidden | Authenticated but not authorized |
-| 404 Not Found | Resource does not exist |
-| 409 Conflict | Resource already exists |
-| 422 Unprocessable Entity | Validation failures on specific fields |
-
-### Content Negotiation
-
-- Default: `application/json` ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259.html))
-- Alternate: `application/cbor` ([RFC 8949](https://www.rfc-editor.org/rfc/rfc8949.html))
-- Format selected via `Accept` header with q-value support
-
-### Pagination
-
-- Cursor-based tokens for stability
-- Links provided via HTTP `Link` header per [RFC 8288](https://www.rfc-editor.org/rfc/rfc8288.html)
+| Method | Path | Result |
+|---|---|---|
+| GET | `/health` | Liveness |
+| GET | `/v1/hello` | Default greeting |
+| POST | `/v1/hello` | Computed personalized greeting, 200 |
+| GET | `/v1/items` | Filtered cursor-paginated sample data |
+| POST | `/v1/profile` | Create authenticated profile, 201 |
+| GET | `/v1/profile` | Read authenticated profile |
+| PATCH | `/v1/profile` | Update at least one supplied field |
+| DELETE | `/v1/profile` | Delete authenticated profile, 204 |
 
 ## Requirements
 
-- Go 1.26+
-- [golangci-lint](https://golangci-lint.run/) v2 (for linting and formatting)
-- [Firebase CLI](https://firebase.google.com/docs/cli) (for emulators)
-- [Just](https://github.com/casey/just) command runner (required for pinned Go toolchain)
-- [Podman Desktop](https://podman-desktop.io/) (for containerization, optional)
+- Go 1.26.5+
+- [Just](https://github.com/casey/just)
+- [golangci-lint](https://golangci-lint.run/) v2
+- [Firebase CLI](https://firebase.google.com/docs/cli) for Auth and Firestore emulators
+- Docker or Podman for the final-image checks
+- Google Cloud CLI only when deploying the function example
 
-## Go Version Pinning
+The root service and `functions/` are independent Go modules. An optional ignored `go.work` is useful
+for editor navigation, but repository recipes set `GOWORK=off` for nested-module checks so a clean checkout behaves
+the same as CI.
 
-The project is pinned to **Go 1.26.x**. The ignored local `.env` file sets `GOTOOLCHAIN` to pin local recipes, and CI workflows use `go-version: '1.26.x'` with `GOTOOLCHAIN: local` to prevent automatic upgrades.
-
-To keep the same constraint locally, set `GOTOOLCHAIN` in `.env`:
-
-```
-GOTOOLCHAIN=go1.26.5
-```
-
-Since the Justfile uses `set dotenv-load`, all `just` recipes (build, test, lint, etc.) will use Go 1.26.5 even if a newer Go is installed on your system.
-
-To upgrade to a new Go version (e.g., 1.27.x), update all tracked version references in a single PR:
-
-1. `go.mod` and `functions/go.mod` — `go` directive
-2. `.github/workflows/app-ci.yml` and `app-lint.yml` — `go-version`
-3. `Dockerfile` — builder image and deployment examples
-
-Also update ignored local files such as `.env` and `go.work` when using them.
-
-## Go Workspace
-
-For local development, use a [Go workspace](https://go.dev/doc/tutorial/workspaces) (`go.work`) to manage multiple modules:
-
-```go
-go 1.26.5
-
-use (
-    .
-    ./functions
-)
-```
-
-The workspace allows simultaneous development across modules. Commands like `go build`, `go test`, and `go mod tidy` operate on all workspace modules when run from the root.
-
-## Quick Start
-
-```bash
-go run ./cmd/server
-```
-
-Then visit:
-- `http://localhost:8080/health` - service health probe
-- `http://localhost:8080/api-docs` - interactive API explorer
-- `http://localhost:8080/api-docs/openapi.json` - generated OpenAPI schema
-
-Sample request:
-```bash
-curl -s localhost:8080/health | jq
-```
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and customize as needed:
+## Quick start
 
 ```bash
 cp .env.example .env
+just run
 ```
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server listen port | `8080` |
-| `HOST` | Host address to bind to | `0.0.0.0` |
-| `LOG_LEVEL` | Log level (debug, info, warn, error) | `info` |
-| `FIREBASE_PROJECT_ID` | Firebase project ID (use `demo-*` prefix for emulator-only mode) | `demo-test-project` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON file (uses ADC if not set) | - |
-| `APP_ENVIRONMENT` | Environment label | `development` |
-| `APP_URL` | Base URL for the application | `http://localhost:8080` |
+Open:
 
-## Observability
+- http://localhost:8080/health
+- http://localhost:8080/api-docs
+- http://localhost:8080/api-docs/openapi.json
 
-The server uses `echo-observability` with its Google Cloud preset. `RequestContext` validates or generates
-`X-Request-ID`, parses W3C `traceparent`, and installs a request-scoped Zap logger. `AccessLogger` emits one
-structured completion log per request, including route, status, duration, request correlation, and Google Cloud
-trace fields when a valid trace is present.
+The default development project ID is `demo-test-project`. Firebase-protected routes require the local emulators
+or explicitly configured real Firebase credentials; the public health, docs, hello, and items routes run locally without them.
+Demo project IDs are rejected outside development so an offline fallback cannot mask a deployed misconfiguration.
+Firebase emulator variables are also rejected outside development because the Auth emulator accepts unsigned test tokens.
 
-Install the observability pair at the outer boundary so downstream middleware rejections are correlated and logged.
-Keep recovery inside the access logger so panics are both recovered and included in access logs:
+## Configuration
 
-```go
-e.Use(
-	obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
-	obs.AccessLogger(obs.AccessLoggerConfig{Logger: logger, Preset: obs.PresetGCP}),
-	appmiddleware.Security("/api-docs"),
-	appmiddleware.Vary(),
-	appmiddleware.CORS(),
-	middleware.BodyLimit(1<<20),
-	respond.Recoverer(logger),
-)
-```
+`just` loads `.env`. The binary validates only settings it actually implements:
 
-Request handlers and request-bound services log through `obs.Logger(ctx)`. It intentionally returns a no-op logger
-outside an installed request context. Startup, shutdown, and other process-level paths use the explicit logger
-returned by `obs.NewLogger`.
+| Variable | Default | Meaning |
+|---|---|---|
+| `HOST` | `0.0.0.0` | Listen host |
+| `PORT` | `8080` | Listen port, 1-65535 |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
+| `APP_ENVIRONMENT` | `development` | Environment label |
+| `FIREBASE_PROJECT_ID` | `demo-test-project` in development | Firebase project |
+| `IP_EXTRACTOR` | `direct` | `direct` or explicitly configured `xff` proxy mode |
+| `GOOGLE_APPLICATION_CREDENTIALS` | ADC | Optional service-account file |
 
-## Project Layout
+`direct` is deliberately safe by default and ignores forwarding headers. Use `xff` only when the service
+is behind a trusted proxy topology such as Cloud Run. Client IP is observational data, never authorization input.
 
-```
-api-docs/              # Generated OpenAPI 3.1 spec (swagger.json, swagger.yaml, docs.go)
-cmd/server/            # Application entrypoint and HTTP server bootstrap
-internal/http/         # HTTP transport layer
-  docs/                # Swagger UI serving and spec route registration
-  health/              # Health check handler (unversioned)
-  v1/                  # Versioned API (v1)
-    hello/             # Hello endpoint handlers
-    items/             # Items endpoint handlers
-    profile/           # Profile endpoint handlers (requires auth)
-    routes/            # Route registration
-internal/platform/     # Cross-cutting infrastructure
-  audit/                # Request-scoped structured audit events
-  auth/                # Firebase Auth middleware and JWT validation
-  firebase/            # Firebase Admin SDK initialization
-  middleware/          # Security headers, CORS, vary
-  pagination/          # Cursor-based pagination
-  respond/             # Panic recovery and Problem Details
-  timeutil/            # Time formatting utilities
-  validate/            # go-playground/validator integration
-internal/service/      # Business logic and data access
-  profile/             # User profile service with Firestore backend
-internal/testutil/     # Test utilities (emulator helpers)
-functions/             # Cloud Functions (separate Go module)
-```
+CORS intentionally permits all origins for this public playground API, does not permit credentialed browser requests,
+and limits preflight methods and headers to the implemented contract. Narrow origins before adapting the example to a private API.
 
-## Routes
+## Development commands
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check route |
-| GET | `/v1/hello` | Default greeting |
-| POST | `/v1/hello` | Create a personalized greeting |
-| GET | `/v1/items` | List items with cursor-based pagination |
-| GET | `/v1/profile` | Get current user profile (requires auth) |
-| POST | `/v1/profile` | Create user profile (requires auth) |
-| PATCH | `/v1/profile` | Update user profile (requires auth) |
-| DELETE | `/v1/profile` | Delete user profile (requires auth) |
+| Command | Scope |
+|---|---|
+| `just check` | Build, test, and lint the root service |
+| `just functions-check` | Build, test, and lint the function module |
+| `just check-all` | Check both modules |
+| `just test-race` | Root race detector |
+| `just functions-test-race` | Function race detector |
+| `just vuln` | Root vulnerability scan |
+| `just functions-vuln` | Function vulnerability scan |
+| `just update` | Update root dependencies, root Go tools, and the function module |
+| `just functions-update` | Update only the function module |
+| `just functions-run 8081` | Run target `Hello` through the official Functions Framework |
+| `just docs` | Generate, normalize, and embed-review OpenAPI artifacts |
+| `just emulators` | Start Auth and Firestore emulators |
+| `just container-build` | Build the final service image |
 
-## Development
+Firebase integration tests skip locally when emulators are absent. CI sets
+`REQUIRE_FIREBASE_EMULATORS=1`, which converts absence into failure.
 
-### Build and Test
+## Go function: Firebase CLI versus gcloud
+
+The separate `functions/` module is intentionally a small standard-library HTTP example. It does not import Echo,
+the root application architecture, Firebase Admin, or the root observability stack.
+POST accepts exactly one known-field JSON object with `Content-Type: application/json`; GET accepts an optional `name` query parameter.
+
+**Firebase CLI cannot deploy this Go module.** Its
+[supported function runtime type](https://github.com/firebase/firebase-tools/blob/main/src/deploy/functions/runtimes/supported/types.ts)
+contains Node.js, Python, and Dart, not Go. Firebase CLI is used in this repository only for the Auth and Firestore emulators.
+
+The module uses the official Google Functions Framework for Go. Deploy it as a
+[Cloud Run function](https://docs.cloud.google.com/run/docs/deploy-functions) with Google Cloud CLI and the Go 1.26 runtime:
 
 ```bash
-go build -v ./...     # Build
-go test ./...         # Run tests
-go test -v ./...      # Verbose output
-golangci-lint run ./...  # Lint
+gcloud run deploy echo-playground-hello \
+  --source functions \
+  --function Hello \
+  --base-image go126 \
+  --region REGION
 ```
 
-### Firebase Emulators
+The registered handler is at the `functions/` source root beside `go.mod`, as required by the Go function
+build contract.
 
-Integration tests for Auth and Firestore require running Firebase emulators:
+Run the same registry and target path locally with `just functions-run 8081`.
+
+## Firebase emulators
 
 ```bash
-just emulators        # Start Auth and Firestore emulators
+just emulators
 ```
 
-Emulator ports:
-- Auth: `127.0.0.1:7110`
-- Firestore: `127.0.0.1:7130`
-- Emulator UI: `localhost:4000`
+| Emulator | Address |
+|---|---|
+| Auth | `127.0.0.1:7110` |
+| Firestore | `127.0.0.1:7130` |
+| UI | http://localhost:4000 |
 
-Tests use hardcoded emulator addresses via `internal/testutil` and auto-skip when emulators are unreachable (TCP dial check). No `.env` changes are needed for testing. The `demo-test-project` project ID triggers emulator-only mode.
+Tests configure emulator addresses themselves. Emulator variables are development-only; startup rejects them in every
+other environment so a deployed service cannot accidentally accept emulator-issued unsigned tokens.
 
-### Justfile Commands
+`firestore.rules` denies all client SDK access. As the
+[official Firestore guidance](https://firebase.google.com/docs/firestore/security/rules-conditions) explains, server
+libraries bypass Security Rules and authenticate through ADC/IAM; the deny-all rule prevents this server-owned collection
+from being exposed accidentally to clients.
 
-| Command | Description |
-|---------|-------------|
-| `just build` | Build the application |
-| `just run` | Run the server |
-| `just test` | Run all tests |
-| `just lint` | Run linter |
-| `just check` | Full check (build + test + lint) |
-| `just qa` | Quality assurance (tidy + fix + build + test) |
-| `just docs` | Generate OpenAPI docs |
-| `just fmt-openapi` | Format OpenAPI spec annotations |
-| `just vuln` | Check for vulnerabilities |
-| `just install` | Download module dependencies |
-| `just fresh` | Recreate project from clean state |
-| `just emulators` | Start Firebase emulators for testing |
+## OpenAPI and Swagger UI
 
-Run `just` to see all available commands.
+`just docs` runs swag, applies deterministic OpenAPI corrections that swag v2 RC cannot currently express, and
+writes equivalent JSON and YAML. CI regenerates the artifacts and rejects any diff. The service embeds
+`api-docs/swagger.json`, so documentation does not depend on its runtime working directory.
 
-### Dependencies
+Swagger UI uses exact version 5.32.8 assets with SHA-384 integrity metadata. A docs-specific CSP permits only those pinned
+assets and the embedded same-origin initialization script.
 
-```bash
-go mod download        # Download dependencies
-go get -u -t ./...     # Update dependencies
-go mod tidy            # Clean up go.mod
+## Project layout
+
+```text
+.agents/skills/         Five portable project workflows with Codex UI metadata
+.github/agents/        Evidence-based security review profile for GitHub Copilot
+api-docs/              Generated OpenAPI plus embedded spec
+cmd/openapi/           Deterministic generated-spec normalization
+cmd/server/            Process lifecycle, typed config, and application composition
+functions/             Independent Functions Framework Go module
+internal/http/         Health, docs, and versioned Echo handlers
+internal/platform/     Auth, middleware, pagination, responses, validation
+internal/service/      Firestore and in-memory profile implementations
+internal/testutil/     Echo and Firebase emulator test support
 ```
 
-## Adding Routes
-
-1. Create a new package under `internal/http/v1/` (e.g., `users/handler.go`)
-2. Define your handler function with swag annotations for OpenAPI docs
-3. Add a registration function (`Register`) and call it from `routes.Register`
-4. Return errors using `respond` error helpers (`respond.Error400()`, etc.)
-5. Regenerate the OpenAPI spec: `just docs`
+Repository guidance follows the canonical [AGENTS.md format](https://github.com/agentsmd/agents.md). Portable skills use
+the canonical [Agent Skills specification and documentation](https://github.com/agentskills/agentskills), with the
+detailed [format specification](https://agentskills.io/specification), under `.agents/skills/`. See
+[AGENTS.md](AGENTS.md) for the working rules.
 
 ## Container
 
 ```bash
-just container-build      # Build image
-just container-up         # Run container detached
-just container-down       # Stop container
+just container-build echo-playground:local local
+just container-up echo-playground:local
 ```
 
-Or with Docker/Podman CLI:
-```bash
-docker build -t echo-playground:latest .
-docker run --rm -p 8080:8080 --env-file .env echo-playground:latest
-```
+`container-up` treats its optional third argument as the host port and always runs the application on container port 8080,
+so a local `.env` `PORT` value cannot desynchronize the port mapping.
 
-## Deployment
+The distroless final image is non-root and embeds the OpenAPI document. Rebuild it for both Go standard-library and base-image
+security fixes. Cloud Run automatic base-image rebasing is not a substitute for rebuilding a compiled Go binary.
 
-### Google Cloud Run
+This repository is not deployed to production. If publishing an image, use an immutable registry digest and an explicit
+release workflow rather than `latest`.
 
-```bash
-# Build and push
-gcloud builds submit --tag REGION-docker.pkg.dev/PROJECT_ID/REPO/echo-playground:latest
+## CI
 
-# Deploy with automatic base image updates
-gcloud run deploy echo-playground \
-  --image REGION-docker.pkg.dev/PROJECT_ID/REPO/echo-playground:latest \
-  --platform managed \
-  --region REGION \
-  --base-image go126 \
-  --automatic-updates
+GitHub Actions use least-privilege read tokens and commit-pinned actions. Required jobs cover:
 
-# Deploy from source with automatic base image updates
-gcloud run deploy echo-playground \
-  --source . \
-  --platform managed \
-  --region REGION \
-  --base-image go126 \
-  --automatic-updates
-```
+- root and function build/test/race checks;
+- Auth and Firestore emulator tests with fail-on-missing behavior;
+- both-module vulnerability scans;
+- OpenAPI regeneration and semantic validation;
+- final container probes for liveness, embedded docs, bearer schema, and version metadata;
+- root and function linting.
 
-The `--base-image` and `--automatic-updates` flags enable [automatic base image updates](https://cloud.google.com/run/docs/configuring/services/automatic-base-image-updates), allowing Google to apply security patches to the OS and runtime without rebuilding or redeploying.
-
-Set `FIREBASE_PROJECT_ID` for Firebase initialization. Cloud Logging trace correlation is derived from valid inbound
-W3C `traceparent` headers.
-
-## CI/CD
-
-GitHub Actions workflows in `.github/workflows/`:
-
-| Workflow | Description |
-|----------|-------------|
-| `app-ci.yml` | Build, tests, and coverage report |
-| `app-lint.yml` | Code quality (golangci-lint) |
-| `labeler.yml` | Automatic PR labeling |
-| `labeler-manual.yml` | Manual labeling for historical PRs |
-| `dependabot-auto-merge.yml` | Auto-merge Dependabot minor/patch updates |
-
-Dependabot is configured in `.github/dependabot.yml` for automated dependency updates.
+Dependabot tracks both Go modules, GitHub Actions, and Docker base images.
+Repository automation also labels application, function, and documentation changes and enables squash auto-merge for
+Dependabot minor and patch updates, subject to repository branch protections and required checks.
 
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) for coding guidelines and conventions.
+See [AGENTS.md](AGENTS.md) for repository-specific engineering and verification rules.
 
 ## License
 

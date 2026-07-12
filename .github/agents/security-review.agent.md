@@ -1,24 +1,30 @@
 ---
 name: security-review
-description: Comprehensive Echo v5 REST API security audit based on OWASP best practices
+description: Evidence-based, read-only security review of the Echo v5 app, Firebase integration, separate Go function, container, and CI.
 ---
 
 # Task: REST API Security Review
 
-Perform a comprehensive security review of this Echo v5 REST API following OWASP API Security guidelines. **This is a read-only audit**; do not modify code unless explicitly requested.
+Perform an evidence-based security review of this Echo v5 playground using the OWASP API Security risks as a guide.
+This is a read-only audit; do not modify code, dependencies, generated files, or repository configuration unless
+explicitly requested. Verify behavior before reporting it and distinguish application defects from controls that belong
+at a Cloud Run, IAM, WAF, load-balancer, or organization-policy boundary.
 
 ## Required File Reads
 
 Before analysis, read these files:
-1. `cmd/server/main.go` - Application setup, middleware, and CORS configuration
+1. `cmd/server/application.go` and `cmd/server/config.go` - Application setup, middleware, timeouts, IP trust, and configuration
 2. `internal/platform/middleware/cors.go` - CORS configuration
 3. `internal/platform/middleware/security.go` - Security headers middleware
 4. `internal/platform/auth/middleware.go` - Authentication middleware and failure logging
 5. `internal/platform/audit/audit.go` - Request-scoped audit logging
 6. `internal/platform/respond/respond.go` - Error handling and panic recovery
-7. All files in `internal/http/v1/` - Endpoint definitions
-8. `internal/service/profile/firestore.go` - Data access and audit-event calls
-9. `go.mod` - echo-observability and other security-relevant dependency versions
+7. `internal/platform/request/json.go` - Strict JSON body decoding
+8. All files in `internal/http/v1/` - Endpoint definitions
+9. `internal/service/profile/firestore.go` - Data access and audit-event calls
+10. `go.mod` - echo-observability and other security-relevant dependency versions
+11. `functions/function.go`, `functions/cmd/server/main.go`, and `functions/go.mod` - independent function contract
+12. `Dockerfile`, `.dockerignore`, `firebase.json`, `firestore.rules`, and `.github/workflows/*.yml` - artifact and CI controls
 
 Inspect the `github.com/janisto/echo-observability` version selected by `go.mod` when validating request ID handling,
 trace correlation, logger field safety, and access-log behavior. Do not assume the removed local middleware contract.
@@ -43,13 +49,16 @@ trace correlation, logger field safety, and access-log behavior. Do not assume t
 Verify these headers are set in security middleware:
 ```http
 Cache-Control: no-store
-Content-Security-Policy: default-src 'none'
-Content-Type: application/json
-Strict-Transport-Security: max-age=31536000; includeSubDomains
+Content-Security-Policy: default-src 'none'; frame-ancestors 'none'
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
-Referrer-Policy: no-referrer
+Referrer-Policy: strict-origin-when-cross-origin
 ```
+
+Content type is response-specific. HSTS belongs at the TLS-terminating Cloud Run or proxy edge; do not add it to
+plain local HTTP responses.
 
 ### 4. Error Handling & Information Leakage
 - [ ] Error responses use RFC 9457 Problem Details format
@@ -60,7 +69,8 @@ Referrer-Policy: no-referrer
 - [ ] Validation errors don't expose internal field names or structure
 
 ### 5. Logging & Monitoring
-- [ ] Authentication failures logged with context (IP, endpoint, timestamp)
+- [ ] Expected 401 responses rely on the correlated access log rather than duplicate warning logs
+- [ ] Authentication dependency failures are logged without tokens or PII
 - [ ] Sensitive data (tokens, passwords, PII) never logged
 - [ ] Security events use appropriate log levels (WARN/ERROR)
 - [ ] Request correlation IDs present for traceability (X-Request-ID)
@@ -71,16 +81,18 @@ Referrer-Policy: no-referrer
 - [ ] Secrets loaded via environment variables
 - [ ] Service account files excluded from version control
 - [ ] Debug mode disabled in production configuration
+- [ ] Firebase emulator variables are rejected outside development
 
 ### 7. CORS & Origin Policy
-- [ ] CORS origins explicitly defined (no wildcards in production)
+- [ ] Wildcard CORS is documented as an intentional public-playground policy with credentials disabled
 - [ ] Credentials allowed only from trusted origins
 - [ ] Preflight requests handled correctly
 - [ ] Methods and headers properly restricted
 - [ ] Vary header includes Origin for proper caching
 
 ### 8. Rate Limiting & DoS Protection
-- [ ] Rate limiting configured (if applicable)
+- [ ] Rate limiting responsibility is documented for the intended deployment boundary; absence of an in-process limiter
+      is not automatically a defect in this non-production example
 - [ ] Request body size limits enforced
 - [ ] Timeouts configured for external service calls
 - [ ] Pagination limits on list endpoints (cursor-based pagination)
@@ -99,7 +111,8 @@ Referrer-Policy: no-referrer
 
 ### 11. Content Negotiation Security
 - [ ] Unsupported content types return 415 Unsupported Media Type
-- [ ] Accept header is validated
+- [ ] Accept behavior follows the documented JSON fallback and never reflects an arbitrary media type
+- [ ] A specific `q=0` exclusion overrides broader matching wildcards per RFC 9110
 - [ ] Response content type matches negotiated type
 - [ ] CBOR/JSON handling is secure
 
@@ -107,6 +120,13 @@ Referrer-Policy: no-referrer
 - [ ] Dependencies reviewed for available updates without mutating the repository
 - [ ] No known vulnerabilities in dependencies (`just vuln`)
 - [ ] Minimal dependency footprint
+
+### 13. Build, Function, and Supply Chain
+- [ ] The runtime image is non-root and excludes repository-only or sensitive material
+- [ ] Workflow permissions are least privilege and third-party actions are commit-pinned
+- [ ] Root and function modules receive independent build, test, lint, race, and vulnerability checks
+- [ ] The function enforces its documented method, media type, body-size, and JSON contracts
+- [ ] Deployment documentation does not claim Firebase CLI can deploy the Go function
 
 ## Output Format
 
@@ -127,11 +147,15 @@ Enhancements for defense in depth.
 ### Security Strengths
 Patterns implemented correctly that should be maintained.
 
-For each finding include:
+Order findings by exploitability and impact, not checklist count. For each finding include:
 - **Location**: File path and line number
 - **Issue**: Clear description of the vulnerability
 - **Risk**: Potential impact if exploited
 - **Recommendation**: Specific remediation steps
+- **Evidence**: The command, test, or code path that verifies the claim
+
+If a category has no actionable finding, do not manufacture one. State the relevant residual risk separately when it
+depends on an undeployed infrastructure boundary.
 
 ## Echo v5-Specific Considerations
 

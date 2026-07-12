@@ -1,25 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Echo Playground API</title>
-    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/swagger-ui-dist@5.32.8/swagger-ui.css"
+        integrity="sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT"
+        crossorigin="anonymous"
+    >
 </head>
 <body>
     <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-    <script>
-        SwaggerUIBundle({
-            url: "/api-docs/openapi.json",
-            dom_id: "#swagger-ui",
-            deepLinking: true,
-            presets: [
-                SwaggerUIBundle.presets.apis,
-                SwaggerUIBundle.SwaggerUIStandalonePreset
-            ],
-            layout: "BaseLayout"
-        });
-    </script>
+    <script
+        src="https://unpkg.com/swagger-ui-dist@5.32.8/swagger-ui-bundle.js"
+        integrity="sha384-IKpAWwsTL0pcw7/Amtnt2eXF4P1BK64WNuY2E/RG15SWLUW5HXzFuyqCSAr/DP8C"
+        crossorigin="anonymous"
+    ></script>
+    <script src="/api-docs/swagger-init.js"></script>
 </body>
 </html>

@@ -18,6 +18,20 @@ func TestMarshalJSON(t *testing.T) {
 	}
 }
 
+func FuzzTimeUnmarshalCBOR(f *testing.F) {
+	seed, err := NewTime(time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)).MarshalCBOR()
+	if err != nil {
+		f.Fatalf("marshal seed: %v", err)
+	}
+	f.Add(seed)
+	f.Add([]byte{})
+	f.Add([]byte{0xc0, 0x61, 'x'})
+	f.Fuzz(func(_ *testing.T, data []byte) {
+		var value Time
+		_ = value.UnmarshalCBOR(data)
+	})
+}
+
 func TestMarshalJSON_Milliseconds(t *testing.T) {
 	ts := NewTime(time.Date(2024, 6, 1, 12, 0, 0, 123456789, time.UTC))
 	b, err := ts.MarshalJSON()

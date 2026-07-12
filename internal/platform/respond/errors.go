@@ -25,7 +25,6 @@ type ProblemDetails struct {
 type ErrorDetail struct {
 	Message  string `json:"message"            cbor:"message"            example:"firstname is required"`
 	Location string `json:"location,omitempty" cbor:"location,omitempty" example:"body.firstname"`
-	Value    string `json:"value,omitempty"    cbor:"value,omitempty"    example:""`
 }
 
 // Error implements the error interface.

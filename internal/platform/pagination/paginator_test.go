@@ -1,6 +1,7 @@
 package pagination
 
 import (
+	"errors"
 	"net/url"
 	"testing"
 )
@@ -20,9 +21,24 @@ func makeItems(n int) []testItem {
 
 func getTestID(item testItem) string { return item.ID }
 
+func mustPaginate(
+	t *testing.T,
+	items []testItem,
+	cursor Cursor,
+	limit int,
+	query url.Values,
+) Result[testItem] {
+	t.Helper()
+	result, err := Paginate(items, cursor, limit, "item", getTestID, "/items", query)
+	if err != nil {
+		t.Fatalf("paginate: %v", err)
+	}
+	return result
+}
+
 func TestPaginate_FirstPage(t *testing.T) {
 	items := makeItems(10)
-	result := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", nil)
+	result := mustPaginate(t, items, Cursor{}, 3, nil)
 	if len(result.Items) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(result.Items))
 	}
@@ -39,12 +55,12 @@ func TestPaginate_FirstPage(t *testing.T) {
 
 func TestPaginate_SecondPage(t *testing.T) {
 	items := makeItems(10)
-	first := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", nil)
+	first := mustPaginate(t, items, Cursor{}, 3, nil)
 	cursor, err := DecodeCursor(first.NextCursor)
 	if err != nil {
 		t.Fatalf("decode cursor: %v", err)
 	}
-	second := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
+	second := mustPaginate(t, items, cursor, 3, nil)
 	if len(second.Items) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(second.Items))
 	}
@@ -58,12 +74,12 @@ func TestPaginate_SecondPage(t *testing.T) {
 
 func TestPaginate_LastPage(t *testing.T) {
 	items := makeItems(5)
-	first := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", nil)
+	first := mustPaginate(t, items, Cursor{}, 3, nil)
 	cursor, err := DecodeCursor(first.NextCursor)
 	if err != nil {
 		t.Fatalf("decode cursor: %v", err)
 	}
-	second := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
+	second := mustPaginate(t, items, cursor, 3, nil)
 	if len(second.Items) != 2 {
 		t.Fatalf("expected 2 items on last page, got %d", len(second.Items))
 	}
@@ -73,7 +89,7 @@ func TestPaginate_LastPage(t *testing.T) {
 }
 
 func TestPaginate_EmptyItems(t *testing.T) {
-	result := Paginate([]testItem{}, Cursor{}, 10, "item", getTestID, "/items", nil)
+	result := mustPaginate(t, []testItem{}, Cursor{}, 10, nil)
 	if len(result.Items) != 0 {
 		t.Fatalf("expected 0 items, got %d", len(result.Items))
 	}
@@ -84,7 +100,7 @@ func TestPaginate_EmptyItems(t *testing.T) {
 
 func TestPaginate_LimitExceedsItems(t *testing.T) {
 	items := makeItems(3)
-	result := Paginate(items, Cursor{}, 100, "item", getTestID, "/items", nil)
+	result := mustPaginate(t, items, Cursor{}, 100, nil)
 	if len(result.Items) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(result.Items))
 	}
@@ -96,7 +112,7 @@ func TestPaginate_LimitExceedsItems(t *testing.T) {
 func TestPaginate_PreservesQueryParams(t *testing.T) {
 	items := makeItems(10)
 	q := url.Values{"category": {"electronics"}}
-	result := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", q)
+	result := mustPaginate(t, items, Cursor{}, 3, q)
 	if result.LinkHeader == "" {
 		t.Fatal("expected link header")
 	}
@@ -105,21 +121,20 @@ func TestPaginate_PreservesQueryParams(t *testing.T) {
 func TestPaginate_CursorNotFound(t *testing.T) {
 	items := makeItems(5)
 	cursor := Cursor{Type: "item", Value: "nonexistent"}
-	result := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
-	// When cursor value is not found, starts from beginning.
-	if len(result.Items) != 3 {
-		t.Fatalf("expected 3 items, got %d", len(result.Items))
+	_, err := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
+	if !errors.Is(err, ErrCursorNotFound) {
+		t.Fatalf("expected ErrCursorNotFound, got %v", err)
 	}
 }
 
 func TestPaginate_PrevCursorSecondPage(t *testing.T) {
 	items := makeItems(10)
-	first := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", nil)
+	first := mustPaginate(t, items, Cursor{}, 3, nil)
 	cursor, err := DecodeCursor(first.NextCursor)
 	if err != nil {
 		t.Fatalf("decode cursor: %v", err)
 	}
-	second := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
+	second := mustPaginate(t, items, cursor, 3, nil)
 	if second.PrevCursor == "" {
 		t.Fatal("expected prev cursor on second page")
 	}
@@ -134,17 +149,17 @@ func TestPaginate_PrevCursorSecondPage(t *testing.T) {
 
 func TestPaginate_PrevCursorThirdPage(t *testing.T) {
 	items := makeItems(10)
-	first := Paginate(items, Cursor{}, 3, "item", getTestID, "/items", nil)
+	first := mustPaginate(t, items, Cursor{}, 3, nil)
 	c1, err := DecodeCursor(first.NextCursor)
 	if err != nil {
 		t.Fatalf("decode cursor: %v", err)
 	}
-	second := Paginate(items, c1, 3, "item", getTestID, "/items", nil)
+	second := mustPaginate(t, items, c1, 3, nil)
 	c2, err := DecodeCursor(second.NextCursor)
 	if err != nil {
 		t.Fatalf("decode cursor: %v", err)
 	}
-	third := Paginate(items, c2, 3, "item", getTestID, "/items", nil)
+	third := mustPaginate(t, items, c2, 3, nil)
 	if third.PrevCursor == "" {
 		t.Fatal("expected prev cursor on third page")
 	}

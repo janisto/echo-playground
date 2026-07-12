@@ -18,6 +18,25 @@ func TestCursor_EncodeDecode_Roundtrip(t *testing.T) {
 	}
 }
 
+func FuzzDecodeCursor(f *testing.F) {
+	f.Add("")
+	f.Add(Cursor{Type: "item", Value: "42"}.Encode())
+	f.Add("not-base64")
+	f.Fuzz(func(t *testing.T, value string) {
+		cursor, err := DecodeCursor(value)
+		if err != nil {
+			return
+		}
+		roundTrip, err := DecodeCursor(cursor.Encode())
+		if err != nil {
+			t.Fatalf("decode encoded cursor: %v", err)
+		}
+		if roundTrip != cursor {
+			t.Fatalf("round trip mismatch: got %#v, want %#v", roundTrip, cursor)
+		}
+	})
+}
+
 func TestDecodeCursor_Empty(t *testing.T) {
 	decoded, err := DecodeCursor("")
 	if err != nil {

@@ -57,9 +57,6 @@ func TestFirebaseVerifier_Verify_ValidToken(t *testing.T) {
 	if user.UID == "" {
 		t.Fatal("expected non-empty UID")
 	}
-	if user.Email != "verify@example.com" {
-		t.Fatalf("expected email verify@example.com, got %s", user.Email)
-	}
 }
 
 func TestFirebaseVerifier_Verify_InvalidToken(t *testing.T) {

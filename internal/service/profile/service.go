@@ -20,7 +20,6 @@ type Profile struct {
 	Email       string
 	PhoneNumber string
 	Marketing   bool
-	Terms       bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -32,7 +31,6 @@ type CreateParams struct {
 	Email       string
 	PhoneNumber string
 	Marketing   bool
-	Terms       bool
 }
 
 // UpdateParams for updating a profile.
@@ -45,10 +43,6 @@ type UpdateParams struct {
 }
 
 // Service defines profile operations.
-//
-// Implementations must normalize input data:
-//   - Email: lowercase and trim whitespace
-//   - PhoneNumber: trim whitespace
 type Service interface {
 	Create(ctx context.Context, userID string, params CreateParams) (*Profile, error)
 	Get(ctx context.Context, userID string) (*Profile, error)

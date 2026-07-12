@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 )
@@ -39,6 +41,9 @@ func emulatorAvailable(host string) bool {
 func SkipIfEmulatorUnavailable(t *testing.T) {
 	t.Helper()
 	if !EmulatorAvailable() {
+		if os.Getenv("REQUIRE_FIREBASE_EMULATORS") == "1" {
+			t.Fatal("Firebase emulators are required but unavailable")
+		}
 		t.Skip("Firebase emulators not available")
 	}
 }
@@ -63,6 +68,9 @@ func ClearAccounts(t *testing.T) {
 		t.Fatalf("failed to clear accounts: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if err := successfulResponseError(resp, "clear Auth emulator accounts"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // ClearFirestore removes all documents from the Firestore emulator.
@@ -82,6 +90,9 @@ func ClearFirestore(t *testing.T) {
 		t.Fatalf("failed to clear Firestore: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if err := successfulResponseError(resp, "clear Firestore emulator documents"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // ClearEmulators clears both Auth accounts and Firestore documents.
@@ -108,11 +119,14 @@ func CreateTestUser(t *testing.T, email, password string) *SignUpResponse {
 		fakeAPIKey,
 	)
 
-	body, _ := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"email":             email,
 		"password":          password,
 		"returnSecureToken": true,
 	})
+	if err != nil {
+		t.Fatalf("failed to encode test user: %v", err)
+	}
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -125,10 +139,24 @@ func CreateTestUser(t *testing.T, email, password string) *SignUpResponse {
 		t.Fatalf("failed to create test user: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if err := successfulResponseError(resp, "create Auth emulator user"); err != nil {
+		t.Fatal(err)
+	}
 
 	var result SignUpResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 	return &result
+}
+
+func successfulResponseError(resp *http.Response, operation string) error {
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	if err != nil {
+		return fmt.Errorf("%s: unexpected status %s; read response: %w", operation, resp.Status, err)
+	}
+	return fmt.Errorf("%s: unexpected status %s: %s", operation, resp.Status, string(body))
 }
