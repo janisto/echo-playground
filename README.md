@@ -211,7 +211,8 @@ release workflow rather than `latest`.
 
 ## CI
 
-GitHub Actions use least-privilege read tokens and commit-pinned actions. Required jobs cover:
+GitHub Actions use least-privilege read tokens and explicitly pinned action versions. By project convention,
+`actions/setup-go` uses the exact `v6.5.0` release tag; other third-party actions use full commit SHAs. Required jobs cover:
 
 - root and function build/test/race checks;
 - Auth and Firestore emulator tests with fail-on-missing behavior;
