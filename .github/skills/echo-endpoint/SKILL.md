@@ -160,26 +160,29 @@ respond.NewError(http.StatusTeapot, "custom message")
 
 ## Logging
 
-Use context-aware slog helpers:
+Use the request-scoped Zap logger installed by echo-observability:
 
 ```go
 import (
-    "log/slog"
-    applog "github.com/janisto/echo-playground/internal/platform/logging"
+    "github.com/janisto/echo-observability"
+    "go.uber.org/zap"
 )
 
 func handler(c *echo.Context) error {
     ctx := c.Request().Context()
-    applog.LogInfo(ctx, "processing request", slog.String("id", input.ID))
+    obs.Logger(ctx).Info("processing request", zap.String("id", input.ID))
 
     if err != nil {
-        applog.LogError(ctx, "operation failed", err, slog.String("id", input.ID))
+        obs.Logger(ctx).Error("operation failed", zap.Error(err), zap.String("id", input.ID))
         return respond.Error500("operation failed")
     }
 
     return respond.Negotiate(c, http.StatusOK, result)
 }
 ```
+
+`obs.Logger(ctx)` is request-scoped and intentionally becomes a no-op outside installed observability middleware.
+Use the explicit process logger returned by `obs.NewLogger` for background or startup paths.
 
 ## Model Struct Pattern
 

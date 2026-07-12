@@ -13,11 +13,15 @@ Before analysis, read these files:
 1. `cmd/server/main.go` - Application setup, middleware, and CORS configuration
 2. `internal/platform/middleware/cors.go` - CORS configuration
 3. `internal/platform/middleware/security.go` - Security headers middleware
-4. `internal/platform/middleware/requestid.go` - Request ID middleware
-5. `internal/platform/logging/middleware.go` - Request logging middleware
+4. `internal/platform/auth/middleware.go` - Authentication middleware and failure logging
+5. `internal/platform/audit/audit.go` - Request-scoped audit logging
 6. `internal/platform/respond/respond.go` - Error handling and panic recovery
 7. All files in `internal/http/v1/` - Endpoint definitions
-8. `internal/platform/logging/logger.go` - Logger configuration
+8. `internal/service/profile/firestore.go` - Data access and audit-event calls
+9. `go.mod` - echo-observability and other security-relevant dependency versions
+
+Inspect the `github.com/janisto/echo-observability` version selected by `go.mod` when validating request ID handling,
+trace correlation, logger field safety, and access-log behavior. Do not assume the removed local middleware contract.
 
 ## Security Review Checklist
 
@@ -100,8 +104,8 @@ Referrer-Policy: no-referrer
 - [ ] CBOR/JSON handling is secure
 
 ### 12. Dependency Security
-- [ ] Dependencies up to date (`go get -u ./...`)
-- [ ] No known vulnerabilities in dependencies (`govulncheck ./...`)
+- [ ] Dependencies reviewed for available updates without mutating the repository
+- [ ] No known vulnerabilities in dependencies (`just vuln`)
 - [ ] Minimal dependency footprint
 
 ## Output Format

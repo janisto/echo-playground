@@ -24,9 +24,9 @@ internal/
                 handler.go
                 handler_test.go
     platform/
-        logging/
-            middleware.go
-            middleware_test.go
+        audit/
+            audit.go
+            audit_test.go
 ```
 
 ## Integration Test Server Setup
@@ -42,20 +42,23 @@ import (
     "net/http/httptest"
     "testing"
 
+    "github.com/janisto/echo-observability"
+    "github.com/labstack/echo/v5"
+    "go.uber.org/zap"
+
     "github.com/janisto/echo-playground/internal/http/health"
     "github.com/janisto/echo-playground/internal/http/v1/routes"
-    applog "github.com/janisto/echo-playground/internal/platform/logging"
-    appmiddleware "github.com/janisto/echo-playground/internal/platform/middleware"
     "github.com/janisto/echo-playground/internal/platform/respond"
     "github.com/janisto/echo-playground/internal/testutil"
 )
 
 func setupTestServer() *echo.Echo {
+    logger := zap.NewNop()
     e := testutil.NewTestEcho()
     e.Use(
-        appmiddleware.RequestID(),
-        applog.RequestLogger(),
-        respond.Recoverer(),
+        obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
+        obs.AccessLogger(obs.AccessLoggerConfig{Logger: logger, Preset: obs.PresetGCP}),
+        respond.Recoverer(logger),
     )
 
     e.GET("/health", health.Handler)
@@ -302,17 +305,16 @@ func TestListItems_WithInvalidCursor_Returns400(t *testing.T) { ... }
 
 ```bash
 # Run all tests
-go test ./...
+just test
 
 # Verbose output
-go test -v ./...
+just test-verbose
 
 # With coverage
-go test -v -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+just test-coverage
 
 # Coverage report
-go tool cover -func=coverage.out
-go tool cover -html=coverage.out -o coverage.html
+just coverage
 ```
 
 ## Coverage Requirements
@@ -322,7 +324,7 @@ Tests should cover:
 - Error paths (400, 404, 422, 500)
 - Edge cases (empty input, boundary values)
 - Problem Details format verification
-- Trace ID propagation
+- Request ID and trace correlation propagation
 - Content negotiation (JSON/CBOR)
 
 ## Important Notes
