@@ -3,11 +3,11 @@ package auth
 import (
 	"context"
 	"errors"
-	"log/slog"
 
+	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
+	"go.uber.org/zap"
 
-	applog "github.com/janisto/echo-playground/internal/platform/logging"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 )
 
@@ -23,8 +23,8 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 		return func(c *echo.Context) error {
 			token, err := ExtractBearerToken(c.Request().Header.Get("Authorization"))
 			if err != nil {
-				applog.LogWarn(c.Request().Context(), "auth failed: missing or invalid header",
-					slog.String("reason", "no_token"))
+				obs.Logger(c.Request().Context()).Warn("auth failed: missing or invalid header",
+					zap.String("reason", "no_token"))
 				c.Response().Header().Set("WWW-Authenticate", "Bearer")
 				return respond.Error401("missing or invalid authorization header")
 			}
@@ -32,8 +32,8 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 			user, err := verifier.Verify(c.Request().Context(), token)
 			if err != nil {
 				reason := categorizeAuthError(err)
-				applog.LogWarn(c.Request().Context(), "auth failed: token verification failed",
-					slog.String("reason", reason))
+				obs.Logger(c.Request().Context()).Warn("auth failed: token verification failed",
+					zap.String("reason", reason))
 
 				if errors.Is(err, ErrCertificateFetch) {
 					c.Response().Header().Set("Retry-After", "30")

@@ -10,6 +10,9 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/labstack/echo/v5"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/janisto/echo-playground/internal/platform/validate"
 )
@@ -707,6 +710,28 @@ func TestRecovererReturnsProblemDetails(t *testing.T) {
 	}
 	if problem.Detail != "internal server error" {
 		t.Fatalf("expected detail 'internal server error', got %q", problem.Detail)
+	}
+}
+
+func TestRecovererUsesFallbackLoggerWithoutRequestContext(t *testing.T) {
+	core, recorded := observer.New(zapcore.ErrorLevel)
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.Use(Recoverer(zap.New(core)))
+	e.GET("/panic", func(_ *echo.Context) error {
+		panic("boom")
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	entries := recorded.FilterMessage("panic recovered").All()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 recovery log, got %d", len(entries))
+	}
+	if got := entries[0].ContextMap()["error"]; got != "boom" {
+		t.Fatalf("expected panic value in recovery log, got %v", got)
 	}
 }
 

@@ -7,23 +7,29 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/janisto/echo-playground/internal/http/health"
 	"github.com/janisto/echo-playground/internal/platform/auth"
-	applog "github.com/janisto/echo-playground/internal/platform/logging"
-	appmiddleware "github.com/janisto/echo-playground/internal/platform/middleware"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 	"github.com/janisto/echo-playground/internal/testutil"
 )
 
 func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo {
+	return setupTestServerWithLogger(verifier, svc, zap.NewNop())
+}
+
+func setupTestServerWithLogger(verifier auth.Verifier, svc profilesvc.Service, logger *zap.Logger) *echo.Echo {
 	e := testutil.NewTestEcho()
 	e.Use(
-		appmiddleware.RequestID(),
-		applog.RequestLogger(),
-		respond.Recoverer(),
+		obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
+		obs.AccessLogger(obs.AccessLoggerConfig{Logger: logger, Preset: obs.PresetGCP}),
+		respond.Recoverer(logger),
 	)
 
 	e.GET("/health", health.Handler)
@@ -171,6 +177,60 @@ func TestRequestIDHeader(t *testing.T) {
 	}
 }
 
+func TestInvalidRequestIDIsReplaced(t *testing.T) {
+	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := profilesvc.NewMockStore()
+	e := setupTestServer(verifier, svc)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
+	req.Header.Set(echo.HeaderXRequestID, "bad request id")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	responseID := rec.Header().Get(echo.HeaderXRequestID)
+	if responseID == "" || responseID == "bad request id" {
+		t.Fatalf("expected a generated request ID, got %q", responseID)
+	}
+	if !obs.DefaultValidateRequestID(responseID) {
+		t.Fatalf("generated request ID is invalid: %q", responseID)
+	}
+}
+
+func TestObservabilityCorrelatesHandlerAndAccessLogs(t *testing.T) {
+	core, recorded := observer.New(zapcore.InfoLevel)
+	logger := zap.New(core)
+	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := profilesvc.NewMockStore()
+	e := setupTestServerWithLogger(verifier, svc, logger)
+
+	const (
+		requestID = "request-123"
+		traceID   = "4bf92f3577b34da6a3ce929d0e0e4736"
+	)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/hello", nil)
+	req.Header.Set(echo.HeaderXRequestID, requestID)
+	req.Header.Set("Traceparent", "00-"+traceID+"-00f067aa0ba902b7-01")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	assertObservedFields(t, recorded.FilterMessage("hello get").All(), map[string]any{
+		"request_id":     requestID,
+		"correlation_id": traceID,
+		"trace_id":       traceID,
+		"trace_sampled":  true,
+	})
+	assertObservedFields(t, recorded.FilterMessage("request completed").All(), map[string]any{
+		"request_id":     requestID,
+		"correlation_id": traceID,
+		"trace_id":       traceID,
+		"status":         int64(http.StatusOK),
+		"path_template":  "/v1/hello",
+	})
+}
+
 func TestProfileRequiresAuth(t *testing.T) {
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	svc := profilesvc.NewMockStore()
@@ -240,9 +300,11 @@ func TestProfileCRUD(t *testing.T) {
 }
 
 func TestPanicRecovery(t *testing.T) {
+	core, recorded := observer.New(zapcore.DebugLevel)
+	logger := zap.New(core)
 	verifier := &auth.MockVerifier{User: auth.TestUser()}
 	svc := profilesvc.NewMockStore()
-	e := setupTestServer(verifier, svc)
+	e := setupTestServerWithLogger(verifier, svc, logger)
 
 	e.GET("/panic", func(_ *echo.Context) error {
 		panic("test panic")
@@ -262,5 +324,24 @@ func TestPanicRecovery(t *testing.T) {
 	}
 	if problem.Status != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", problem.Status)
+	}
+	assertObservedFields(t, recorded.FilterMessage("panic recovered").All(), map[string]any{
+		"request_id": rec.Header().Get(echo.HeaderXRequestID),
+	})
+	assertObservedFields(t, recorded.FilterMessage("request completed").All(), map[string]any{
+		"status": int64(http.StatusInternalServerError),
+	})
+}
+
+func assertObservedFields(t *testing.T, entries []observer.LoggedEntry, want map[string]any) {
+	t.Helper()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	for key, expected := range want {
+		if got := fields[key]; got != expected {
+			t.Fatalf("expected %s=%v, got %v in %#v", key, expected, got, fields)
+		}
 	}
 }

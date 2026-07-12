@@ -2,23 +2,24 @@ package main
 
 import (
 	"context"
-	"log/slog"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/janisto/echo-observability"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"go.uber.org/zap"
 
 	"github.com/janisto/echo-playground/internal/http/docs"
 	"github.com/janisto/echo-playground/internal/http/health"
 	"github.com/janisto/echo-playground/internal/http/v1/routes"
 	"github.com/janisto/echo-playground/internal/platform/auth"
 	"github.com/janisto/echo-playground/internal/platform/firebase"
-	applog "github.com/janisto/echo-playground/internal/platform/logging"
 	appmiddleware "github.com/janisto/echo-playground/internal/platform/middleware"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	"github.com/janisto/echo-playground/internal/platform/validate"
@@ -38,15 +39,28 @@ import (
 var Version = "dev"
 
 func main() {
+	logger, err := obs.NewLogger(obs.LoggerConfig{
+		Preset:    obs.PresetGCP,
+		AddCaller: true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if syncErr := logger.Sync(); syncErr != nil && !errors.Is(syncErr, syscall.ENOTTY) {
+			logger.Error("logger sync error", zap.Error(syncErr))
+		}
+	}()
+
 	ctx := context.Background()
 
 	firebaseProjectID := os.Getenv("FIREBASE_PROJECT_ID")
 	if firebaseProjectID == "" {
 		if os.Getenv("APP_ENVIRONMENT") == "development" {
 			firebaseProjectID = "demo-test-project"
-			applog.LogWarn(ctx, "using demo-test-project for local development")
+			logger.Warn("using demo-test-project for local development")
 		} else {
-			applog.LogFatal(ctx, "FIREBASE_PROJECT_ID environment variable is required", nil)
+			logger.Fatal("FIREBASE_PROJECT_ID environment variable is required")
 		}
 	}
 
@@ -54,11 +68,11 @@ func main() {
 		ProjectID: firebaseProjectID,
 	})
 	if err != nil {
-		applog.LogFatal(ctx, "firebase init failed", err)
+		logger.Fatal("firebase init failed", zap.Error(err))
 	}
 	defer func() {
 		if closeErr := firebaseClients.Close(); closeErr != nil {
-			applog.LogError(ctx, "firebase close error", closeErr)
+			logger.Error("firebase close error", zap.Error(closeErr))
 		}
 	}()
 
@@ -69,17 +83,21 @@ func main() {
 	e.Validator = validate.New()
 	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
 	e.IPExtractor = echo.ExtractIPFromRealIPHeader()
-	e.Logger = applog.Logger()
 
 	e.Use(
+		obs.RequestContext(obs.RequestContextConfig{
+			Logger: logger,
+			Preset: obs.PresetGCP,
+		}),
+		obs.AccessLogger(obs.AccessLoggerConfig{
+			Logger: logger,
+			Preset: obs.PresetGCP,
+		}),
 		appmiddleware.Security("/api-docs"),
 		appmiddleware.Vary(),
 		appmiddleware.CORS(),
-		appmiddleware.RequestID(),
 		middleware.BodyLimit(1<<20),
-		applog.RequestLogger(),
-		applog.AccessLogger(),
-		respond.Recoverer(),
+		respond.Recoverer(logger),
 	)
 
 	e.GET("/health", health.Handler)
@@ -93,9 +111,9 @@ func main() {
 		port = "8080"
 	}
 
-	applog.LogInfo(ctx, "server starting",
-		slog.String("addr", ":"+port),
-		slog.String("version", Version))
+	logger.Info("server starting",
+		zap.String("addr", ":"+port),
+		zap.String("version", Version))
 
 	sc := echo.StartConfig{
 		Address:         ":" + port,
@@ -114,12 +132,12 @@ func main() {
 	defer cancel()
 
 	if err := sc.Start(sigCtx, e); err != nil {
-		applog.LogFatal(ctx, "server failed", err)
+		logger.Fatal("server failed", zap.Error(err))
 	}
 
 	if cause := context.Cause(sigCtx); cause != nil {
-		applog.LogInfo(ctx, "server exited", slog.Any("cause", cause))
+		logger.Info("server exited", zap.Error(cause))
 	} else {
-		applog.LogInfo(ctx, "server exited")
+		logger.Info("server exited")
 	}
 }

@@ -1,6 +1,6 @@
 module github.com/janisto/echo-playground/functions
 
-go 1.26.4
+go 1.26.5
 
 require github.com/GoogleCloudPlatform/functions-framework-go v1.9.2
 

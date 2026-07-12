@@ -3,6 +3,7 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 
@@ -24,6 +25,11 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string {
 	return e.Message
+}
+
+// StatusCode exposes the response status to Echo middleware and error handlers.
+func (e *ValidationError) StatusCode() int {
+	return http.StatusUnprocessableEntity
 }
 
 // AppValidator wraps go-playground/validator for Echo's Validator interface.

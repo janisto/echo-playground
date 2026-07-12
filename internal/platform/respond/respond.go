@@ -1,17 +1,19 @@
 package respond
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"strconv"
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
+	"go.uber.org/zap"
 
 	"github.com/janisto/echo-playground/internal/platform/httpheader"
 	"github.com/janisto/echo-playground/internal/platform/validate"
@@ -158,7 +160,7 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 		w.Header().Set("Content-Type", mediaTypeProblemCBOR)
 		w.WriteHeader(problem.Status)
 		if err := cbor.NewEncoder(w).Encode(problem); err != nil {
-			slog.ErrorContext(r.Context(), "failed to encode problem+cbor", slog.Any("error", err))
+			obs.Logger(r.Context()).Error("failed to encode problem+cbor", zap.Error(err))
 		}
 	} else {
 		w.Header().Set("Content-Type", mediaTypeProblemJSON)
@@ -166,7 +168,7 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(problem); err != nil {
-			slog.ErrorContext(r.Context(), "failed to encode problem+json", slog.Any("error", err))
+			obs.Logger(r.Context()).Error("failed to encode problem+json", zap.Error(err))
 		}
 	}
 }
@@ -186,7 +188,12 @@ func Negotiate(c *echo.Context, status int, data any) error {
 
 // Recoverer returns Echo middleware that recovers from panics with Problem Details.
 // Re-panics on http.ErrAbortHandler to preserve net/http abort semantics.
-func Recoverer() echo.MiddlewareFunc {
+func Recoverer(loggers ...*zap.Logger) echo.MiddlewareFunc {
+	fallback := zap.NewNop()
+	if len(loggers) > 0 && loggers[0] != nil {
+		fallback = loggers[0]
+	}
+
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			defer func() {
@@ -196,9 +203,9 @@ func Recoverer() echo.MiddlewareFunc {
 					}
 
 					stack := debug.Stack()
-					slog.ErrorContext(c.Request().Context(), "panic recovered",
-						slog.Any("error", rec),
-						slog.String("stack", string(stack)),
+					recoveryLogger(c.Request().Context(), fallback).Error("panic recovered",
+						zap.Any("error", rec),
+						zap.ByteString("stack", stack),
 					)
 
 					resp, unwrapErr := echo.UnwrapResponse(c.Response())
@@ -216,6 +223,16 @@ func Recoverer() echo.MiddlewareFunc {
 			return next(c)
 		}
 	}
+}
+
+func recoveryLogger(ctx context.Context, fallback *zap.Logger) *zap.Logger {
+	if obs.RequestID(ctx) != "" {
+		return obs.Logger(ctx)
+	}
+	if fallback == nil {
+		return zap.NewNop()
+	}
+	return fallback
 }
 
 // NewHTTPErrorHandler returns an Echo HTTPErrorHandler that produces RFC 9457 Problem Details.

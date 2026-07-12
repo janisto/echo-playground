@@ -10,8 +10,8 @@ It showcases structured logging, RFC 9457 Problem Details for errors, and a modu
 
 ## Features
 
-- Layered middleware architecture with security headers, CORS, request IDs, real IP detection, and structured access logs
-- Request-scoped slog logger with Google Cloud Trace correlation via [W3C Trace Context](https://www.w3.org/TR/trace-context/) `traceparent` header, falling back to request ID when no trace exists
+- Layered middleware architecture with security headers, CORS, real IP detection, request correlation, and structured access logs
+- Request-scoped Zap logging through [echo-observability](https://pkg.go.dev/github.com/janisto/echo-observability), with validated request IDs and [W3C Trace Context](https://www.w3.org/TR/trace-context/) correlation
 - [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457) for all error responses with optional field-level validation errors
 - Content negotiation supporting [JSON (RFC 8259)](https://datatracker.ietf.org/doc/html/rfc8259) and [CBOR (RFC 8949)](https://datatracker.ietf.org/doc/html/rfc8949) formats via `Accept` header
 - Cursor-based pagination with [RFC 8288 Link](https://datatracker.ietf.org/doc/html/rfc8288) headers
@@ -79,10 +79,10 @@ The project is pinned to **Go 1.26.x**. The ignored local `.env` file sets `GOTO
 To keep the same constraint locally, set `GOTOOLCHAIN` in `.env`:
 
 ```
-GOTOOLCHAIN=go1.26.4
+GOTOOLCHAIN=go1.26.5
 ```
 
-Since the Justfile uses `set dotenv-load`, all `just` recipes (build, test, lint, etc.) will use Go 1.26.4 even if a newer Go is installed on your system.
+Since the Justfile uses `set dotenv-load`, all `just` recipes (build, test, lint, etc.) will use Go 1.26.5 even if a newer Go is installed on your system.
 
 To upgrade to a new Go version (e.g., 1.27.x), update all tracked version references in a single PR:
 
@@ -97,7 +97,7 @@ Also update ignored local files such as `.env` and `go.work` when using them.
 For local development, use a [Go workspace](https://go.dev/doc/tutorial/workspaces) (`go.work`) to manage multiple modules:
 
 ```go
-go 1.26.4
+go 1.26.5
 
 use (
     .
@@ -141,6 +141,32 @@ cp .env.example .env
 | `APP_ENVIRONMENT` | Environment label | `development` |
 | `APP_URL` | Base URL for the application | `http://localhost:8080` |
 
+## Observability
+
+The server uses `echo-observability` with its Google Cloud preset. `RequestContext` validates or generates
+`X-Request-ID`, parses W3C `traceparent`, and installs a request-scoped Zap logger. `AccessLogger` emits one
+structured completion log per request, including route, status, duration, request correlation, and Google Cloud
+trace fields when a valid trace is present.
+
+Install the observability pair at the outer boundary so downstream middleware rejections are correlated and logged.
+Keep recovery inside the access logger so panics are both recovered and included in access logs:
+
+```go
+e.Use(
+	obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
+	obs.AccessLogger(obs.AccessLoggerConfig{Logger: logger, Preset: obs.PresetGCP}),
+	appmiddleware.Security("/api-docs"),
+	appmiddleware.Vary(),
+	appmiddleware.CORS(),
+	middleware.BodyLimit(1<<20),
+	respond.Recoverer(logger),
+)
+```
+
+Request handlers and request-bound services log through `obs.Logger(ctx)`. It intentionally returns a no-op logger
+outside an installed request context. Startup, shutdown, and other process-level paths use the explicit logger
+returned by `obs.NewLogger`.
+
 ## Project Layout
 
 ```
@@ -155,10 +181,10 @@ internal/http/         # HTTP transport layer
     profile/           # Profile endpoint handlers (requires auth)
     routes/            # Route registration
 internal/platform/     # Cross-cutting infrastructure
+  audit/                # Request-scoped structured audit events
   auth/                # Firebase Auth middleware and JWT validation
   firebase/            # Firebase Admin SDK initialization
-  logging/             # Structured logging with slog
-  middleware/          # Security headers, CORS, request ID
+  middleware/          # Security headers, CORS, vary
   pagination/          # Cursor-based pagination
   respond/             # Panic recovery and Problem Details
   timeutil/            # Time formatting utilities
@@ -284,7 +310,8 @@ gcloud run deploy echo-playground \
 
 The `--base-image` and `--automatic-updates` flags enable [automatic base image updates](https://cloud.google.com/run/docs/configuring/services/automatic-base-image-updates), allowing Google to apply security patches to the OS and runtime without rebuilding or redeploying.
 
-Set a `FIREBASE_PROJECT_ID` environment variable to enable trace correlation in Cloud Logging.
+Set `FIREBASE_PROJECT_ID` for Firebase initialization. Cloud Logging trace correlation is derived from valid inbound
+W3C `traceparent` headers.
 
 ## CI/CD
 

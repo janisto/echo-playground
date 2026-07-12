@@ -2,6 +2,7 @@ package validate
 
 import (
 	"errors"
+	"net/http"
 	"testing"
 )
 
@@ -24,6 +25,14 @@ type pathInput struct {
 type mixedInput struct {
 	ID   string `param:"id" validate:"required"`
 	Name string `           validate:"required,min=1,max=100" json:"name"`
+}
+
+func TestValidationErrorStatusCode(t *testing.T) {
+	t.Parallel()
+	err := &ValidationError{Message: "validation failed"}
+	if got := err.StatusCode(); got != http.StatusUnprocessableEntity {
+		t.Fatalf("StatusCode() = %d, want %d", got, http.StatusUnprocessableEntity)
+	}
 }
 
 func TestValidate_ValidInput(t *testing.T) {
