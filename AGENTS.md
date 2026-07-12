@@ -242,9 +242,10 @@ Current task-specific guidance:
 
 Repository automation under `.github/` independently checks both Go modules, required Firebase emulators,
 vulnerabilities, generated OpenAPI drift, the final container, and root and function lint. Use the exact release-tag
-form `uses: actions/setup-go@v6.5.0` for every setup-go step. Other third-party actions remain pinned to full commit
-SHAs. Dependabot covers both Go modules, GitHub Actions, and Docker; labeler configuration treats `.agents/**/*.md` and
-`.github/**/*.md` as documentation.
+form `uses: actions/setup-go@v6.5.0` for every setup-go step so the GitHub Actions updater in `.github/dependabot.yml`
+can recognize the version and propose future updates in the same form. Other third-party actions remain pinned to full
+commit SHAs. Dependabot covers both Go modules, GitHub Actions, and Docker; labeler configuration treats
+`.agents/**/*.md` and `.github/**/*.md` as documentation.
 
 ---
 
