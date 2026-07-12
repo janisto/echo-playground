@@ -23,7 +23,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.x'
+          check-latest: true
           cache: true
 
       - name: Lint root module
@@ -40,7 +41,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.x'
+          check-latest: true
           cache: true
           cache-dependency-path: functions/go.sum
 
