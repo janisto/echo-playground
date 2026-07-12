@@ -241,13 +241,30 @@ Current task-specific guidance:
 | `security-review` | `.github/agents/security-review.agent.md` | Run an evidence-based GitHub Copilot security audit with a prompt-level read-only boundary |
 
 Repository automation under `.github/` independently checks both Go modules, required Firebase emulators,
-vulnerabilities, generated OpenAPI drift, the final container, and root and function lint. Use the exact release-tag
-form `uses: actions/setup-go@v6.5.0` for every setup-go step so the GitHub Actions updater in `.github/dependabot.yml`
-can recognize the version and propose future updates in the same form. Other third-party actions remain pinned to full
-commit SHAs. Keep `ci` and `lint` as the stable ruleset-required aggregate job names. Each aggregate must use
+vulnerabilities, generated OpenAPI drift, the final container, and root and function lint. Use exact release tags for
+every GitHub Action, for example `uses: actions/checkout@v7.0.0` and `uses: actions/setup-go@v6.5.0`, so the GitHub
+Actions updater in `.github/dependabot.yml` proposes direct, readable version updates in the same form. This repository
+accepts mutable upstream release tags in exchange for that consistent convention; do not replace them with commit SHAs.
+Keep `ci` and `lint` as the stable ruleset-required aggregate job names. Each aggregate must use
 `if: ${{ always() }}` and fail unless every job it needs completed successfully, so a failed or cancelled dependency
 cannot make the required check disappear or pass. Dependabot covers both Go modules, GitHub Actions, and Docker; labeler configuration treats
 `.agents/**/*.md` and `.github/**/*.md` as documentation.
+
+Every Go setup step intentionally uses this baseline configuration:
+
+```yaml
+- name: Set up Go
+  uses: actions/setup-go@v6.5.0
+  with:
+    go-version: '1.26.x'
+    check-latest: true
+    cache: true
+```
+
+`1.26.x` tracks the newest patch release without crossing the Go 1.26 runtime boundary. `check-latest: true` prevents
+a matching but stale runner-cached patch from taking precedence over the latest available Go 1.26 patch, which matters
+when the modules raise their minimum patch version. `cache: true` retains setup-go's module and build caches for faster
+repeat CI runs. Jobs may add `cache-dependency-path` for module-specific cache invalidation, but must retain this baseline.
 
 ---
 

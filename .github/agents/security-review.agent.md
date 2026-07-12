@@ -123,7 +123,7 @@ plain local HTTP responses.
 
 ### 13. Build, Function, and Supply Chain
 - [ ] The runtime image is non-root and excludes repository-only or sensitive material
-- [ ] Workflow permissions are least privilege; setup-go uses the required exact `v6.5.0` tag and other third-party actions are commit-pinned
+- [ ] Workflow permissions are least privilege and every action uses an exact release tag that Dependabot can update
 - [ ] Ruleset-required `ci` and `lint` aggregate jobs fail unless every internal dependency succeeds
 - [ ] Root and function modules receive independent build, test, lint, race, and vulnerability checks
 - [ ] The function enforces its documented method, media type, body-size, and JSON contracts
