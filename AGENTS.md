@@ -38,8 +38,8 @@ Echo Playground is a minimal REST API skeleton built with [Echo v5](https://gith
 
 ### Key Features
 
-- Echo v5 middleware stack with security headers, CORS, request IDs, real IP detection, request logging, access logging, and panic recovery
-- Request-scoped slog logger with Google Cloud trace metadata enrichment
+- Echo v5 middleware stack with security headers, CORS, real IP detection, request correlation, structured access logging, and panic recovery
+- Request-scoped Zap logger through echo-observability with Google Cloud trace metadata enrichment
 - Plain response bodies with RFC 9457 Problem Details for errors
 - Content negotiation supporting JSON and CBOR formats
 - Cursor-based pagination with RFC 8288 Link headers
@@ -52,7 +52,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo v5](https://gith
 
 - Language/runtime: Go 1.26+
 - Frameworks/libs: Echo v5, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
-- Logging: log/slog (stdlib)
+- Logging: Zap via github.com/janisto/echo-observability
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
 - OpenAPI: swaggo/swag v2 (OAS 3.1)
 - Task runner: [Just](https://github.com/casey/just) (required for pinned Go toolchain)
@@ -187,10 +187,10 @@ internal/http/         # HTTP transport layer
     profile/           # Profile endpoint handlers (requires auth)
     routes/            # Route registration
 internal/platform/     # Cross-cutting infrastructure
+  audit/                # Request-scoped structured audit events
   auth/                # Firebase Auth middleware and JWT validation
   firebase/            # Firebase Admin SDK initialization
-  logging/             # Structured logging with slog
-  middleware/          # Security headers, CORS, request ID
+  middleware/          # Security headers, CORS, vary
   pagination/          # Cursor-based pagination
   respond/             # Panic recovery, Problem Details, content negotiation
   timeutil/            # Time formatting utilities
@@ -210,10 +210,10 @@ The `internal/platform/` packages provide shared infrastructure used by HTTP han
 
 | Package | Purpose | Dependencies |
 |---------|---------|--------------|
+| `audit` | Request-scoped structured security and compliance events | echo-observability, Zap |
 | `auth` | Firebase JWT validation, user context, Echo security middleware | Firebase Admin SDK, Echo |
 | `firebase` | Firebase Admin SDK initialization (Auth + Firestore clients) | Firebase Admin SDK |
-| `logging` | Structured logging, request-scoped context, trace correlation, audit logging | slog, Echo (for HTTP middleware) |
-| `middleware` | HTTP middleware (CORS, security headers, request ID, vary) | Echo |
+| `middleware` | HTTP middleware (CORS, security headers, vary) | Echo |
 | `pagination` | Cursor encoding/decoding, link header generation | Standard library only |
 | `respond` | Panic recovery, Problem Details error responses, content negotiation | Echo, fxamacker/cbor |
 | `timeutil` | Time formatting constants | Standard library only |
@@ -224,8 +224,8 @@ The `internal/platform/` packages provide shared infrastructure used by HTTP han
 - `timeutil` - Time formatting has no transport coupling
 
 **HTTP-coupled packages (by design):**
-- `logging` - HTTP middleware for request logging; core helpers (`LogInfo`, `LogError`) are transport-agnostic
-- `middleware` - HTTP-specific (CORS, headers, request ID)
+- `audit` - Logs through the request context installed by echo-observability
+- `middleware` - HTTP-specific (CORS, headers, vary)
 - `respond` - HTTP error handling with RFC 9457 Problem Details
 
 **Key rule:** Platform packages must not import from `internal/http/` (no circular dependencies). HTTP handlers import platform packages, never the reverse.
@@ -302,21 +302,25 @@ Panic recovery and Echo-level handlers use Problem Details via `internal/platfor
 
 ### Logging
 
-Use context-aware logging helpers from `internal/platform/logging`:
+Use the request-scoped logger installed by echo-observability:
 
 ```go
 import (
-    "log/slog"
-    applog "github.com/janisto/echo-playground/internal/platform/logging"
+	"github.com/janisto/echo-observability"
+	"go.uber.org/zap"
 )
 
-applog.LogInfo(ctx, "message", slog.String("key", "value"))
-applog.LogWarn(ctx, "message", slog.String("key", "value"))
-applog.LogError(ctx, "message", err, slog.String("key", "value"))
-applog.LogFatal(ctx, "message", err, slog.String("key", "value"))
+obs.Logger(ctx).Info("message", zap.String("key", "value"))
+obs.Logger(ctx).Warn("message", zap.String("key", "value"))
+obs.Logger(ctx).Error("message", zap.Error(err), zap.String("key", "value"))
 ```
 
-These helpers preserve contextual fields such as trace IDs.
+`obs.Logger(ctx)` includes request IDs and valid W3C trace metadata. It intentionally returns a no-op logger outside
+an observability request context. Use the explicit process logger returned by `obs.NewLogger` for startup, shutdown,
+background jobs, and other non-request paths. Use `internal/platform/audit.LogEvent` for audit events.
+
+Install `obs.RequestContext` before `obs.AccessLogger` at the outer middleware boundary. Keep recovery inside the
+access logger so downstream middleware failures and panics retain request correlation and produce access logs.
 
 ### Adding New Routes
 
@@ -412,7 +416,7 @@ All errors use RFC 9457 Problem Details format:
 
 - `X-Request-ID` header tracks requests end-to-end
 - Propagate to downstream services and include in logs
-- Generated automatically by RequestID middleware if not provided
+- Validated or generated automatically by echo-observability `RequestContext`
 
 ### Content Types
 

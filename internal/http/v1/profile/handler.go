@@ -5,10 +5,11 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
+	"go.uber.org/zap"
 
 	"github.com/janisto/echo-playground/internal/platform/auth"
-	applog "github.com/janisto/echo-playground/internal/platform/logging"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	"github.com/janisto/echo-playground/internal/platform/timeutil"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
@@ -185,7 +186,7 @@ func mapServiceError(ctx context.Context, err error) error {
 	case errors.Is(err, profilesvc.ErrAlreadyExists):
 		return respond.Error409(profilesvc.ErrAlreadyExists.Error())
 	default:
-		applog.LogError(ctx, "unexpected service error", err)
+		obs.Logger(ctx).Error("unexpected service error", zap.Error(err))
 		return respond.Error500("internal error")
 	}
 }

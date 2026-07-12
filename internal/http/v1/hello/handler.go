@@ -2,12 +2,12 @@ package hello
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 
+	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
+	"go.uber.org/zap"
 
-	applog "github.com/janisto/echo-playground/internal/platform/logging"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 )
 
@@ -26,7 +26,7 @@ func Register(g *echo.Group) {
 //	@Success		200	{object}	Data
 //	@Router			/hello [get]
 func getHandler(c *echo.Context) error {
-	applog.LogInfo(c.Request().Context(), "hello get", slog.String("path", "/hello"))
+	obs.Logger(c.Request().Context()).Info("hello get", zap.String("path", "/hello"))
 	return respond.Negotiate(c, http.StatusOK, Data{Message: "Hello, World!"})
 }
 
@@ -50,9 +50,9 @@ func createHandler(c *echo.Context) error {
 		return err
 	}
 
-	applog.LogInfo(c.Request().Context(), "hello post",
-		slog.String("path", "/hello"),
-		slog.String("name", input.Name))
+	obs.Logger(c.Request().Context()).Info("hello post",
+		zap.String("path", "/hello"),
+		zap.String("name", input.Name))
 
 	data := Data{Message: fmt.Sprintf("Hello, %s!", input.Name)}
 	return respond.Negotiate(c, http.StatusCreated, data)

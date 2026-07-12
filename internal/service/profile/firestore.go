@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	applog "github.com/janisto/echo-playground/internal/platform/logging"
+	"github.com/janisto/echo-playground/internal/platform/audit"
 )
 
 const profilesCollection = "profiles"
@@ -109,12 +109,12 @@ func (s *FirestoreStore) Create(ctx context.Context, userID string, params Creat
 		return nil
 	})
 	if err != nil {
-		applog.LogAuditEvent(ctx, "create", userID, "profile", userID, "failure",
+		audit.LogEvent(ctx, "create", userID, "profile", userID, "failure",
 			map[string]any{"error": categorizeError(err)})
 		return nil, err
 	}
 
-	applog.LogAuditEvent(ctx, "create", userID, "profile", userID, "success", nil)
+	audit.LogEvent(ctx, "create", userID, "profile", userID, "success", nil)
 
 	return result, nil
 }
@@ -183,12 +183,12 @@ func (s *FirestoreStore) Update(ctx context.Context, userID string, params Updat
 		return nil
 	})
 	if err != nil {
-		applog.LogAuditEvent(ctx, "update", userID, "profile", userID, "failure",
+		audit.LogEvent(ctx, "update", userID, "profile", userID, "failure",
 			map[string]any{"error": categorizeError(err)})
 		return nil, err
 	}
 
-	applog.LogAuditEvent(ctx, "update", userID, "profile", userID, "success", nil)
+	audit.LogEvent(ctx, "update", userID, "profile", userID, "success", nil)
 
 	return result, nil
 }
@@ -209,12 +209,12 @@ func (s *FirestoreStore) Delete(ctx context.Context, userID string) error {
 		return tx.Delete(docRef)
 	})
 	if err != nil {
-		applog.LogAuditEvent(ctx, "delete", userID, "profile", userID, "failure",
+		audit.LogEvent(ctx, "delete", userID, "profile", userID, "failure",
 			map[string]any{"error": categorizeError(err)})
 		return err
 	}
 
-	applog.LogAuditEvent(ctx, "delete", userID, "profile", userID, "success", nil)
+	audit.LogEvent(ctx, "delete", userID, "profile", userID, "success", nil)
 
 	return nil
 }
