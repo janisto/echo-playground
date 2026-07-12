@@ -26,8 +26,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.x'
-          check-latest: true
+          go-version: '1.26.5'
           cache: true
           cache-dependency-path: |
             go.sum
@@ -105,7 +104,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.5'
           cache: true
 
       - name: Set up Java
@@ -137,7 +136,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.5'
           cache: true
           cache-dependency-path: |
             go.sum
@@ -158,7 +157,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.5'
           cache: true
 
       - name: Regenerate OpenAPI
@@ -198,3 +197,27 @@ jobs:
           curl --fail --silent http://127.0.0.1:18080/api-docs/openapi.json |
             jq -e '.openapi == "3.1.0" and .components.securitySchemes.BearerAuth.type == "http"'
           docker logs echo-playground-ci 2>&1 | grep '"version":"ci-smoke"'
+
+  ci:
+    if: ${{ always() }}
+    needs:
+      - unit
+      - firebase-emulators
+      - vulnerability
+      - generated-openapi
+      - container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all CI jobs
+        env:
+          UNIT: ${{ needs.unit.result }}
+          FIREBASE_EMULATORS: ${{ needs['firebase-emulators'].result }}
+          VULNERABILITY: ${{ needs.vulnerability.result }}
+          GENERATED_OPENAPI: ${{ needs['generated-openapi'].result }}
+          CONTAINER: ${{ needs.container.result }}
+        run: |
+          test "$UNIT" = success
+          test "$FIREBASE_EMULATORS" = success
+          test "$VULNERABILITY" = success
+          test "$GENERATED_OPENAPI" = success
+          test "$CONTAINER" = success

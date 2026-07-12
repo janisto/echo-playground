@@ -244,7 +244,9 @@ Repository automation under `.github/` independently checks both Go modules, req
 vulnerabilities, generated OpenAPI drift, the final container, and root and function lint. Use the exact release-tag
 form `uses: actions/setup-go@v6.5.0` for every setup-go step so the GitHub Actions updater in `.github/dependabot.yml`
 can recognize the version and propose future updates in the same form. Other third-party actions remain pinned to full
-commit SHAs. Dependabot covers both Go modules, GitHub Actions, and Docker; labeler configuration treats
+commit SHAs. Keep `ci` and `lint` as the stable ruleset-required aggregate job names. Each aggregate must use
+`if: ${{ always() }}` and fail unless every job it needs completed successfully, so a failed or cancelled dependency
+cannot make the required check disappear or pass. Dependabot covers both Go modules, GitHub Actions, and Docker; labeler configuration treats
 `.agents/**/*.md` and `.github/**/*.md` as documentation.
 
 ---

@@ -221,6 +221,9 @@ GitHub Actions use least-privilege read tokens and explicitly pinned action vers
 - final container probes for liveness, embedded docs, bearer schema, and version metadata;
 - root and function linting.
 
+Branch protection requires the stable aggregate checks `ci` and `lint`. Each aggregate runs even when a dependency fails
+and succeeds only when every specialized job in its workflow succeeds; internal job names are not part of the ruleset contract.
+
 Dependabot tracks both Go modules, GitHub Actions, and Docker base images.
 Repository automation also labels application, function, and documentation changes and enables squash auto-merge for
 Dependabot minor and patch updates, subject to repository branch protections and required checks.

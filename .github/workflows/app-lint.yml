@@ -23,7 +23,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.5'
           cache: true
 
       - name: Lint root module
@@ -40,7 +40,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.5'
           cache: true
           cache-dependency-path: functions/go.sum
 
@@ -49,3 +49,18 @@ jobs:
         with:
           version: v2.11
           working-directory: functions
+
+  lint:
+    if: ${{ always() }}
+    needs:
+      - lint-root
+      - lint-functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all lint jobs
+        env:
+          ROOT: ${{ needs['lint-root'].result }}
+          FUNCTIONS: ${{ needs['lint-functions'].result }}
+        run: |
+          test "$ROOT" = success
+          test "$FUNCTIONS" = success
