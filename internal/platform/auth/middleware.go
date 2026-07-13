@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
@@ -24,16 +25,15 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 				return respond.Error401("missing or invalid authorization header")
 			}
 
+			if verifier == nil {
+				return authUnavailable(c, "verifier_unavailable")
+			}
+
 			user, err := verifier.Verify(c.Request().Context(), token)
 			if err != nil {
 				reason := categorizeAuthError(err)
 				if errors.Is(err, ErrAuthUnavailable) || errors.Is(err, ErrCertificateFetch) {
-					obs.Logger(c.Request().Context()).Error(
-						"authentication dependency failed",
-						zap.String("reason", reason),
-					)
-					c.Response().Header().Set("Retry-After", "30")
-					return respond.Error503("authentication service temporarily unavailable")
+					return authUnavailable(c, reason)
 				}
 				if errors.Is(err, context.Canceled) {
 					return err
@@ -41,12 +41,24 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 				c.Response().Header().Set("WWW-Authenticate", "Bearer")
 				return respond.Error401("invalid or expired token")
 			}
+			if user == nil || strings.TrimSpace(user.UID) == "" {
+				return authUnavailable(c, "missing_identity")
+			}
 
 			c.Set(echoUserKey, user)
 
 			return next(c)
 		}
 	}
+}
+
+func authUnavailable(c *echo.Context, reason string) error {
+	obs.Logger(c.Request().Context()).Error(
+		"authentication dependency failed",
+		zap.String("reason", reason),
+	)
+	c.Response().Header().Set("Retry-After", "30")
+	return respond.Error503("authentication service temporarily unavailable")
 }
 
 // categorizeAuthError returns a safe category string for logging.

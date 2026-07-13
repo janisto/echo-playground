@@ -35,6 +35,7 @@ Keep the document concise and onboarding-oriented. Preserve or update these subj
 - the explicit distinction that Firebase CLI runs Auth and Firestore emulators but does not deploy the Go function;
 - the `gcloud run deploy --source functions --function Hello --base-image go126` function path;
 - emulator, OpenAPI generation, embedded Swagger UI, container, and CI behavior;
+- explicit `FIREBASE_MODE=offline|emulator|live` behavior and valid environment/mode combinations;
 - concise project layout, contribution pointer, and license.
 
 Organize the material for readers rather than preserving a rigid heading order. Remove stale sections instead of
@@ -48,7 +49,9 @@ maintaining compatibility with old README structure.
 - Describe the two Go modules as independent; do not imply root `./...` crosses into `functions/`.
 - Describe `/health` as dependency-free liveness, not Firebase readiness.
 - State that CBOR is response-only unless request decoding is actually implemented.
-- Keep emulator variables development-only and explain why production rejects them.
+- Keep offline and emulator modes development-only, document strict emulator `host:port` authorities, and explain why
+  live mode rejects emulator hosts and demo project IDs.
+- Describe unqualified Just commands as whole-repository commands; targeted module recipes are an opt-in narrow scope.
 - Keep the separate function deliberately small; do not describe it as an Echo or Firebase Admin application.
 - Do not claim this repository is deployed to production.
 - Prefer primary sources for runtime, framework, deployment, and security claims that may change.
@@ -62,17 +65,19 @@ Verify named recipes without mutating dependencies:
 just --dry-run build
 just --dry-run test
 just --dry-run lint
-just --dry-run check-all
+just --dry-run check
 just --dry-run functions-check
 just --dry-run functions-vuln
 just --dry-run functions-run 8081
 just --dry-run docs
+just --dry-run workflow-check
+just --dry-run modernize-check
 just --dry-run update
 ```
 
 Search route registration and configuration directly rather than trusting generated prose. If documentation changes
-alongside application behavior, run `just build`, `just test`, and `just lint`; use `just check-all` for cross-module
-changes. For a documentation-only correction, validate links, paths, commands, YAML where touched, and `git diff --check`.
+alongside application behavior, run `just build`, `just test`, and `just lint`; these commands cover both modules. For a
+documentation-only correction, validate links, paths, commands, YAML where touched, and `git diff --check`.
 
 Before finishing, reread the complete README once for contradictions, duplicated explanations, unexpanded acronyms, and
 claims that are more confident than the evidence.

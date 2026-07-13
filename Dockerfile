@@ -46,7 +46,6 @@ FROM ${RUNTIME_IMAGE} AS runtime
 ARG RUNTIME_IMAGE
 ARG VERSION
 LABEL org.opencontainers.image.base.name="${RUNTIME_IMAGE}" \
-      org.opencontainers.image.revision="${VERSION}" \
       org.opencontainers.image.source="https://github.com/janisto/echo-playground" \
       org.opencontainers.image.version="${VERSION}"
 

@@ -19,6 +19,7 @@ func TestCORS_PreflightRequest(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/test", nil)
 	req.Header.Set("Origin", "http://example.com")
 	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "traceparent,tracestate")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -36,6 +37,10 @@ func TestCORS_PreflightRequest(t *testing.T) {
 	}
 	if credentials := rec.Header().Get("Access-Control-Allow-Credentials"); credentials != "" {
 		t.Fatalf("credentialed CORS must remain disabled, got %q", credentials)
+	}
+	allowedHeaders := strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers"))
+	if !strings.Contains(allowedHeaders, "traceparent") || !strings.Contains(allowedHeaders, "tracestate") {
+		t.Fatalf("expected W3C trace headers, got %q", allowedHeaders)
 	}
 }
 

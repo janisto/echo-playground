@@ -23,6 +23,11 @@ func TestDecodeJSON(t *testing.T) {
 		{name: "valid", contentType: "application/json; charset=utf-8", body: `{"name":"Ada"}`},
 		{name: "empty", contentType: "application/json", wantStatus: http.StatusBadRequest},
 		{name: "malformed", contentType: "application/json", body: `{`, wantStatus: http.StatusBadRequest},
+		{name: "null", contentType: "application/json", body: `null`, wantStatus: http.StatusBadRequest},
+		{name: "array", contentType: "application/json", body: `[]`, wantStatus: http.StatusBadRequest},
+		{name: "string", contentType: "application/json", body: `"Ada"`, wantStatus: http.StatusBadRequest},
+		{name: "number", contentType: "application/json", body: `42`, wantStatus: http.StatusBadRequest},
+		{name: "boolean", contentType: "application/json", body: `true`, wantStatus: http.StatusBadRequest},
 		{
 			name:        "unknown field",
 			contentType: "application/json",

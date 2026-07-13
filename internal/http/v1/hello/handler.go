@@ -19,6 +19,7 @@ func Register(g *echo.Group) {
 // getHandler godoc
 //
 //	@Summary		Greeting endpoint
+//	@ID				getHello
 //	@Description	Returns a hello greeting
 //	@Tags			hello
 //	@Produce		json,application/cbor
@@ -31,6 +32,7 @@ func getHandler(c *echo.Context) error {
 // createHandler godoc
 //
 //	@Summary		Create greeting
+//	@ID				createHello
 //	@Description	Creates a personalized greeting
 //	@Tags			hello
 //	@Produce		json,application/cbor

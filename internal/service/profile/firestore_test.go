@@ -3,9 +3,12 @@ package profile
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/janisto/echo-playground/internal/testutil"
 )
@@ -25,7 +28,9 @@ func newTestStore(t *testing.T) (*FirestoreStore, func()) {
 	store := NewFirestoreStore(client)
 	cleanup := func() {
 		testutil.ClearFirestore(t)
-		_ = client.Close()
+		if err := client.Close(); err != nil {
+			t.Errorf("close Firestore client: %v", err)
+		}
 	}
 	return store, cleanup
 }
@@ -238,6 +243,61 @@ func TestFirestoreStore_DeleteNotFound(t *testing.T) {
 	}
 }
 
+func TestFirestoreStore_ConcurrentDelete(t *testing.T) {
+	store, cleanup := newTestStore(t)
+	defer cleanup()
+	if _, err := store.Create(t.Context(), "user-concurrent-delete", CreateParams{Firstname: "Ada"}); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	const attempts = 5
+	errs := make(chan error, attempts)
+	var wg sync.WaitGroup
+	for range attempts {
+		wg.Go(func() {
+			errs <- store.Delete(t.Context(), "user-concurrent-delete")
+		})
+	}
+	wg.Wait()
+	close(errs)
+
+	successes := 0
+	notFound := 0
+	for err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrNotFound):
+			notFound++
+		default:
+			t.Fatalf("unexpected delete error: %v", err)
+		}
+	}
+	if successes != 1 || notFound != attempts-1 {
+		t.Fatalf("successes=%d not_found=%d", successes, notFound)
+	}
+}
+
+func TestClassifyDependencyError(t *testing.T) {
+	for _, err := range []error{
+		context.DeadlineExceeded,
+		status.Error(codes.Aborted, "aborted"),
+		status.Error(codes.DeadlineExceeded, "deadline"),
+		status.Error(codes.ResourceExhausted, "quota"),
+		status.Error(codes.Unavailable, "unavailable"),
+	} {
+		if got := classifyDependencyError(err); !errors.Is(got, ErrUnavailable) || !errors.Is(got, err) {
+			t.Fatalf("expected joined unavailable error for %v, got %v", err, got)
+		}
+	}
+	if got := classifyDependencyError(
+		context.Canceled,
+	); !errors.Is(got, context.Canceled) ||
+		errors.Is(got, ErrUnavailable) {
+		t.Fatalf("expected cancellation to remain distinct, got %v", got)
+	}
+}
+
 func TestCategorizeError(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -246,6 +306,7 @@ func TestCategorizeError(t *testing.T) {
 	}{
 		{"already exists", ErrAlreadyExists, "already_exists"},
 		{"not found", ErrNotFound, "not_found"},
+		{"unavailable", ErrUnavailable, "unavailable"},
 		{"generic error", context.Canceled, "internal_error"},
 	}
 	for _, tt := range tests {

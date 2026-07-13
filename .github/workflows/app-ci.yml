@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
@@ -33,43 +35,29 @@ jobs:
             go.sum
             functions/go.sum
 
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
+
       - name: Validate toolchain
         run: go version
 
       - name: Download both modules
-        run: |
-          go mod download
-          (cd functions && GOWORK=off go mod download)
+        run: just download
 
       - name: Build both modules
-        run: |
-          go build -v ./...
-          (cd functions && GOWORK=off go build -v ./...)
+        run: just build
 
       - name: Test root module with coverage
-        run: go test -v -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+        run: just test-coverage
 
       - name: Test function module
-        run: cd functions && GOWORK=off go test -v ./...
+        run: just test-functions
 
       - name: Smoke-test Functions Framework target
-        run: |
-          (cd functions && GOWORK=off go build -o /tmp/functions-server ./cmd/server)
-          FUNCTION_TARGET=Hello PORT=18081 /tmp/functions-server &
-          pid=$!
-          trap 'kill "$pid" 2>/dev/null || true' EXIT
-          for attempt in {1..30}; do
-            if curl --fail --silent 'http://127.0.0.1:18081/?name=CI' > function-response.json; then
-              break
-            fi
-            sleep 1
-          done
-          jq -e '.message == "Hello, CI!"' function-response.json
+        run: just functions-smoke
 
       - name: Race detector
-        run: |
-          go test -race ./...
-          (cd functions && GOWORK=off go test -race ./...)
+        run: just test-race
 
       - name: Generate coverage artifacts
         run: |
@@ -101,6 +89,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
@@ -120,20 +110,42 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.22.1
+
       - name: Run required emulator tests
-        env:
-          REQUIRE_FIREBASE_EMULATORS: '1'
-        run: >-
-          npx --yes firebase-tools@15.22.1 emulators:exec
-          --project demo-test-project
-          --only auth,firestore
-          "go test -count=1 ./..."
+        run: just test-integration-ci
+
+      - name: Publish emulator coverage summary
+        run: |
+          total=$(grep '^total:' integration-coverage-summary.txt | awk '{print $3}')
+          {
+            echo "### Emulator-backed Test Coverage"
+            echo
+            echo "Total coverage: ${total}"
+            echo
+            echo "This profile includes the root test suite with required Auth and Firestore emulators."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload emulator coverage artifacts
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: emulator-coverage-report
+          path: |
+            integration-coverage.out
+            integration-coverage.html
+            integration-coverage-summary.txt
 
   vulnerability:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
@@ -145,17 +157,31 @@ jobs:
             go.sum
             functions/go.sum
 
-      - name: Scan root module
-        run: go tool govulncheck ./...
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
 
-      - name: Scan function module
-        run: cd functions && GOWORK=off go tool -modfile=../go.mod govulncheck ./...
+      - name: Scan both modules
+        run: just vuln
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4.9.0
 
   generated-openapi:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6.5.0
@@ -164,43 +190,31 @@ jobs:
           check-latest: true
           cache: true
 
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
+
       - name: Regenerate OpenAPI
-        run: |
-          go tool swag init --quiet --v3.1 --parseInternal --outputTypes json,yaml -g cmd/server/main.go -o api-docs >/dev/null
-          go run ./cmd/openapi
+        run: just docs
 
       - name: Reject generated drift
         run: git diff --exit-code -- api-docs
 
       - name: Validate OpenAPI semantics
-        run: go test ./api-docs
+        run: just test-app
 
   container:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
 
-      - name: Build production image
-        run: docker build --build-arg VERSION=ci-smoke -t echo-playground:ci .
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
 
-      - name: Probe production image
-        run: |
-          docker run -d --rm --name echo-playground-ci \
-            -e APP_ENVIRONMENT=development \
-            -e FIREBASE_PROJECT_ID=demo-test-project \
-            -p 18080:8080 echo-playground:ci
-          trap 'docker stop echo-playground-ci' EXIT
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          curl --fail --silent http://127.0.0.1:18080/api-docs >/dev/null
-          curl --fail --silent http://127.0.0.1:18080/api-docs/openapi.json |
-            jq -e '.openapi == "3.1.0" and .components.securitySchemes.BearerAuth.type == "http"'
-          docker logs echo-playground-ci 2>&1 | grep '"version":"ci-smoke"'
+      - name: Probe final image
+        run: just container-smoke
 
   ci:
     if: ${{ always() }}
@@ -208,6 +222,7 @@ jobs:
       - unit
       - firebase-emulators
       - vulnerability
+      - dependency-review
       - generated-openapi
       - container
     runs-on: ubuntu-latest
@@ -217,11 +232,13 @@ jobs:
           UNIT: ${{ needs.unit.result }}
           FIREBASE_EMULATORS: ${{ needs['firebase-emulators'].result }}
           VULNERABILITY: ${{ needs.vulnerability.result }}
+          DEPENDENCY_REVIEW: ${{ needs['dependency-review'].result }}
           GENERATED_OPENAPI: ${{ needs['generated-openapi'].result }}
           CONTAINER: ${{ needs.container.result }}
         run: |
           test "$UNIT" = success
           test "$FIREBASE_EMULATORS" = success
           test "$VULNERABILITY" = success
+          test "$DEPENDENCY_REVIEW" = success
           test "$GENERATED_OPENAPI" = success
           test "$CONTAINER" = success

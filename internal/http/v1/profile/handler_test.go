@@ -16,6 +16,7 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 	"github.com/janisto/echo-playground/internal/testutil"
+	testfake "github.com/janisto/echo-playground/internal/testutil/fake"
 )
 
 // errService wraps a real store and injects errors for specific operations.
@@ -75,9 +76,29 @@ func validCreateBody() string {
 	return `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true}`
 }
 
+func TestProfileBodyEndpointsRejectNull(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPatch} {
+		t.Run(method, func(t *testing.T) {
+			e := setupEcho(
+				&testfake.MockVerifier{User: testfake.TestUser()},
+				testfake.NewProfileStore(),
+			)
+			req := httptest.NewRequestWithContext(t.Context(), method, "/profile", strings.NewReader("null"))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			req.Header.Set(echo.HeaderAuthorization, "Bearer test-token")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreateProfile_Success(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(
@@ -113,8 +134,8 @@ func TestCreateProfile_Success(t *testing.T) {
 }
 
 func TestCreateProfile_Duplicate(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	body := validCreateBody()
@@ -141,8 +162,8 @@ func TestCreateProfile_Duplicate(t *testing.T) {
 }
 
 func TestCreateProfile_ValidationError(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	body := `{"firstname":"","lastname":"","email":"bad","phoneNumber":"bad"}`
@@ -166,8 +187,8 @@ func TestCreateProfile_ValidationError(t *testing.T) {
 }
 
 func TestCreateProfile_Unauthorized(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(
@@ -187,8 +208,8 @@ func TestCreateProfile_Unauthorized(t *testing.T) {
 }
 
 func TestGetProfile_Success(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	// Create first.
@@ -227,8 +248,8 @@ func TestGetProfile_Success(t *testing.T) {
 }
 
 func TestGetProfile_NotFound(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
@@ -242,8 +263,8 @@ func TestGetProfile_NotFound(t *testing.T) {
 }
 
 func TestUpdateProfile_Success(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	// Create first.
@@ -287,8 +308,8 @@ func TestUpdateProfile_Success(t *testing.T) {
 }
 
 func TestUpdateProfile_RejectsEmptyPatch(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader("{}"))
@@ -303,8 +324,8 @@ func TestUpdateProfile_RejectsEmptyPatch(t *testing.T) {
 }
 
 func TestUpdateProfile_NotFound(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	body := `{"firstname":"Jane"}`
@@ -320,8 +341,8 @@ func TestUpdateProfile_NotFound(t *testing.T) {
 }
 
 func TestDeleteProfile_Success(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	// Create first.
@@ -362,8 +383,8 @@ func TestDeleteProfile_Success(t *testing.T) {
 }
 
 func TestDeleteProfile_NotFound(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/profile", nil)
@@ -377,8 +398,8 @@ func TestDeleteProfile_NotFound(t *testing.T) {
 }
 
 func TestProfile_InvalidToken(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{Error: auth.ErrInvalidToken}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{Error: auth.ErrInvalidToken}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
@@ -397,8 +418,8 @@ func TestProfile_InvalidToken(t *testing.T) {
 }
 
 func TestProfile_CertificateFetchError(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{Error: auth.ErrCertificateFetch}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{Error: auth.ErrCertificateFetch}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
@@ -417,8 +438,8 @@ func TestProfile_CertificateFetchError(t *testing.T) {
 }
 
 func TestCreateProfile_InvalidJSON(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/profile", strings.NewReader(`{invalid`))
@@ -433,8 +454,8 @@ func TestCreateProfile_InvalidJSON(t *testing.T) {
 }
 
 func TestUpdateProfile_InvalidJSON(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/profile", strings.NewReader(`{broken`))
@@ -449,8 +470,8 @@ func TestUpdateProfile_InvalidJSON(t *testing.T) {
 }
 
 func TestUpdateProfile_ValidationError(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	body := `{"email":"not-an-email"}`
@@ -474,8 +495,8 @@ func TestUpdateProfile_ValidationError(t *testing.T) {
 }
 
 func TestUpdateProfile_AllFields(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(
@@ -520,8 +541,8 @@ func TestUpdateProfile_AllFields(t *testing.T) {
 }
 
 func TestCreateProfile_ResponseFields(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(
@@ -561,8 +582,8 @@ func TestCreateProfile_ResponseFields(t *testing.T) {
 }
 
 func TestGetProfile_ResponseTimestamps(t *testing.T) {
-	svc := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	svc := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(
@@ -600,10 +621,10 @@ func TestGetProfile_ResponseTimestamps(t *testing.T) {
 
 func TestCreateProfile_InternalServiceError(t *testing.T) {
 	svc := &errService{
-		Service:   profilesvc.NewMockStore(),
+		Service:   testfake.NewProfileStore(),
 		createErr: errors.New("database connection lost"),
 	}
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(
@@ -632,10 +653,10 @@ func TestCreateProfile_InternalServiceError(t *testing.T) {
 
 func TestGetProfile_InternalServiceError(t *testing.T) {
 	svc := &errService{
-		Service: profilesvc.NewMockStore(),
+		Service: testfake.NewProfileStore(),
 		getErr:  errors.New("database timeout"),
 	}
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 	e := setupEcho(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
@@ -649,8 +670,8 @@ func TestGetProfile_InternalServiceError(t *testing.T) {
 }
 
 func TestUpdateProfile_InternalServiceError(t *testing.T) {
-	store := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	store := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 
 	svcOK := store
 	e := setupEcho(verifier, svcOK)
@@ -689,8 +710,8 @@ func TestUpdateProfile_InternalServiceError(t *testing.T) {
 }
 
 func TestDeleteProfile_InternalServiceError(t *testing.T) {
-	store := profilesvc.NewMockStore()
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
+	store := testfake.NewProfileStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
 
 	e := setupEcho(verifier, store)
 
@@ -734,7 +755,7 @@ func setupEchoNoAuth(svc profilesvc.Service) *echo.Echo {
 }
 
 func TestGetProfile_NoUserInContext(t *testing.T) {
-	svc := profilesvc.NewMockStore()
+	svc := testfake.NewProfileStore()
 	e := setupEchoNoAuth(svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/profile", nil)
@@ -747,7 +768,7 @@ func TestGetProfile_NoUserInContext(t *testing.T) {
 }
 
 func TestCreateProfile_NoUserInContext(t *testing.T) {
-	svc := profilesvc.NewMockStore()
+	svc := testfake.NewProfileStore()
 	e := setupEchoNoAuth(svc)
 
 	req := httptest.NewRequestWithContext(
@@ -766,7 +787,7 @@ func TestCreateProfile_NoUserInContext(t *testing.T) {
 }
 
 func TestUpdateProfile_NoUserInContext(t *testing.T) {
-	svc := profilesvc.NewMockStore()
+	svc := testfake.NewProfileStore()
 	e := setupEchoNoAuth(svc)
 
 	body := `{"firstname":"Jane"}`
@@ -781,7 +802,7 @@ func TestUpdateProfile_NoUserInContext(t *testing.T) {
 }
 
 func TestDeleteProfile_NoUserInContext(t *testing.T) {
-	svc := profilesvc.NewMockStore()
+	svc := testfake.NewProfileStore()
 	e := setupEchoNoAuth(svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/profile", nil)
@@ -798,12 +819,23 @@ func TestMapServiceError_Deadline(t *testing.T) {
 	defer cancel()
 	<-ctx.Done()
 
-	err := mapServiceError(ctx, errors.New("wrapped SDK deadline"))
+	err := mapServiceError(ctx, "get profile", errors.New("wrapped SDK deadline"))
 	problem, ok := errors.AsType[*respond.ProblemDetails](err)
 	if !ok {
 		t.Fatalf("expected ProblemDetails, got %T", err)
 	}
 	if problem.Status != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d", problem.Status)
+	}
+}
+
+func TestMapServiceError_Unavailable(t *testing.T) {
+	err := mapServiceError(t.Context(), "get profile", errors.Join(profilesvc.ErrUnavailable, errors.New("SDK detail")))
+	problem, ok := errors.AsType[*respond.ProblemDetails](err)
+	if !ok {
+		t.Fatalf("expected ProblemDetails, got %T", err)
+	}
+	if problem.Status != http.StatusServiceUnavailable || strings.Contains(problem.Detail, "SDK") {
+		t.Fatalf("unexpected problem: %#v", problem)
 	}
 }

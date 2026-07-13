@@ -24,7 +24,8 @@ func CORS() echo.MiddlewareFunc {
 			"Authorization",
 			"Content-Type",
 			"X-Request-ID",
-			"traceparent",
+			"Traceparent",
+			"Tracestate",
 		},
 		ExposeHeaders: []string{
 			"Link",

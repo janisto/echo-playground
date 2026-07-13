@@ -15,8 +15,9 @@ and production-shaped verification without pretending to be a complete productio
 - RFC 9457 Problem Details with JSON and CBOR response negotiation
 - Cursor pagination with RFC 8288 `Link` headers
 - Firebase ID-token validation with revocation checks and explicit dependency-failure handling
-- Firestore CRUD with atomic create, field-specific transactional PATCH, and audit events
-- Generated and embedded OpenAPI 3.1 JSON, semantically matched YAML, and SRI-pinned Swagger UI
+- Firestore CRUD with atomic create, field-specific transactional PATCH, existence-preconditioned delete, transient
+  dependency classification, and audit events
+- Generated and embedded OpenAPI 3.1 JSON with an exact seven-operation semantic contract, matched YAML, and SRI-pinned Swagger UI
 - A separate minimal Google Functions Framework example
 - Required CI checks for both Go modules, emulators, race detection, vulnerabilities, generated artifacts, and the final image
 
@@ -72,10 +73,10 @@ Open:
 - http://localhost:8080/api-docs
 - http://localhost:8080/api-docs/openapi.json
 
-The default development project ID is `demo-test-project`. Firebase-protected routes require the local emulators
-or explicitly configured real Firebase credentials; the public health, docs, hello, and items routes run locally without them.
-Demo project IDs are rejected outside development so an offline fallback cannot mask a deployed misconfiguration.
-Firebase emulator variables are also rejected outside development because the Auth emulator accepts unsigned test tokens.
+The default `FIREBASE_MODE=offline` keeps public health, docs, hello, and items routes available while protected routes
+return 503. Use explicit `emulator` mode for local Auth and Firestore, or `live` mode with a real project and ADC.
+Offline and emulator modes are rejected outside development. Live mode rejects demo projects and emulator hosts so a
+deployed misconfiguration cannot accept unsigned emulator tokens or silently fall back offline.
 
 ## Configuration
 
@@ -86,8 +87,9 @@ Firebase emulator variables are also rejected outside development because the Au
 | `HOST` | `0.0.0.0` | Listen host |
 | `PORT` | `8080` | Listen port, 1-65535 |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
-| `APP_ENVIRONMENT` | `development` | Environment label |
-| `FIREBASE_PROJECT_ID` | `demo-test-project` in development | Firebase project |
+| `APP_ENVIRONMENT` | `development` | `development`, `staging`, or `production` |
+| `FIREBASE_MODE` | `offline` | `offline`, `emulator`, or `live` |
+| `FIREBASE_PROJECT_ID` | `demo-test-project` outside live mode | Firebase project |
 | `IP_EXTRACTOR` | `direct` | `direct` or explicitly configured `xff` proxy mode |
 | `GOOGLE_APPLICATION_CREDENTIALS` | ADC | Optional service-account file |
 
@@ -95,25 +97,24 @@ Firebase emulator variables are also rejected outside development because the Au
 is behind a trusted proxy topology such as Cloud Run. Client IP is observational data, never authorization input.
 
 CORS intentionally permits all origins for this public playground API, does not permit credentialed browser requests,
-and limits preflight methods and headers to the implemented contract. Narrow origins before adapting the example to a private API.
+and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origins before adapting the example to a private API.
 
 ## Development commands
 
 | Command | Scope |
 |---|---|
-| `just check` | Build, test, and lint the root service |
-| `just functions-check` | Build, test, and lint the function module |
-| `just check-all` | Check both modules |
-| `just test-race` | Root race detector |
-| `just functions-test-race` | Function race detector |
-| `just vuln` | Root vulnerability scan |
-| `just functions-vuln` | Function vulnerability scan |
+| `just check` | Format-check, lint, build, and test both modules |
+| `just build`, `just test`, `just lint` | Run the named check for both modules |
+| `just test-race`, `just vuln` | Race-test or vulnerability-scan both modules |
+| `just functions-check` | Narrow build, test, and lint of the function module |
 | `just update` | Update root dependencies, root Go tools, and the function module |
 | `just functions-update` | Update only the function module |
 | `just functions-run 8081` | Run target `Hello` through the official Functions Framework |
 | `just docs` | Generate, normalize, and embed-review OpenAPI artifacts |
 | `just emulators` | Start Auth and Firestore emulators |
-| `just container-build` | Build the final service image |
+| `just test-integration-ci` | Require emulators and generate separate integration coverage |
+| `just workflow-check`, `just modernize-check` | Run non-mutating workflow and Go modernization checks |
+| `just container-smoke` | Build and verify the final service image |
 
 Firebase integration tests skip locally when emulators are absent. CI sets
 `REQUIRE_FIREBASE_EMULATORS=1`, which converts absence into failure.
@@ -157,7 +158,8 @@ just emulators
 | UI | http://localhost:4000 |
 
 Tests configure emulator addresses themselves. Emulator variables are development-only; startup rejects them in every
-other environment so a deployed service cannot accidentally accept emulator-issued unsigned tokens.
+other environment so a deployed service cannot accidentally accept emulator-issued unsigned tokens. Application
+emulator mode requires both variables as strict `host:port` authorities and a `demo-*` project ID.
 
 `firestore.rules` denies all client SDK access. As the
 [official Firestore guidance](https://firebase.google.com/docs/firestore/security/rules-conditions) explains, server
@@ -167,7 +169,8 @@ from being exposed accidentally to clients.
 ## OpenAPI and Swagger UI
 
 `just docs` runs swag, applies deterministic OpenAPI corrections that swag v2 RC cannot currently express, and
-writes equivalent JSON and YAML. CI regenerates the artifacts and rejects any diff. The service embeds
+writes equivalent JSON and YAML. Semantic tests enforce the exact path, method, operation ID, status, security, request
+media, response media, and required-header matrix. CI regenerates the artifacts and rejects any diff. The service embeds
 `api-docs/swagger.json`, so documentation does not depend on its runtime working directory.
 
 Swagger UI uses exact version 5.32.8 assets with SHA-384 integrity metadata. A docs-specific CSP permits only those pinned
@@ -184,8 +187,8 @@ cmd/server/            Process lifecycle, typed config, and application composit
 functions/             Independent Functions Framework Go module
 internal/http/         Health, docs, and versioned Echo handlers
 internal/platform/     Auth, middleware, pagination, responses, validation
-internal/service/      Firestore and in-memory profile implementations
-internal/testutil/     Echo and Firebase emulator test support
+internal/service/      Firestore profile implementation and service contracts
+internal/testutil/     Echo, reusable test fakes, and Firebase emulator support
 ```
 
 Repository guidance follows the canonical [AGENTS.md format](https://github.com/agentsmd/agents.md). Portable skills use
@@ -203,8 +206,10 @@ just container-up echo-playground:local
 `container-up` treats its optional third argument as the host port and always runs the application on container port 8080,
 so a local `.env` `PORT` value cannot desynchronize the port mapping.
 
-The distroless final image is non-root and embeds the OpenAPI document. Rebuild it for both Go standard-library and base-image
-security fixes. Cloud Run automatic base-image rebasing is not a substitute for rebuilding a compiled Go binary.
+The distroless final image is non-root and embeds the OpenAPI document. Its OCI version label is distinct from source
+revision metadata; no revision label is emitted unless a real source revision is added deliberately. Rebuild it for both
+Go standard-library and base-image security fixes. Cloud Run automatic base-image rebasing is not a substitute for
+rebuilding a compiled Go binary.
 
 This repository is not deployed to production. If publishing an image, use an immutable registry digest and an explicit
 release workflow rather than `latest`.
@@ -216,17 +221,17 @@ GitHub Actions use least-privilege read tokens and exact release tags, such as `
 instead of immutable commit pins. Required jobs cover:
 
 - root and function build/test/race checks;
-- Auth and Firestore emulator tests with fail-on-missing behavior;
+- Auth and Firestore emulator tests with fail-on-missing behavior and separate downloadable coverage;
 - both-module vulnerability scans;
 - OpenAPI regeneration and semantic validation;
-- final container probes for liveness, embedded docs, bearer schema, and version metadata;
-- root and function linting.
+- final container probes for liveness, embedded docs, non-root execution, and honest OCI metadata;
+- both-module formatting, linting, module tidiness, Go modernization, and pinned `actionlint` checks.
 
 Branch protection requires the stable aggregate checks `ci` and `lint`. Each aggregate runs even when a dependency fails
 and succeeds only when every specialized job in its workflow succeeds; internal job names are not part of the ruleset contract.
 
 Dependabot tracks both Go modules, GitHub Actions, and Docker base images.
-Repository automation also labels application, function, and documentation changes and enables squash auto-merge for
+Repository automation also labels application, function, documentation, and tooling changes and enables squash auto-merge for
 Dependabot minor and patch updates, subject to repository branch protections and required checks.
 
 ## Contributing

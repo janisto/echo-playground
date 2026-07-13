@@ -18,6 +18,10 @@ Read `AGENTS.md`, the implementation under test, and nearby tests before choosin
 Tests stay in `*_test.go`. Never add `if testing` branches, environment backdoors, or mock-only hooks to production
 code. Refactor toward a small interface when a real dependency boundary needs substitution.
 
+Reusable transport/composition fakes live in `internal/testutil/fake`. Tests inside `internal/platform/auth` or
+`internal/service/profile` should use package-local test stubs to avoid import cycles. Production packages must not
+export mocks, and production offline composition must use dependencies that return `ErrUnavailable`.
+
 ## Echo setup
 
 `testutil.NewTestEcho()` installs the project validator and Problem Details error handler. Add only middleware needed by
@@ -53,10 +57,12 @@ Verify observable contracts, not implementation trivia:
 - exact HTTP status and relevant headers (`Content-Type`, `Location`, `Link`, `WWW-Authenticate`, `X-Request-ID`);
 - decoded response fields and RFC 9457 `respond.ProblemDetails` errors;
 - JSON and CBOR negotiation, including a specific `q=0` exclusion overriding broader wildcards;
-- strict JSON failures: missing or unsupported content type, malformed syntax, unknown fields, multiple values, and
-  the 1 MiB limit where application middleware is in scope;
+- strict JSON failures: missing or unsupported content type, `null`, arrays, scalars, malformed syntax, unknown fields,
+  multiple values, and the 1 MiB limit where application middleware is in scope;
 - service error mapping, request deadlines, and no sensitive data in observed logs;
 - pagination boundaries, invalid and stale cursors, preserved filters, and empty Link headers on terminal pages.
+- panic recovery before commit returns 500 Problem Details; recovery after commit re-panics with
+  `http.ErrAbortHandler` so the connection is aborted.
 
 Use `t.Helper()` for assertion helpers, `t.Setenv()` for environment isolation, `errors.Is` for sentinel errors, and
 fuzz seeds at parser boundaries. Avoid sleeps; use contexts, channels, or bounded polling.
@@ -65,7 +71,8 @@ fuzz seeds at parser boundaries. Avoid sleeps; use contexts, channels, or bounde
 
 The helpers in `internal/testutil` own the test emulator addresses. Tests may skip when emulators are unavailable during
 ordinary local runs; the emulator CI job requires them and fails if they are missing. Emulator REST helpers must reject
-non-2xx responses before decoding bodies.
+unexpected statuses before decoding bodies, use the bounded package client, bound diagnostics, and validate complete
+Auth identities. Firestore cleanup must report client close failures.
 
 Start the local emulators with:
 
@@ -81,10 +88,10 @@ Use Just so `.env` and the pinned toolchain are applied:
 just test
 just test-race
 just coverage
-just functions-test
-just functions-test-race
-just check-all
+just test-integration-ci
+just functions-smoke
+just check
 ```
 
-After any code change, finish with `just build`, `just test`, and `just lint`. Use the function equivalents when the
-nested module changes, or `just check-all` for cross-module work.
+The unqualified build, test, race, lint, formatting, vulnerability, tidy, and check recipes cover both modules. Use the
+`*-app`, `*-functions`, or compatibility `functions-*` recipes only for a deliberately narrow first pass.

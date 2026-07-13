@@ -21,7 +21,7 @@ reuse the slice helper. Keep opaque HTTP cursor encoding separate from storage d
 
 ```go
 type ListInput struct {
-	Cursor   string `query:"cursor"`
+	Cursor   string `query:"cursor"   validate:"omitempty,max=2048"`
 	Limit    int    `query:"limit"    validate:"omitempty,min=1,max=100"`
 	Category string `query:"category" validate:"omitempty,oneof=active inactive"`
 }
@@ -31,6 +31,9 @@ Bind query parameters only, validate them, apply `pagination.DefaultLimit`, then
 
 ```go
 var input ListInput
+if err := request.RejectUnknownQuery(c, "cursor", "limit", "category"); err != nil {
+	return err
+}
 if err := echo.BindQueryParams(c, &input); err != nil {
 	return err
 }
@@ -47,7 +50,7 @@ cursor, err := pagination.DecodeCursor(input.Cursor)
 if err != nil {
 	return respond.Error400("invalid cursor format")
 }
-if cursor.Type != "" && cursor.Type != resourceCursorType {
+if input.Cursor != "" && cursor.Type != resourceCursorType {
 	return respond.Error400("cursor type mismatch")
 }
 ```
@@ -82,8 +85,8 @@ return respond.Negotiate(c, http.StatusOK, ListData{
 })
 ```
 
-Malformed, cross-endpoint, and stale cursors are client input errors and return 400. Validation failures such as an
-out-of-range limit return 422 through the project validator.
+Malformed, empty-type, cross-endpoint, and stale cursors are client input errors and return 400. Unknown query keys also
+return 400. Validation failures such as an oversized cursor or out-of-range limit return 422 through the validator.
 
 The `Link` header follows RFC 8288 and can include `next` and `prev`. Cursor values are opaque URL-safe Base64; clients
 must not construct or interpret them. Do not set an empty Link header.
@@ -91,7 +94,8 @@ must not construct or interpret them. Do not set an empty Link header.
 ## Verification
 
 Cover the first, middle, and last page; empty results; default, minimum, and maximum limits; stable ordering; preserved
-filters and limit; next and previous links; malformed, wrong-type, and unknown cursors; and JSON or CBOR responses.
+filters and limit; next and previous links; malformed, empty-type, wrong-type, unknown, and oversized cursors; unknown
+query keys; repeated known keys; and JSON or CBOR responses.
 Assert decoded page contents as well as the status and Link relations.
 
 Run the focused package tests, then `just build`, `just test`, and `just lint`.

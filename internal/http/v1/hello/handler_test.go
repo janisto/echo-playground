@@ -143,7 +143,7 @@ func TestCreateHello_InvalidJSON(t *testing.T) {
 }
 
 func TestCreateHello_RejectsUnknownAndTrailingJSON(t *testing.T) {
-	for _, body := range []string{`{"name":"Ada","unknown":true}`, `{"name":"Ada"} {}`} {
+	for _, body := range []string{`null`, `{"name":"Ada","unknown":true}`, `{"name":"Ada"} {}`} {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()

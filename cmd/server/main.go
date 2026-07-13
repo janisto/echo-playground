@@ -12,10 +12,10 @@ import (
 	"go.uber.org/zap"
 )
 
-//	@title				Echo Playground API
-//	@version			1.0
-//	@description		Example API built with Echo v5. CBOR is supported for responses through content negotiation.
-//	@servers.url		/v1
+//	@title					Echo Playground API
+//	@version				1.0
+//	@description			Example API built with Echo v5. CBOR is supported for responses through content negotiation.
+//	@servers.url			/v1
 //	@servers.description	Version 1 API
 
 // Version can be overridden at build time: -ldflags "-X main.Version=1.2.3"
@@ -65,10 +65,7 @@ func run(parent context.Context) (runErr error) {
 	}()
 
 	e := newEcho(cfg, logger, firebaseClients)
-	sc := newStartConfig(cfg)
-
-	logger.Info("server starting", zap.String("addr", cfg.Address), zap.String("version", Version))
-	if err := sc.Start(ctx, e); err != nil {
+	if err := serve(ctx, newServer(cfg, e), cfg.ShutdownTimeout, logger); err != nil {
 		return fmt.Errorf("serve HTTP: %w", err)
 	}
 

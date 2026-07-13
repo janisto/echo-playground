@@ -135,7 +135,7 @@ func decodeCBORTextString(data []byte) (string, error) {
 	if len(data) != offset+length {
 		return "", errors.New("timeutil: trailing CBOR data")
 	}
-	return string(data[offset : offset+length]), nil //nolint:gosec // G602 false positive: bounds checked above
+	return string(data[offset : offset+length]), nil
 }
 
 // NewTime creates a Time from a standard time.Time.

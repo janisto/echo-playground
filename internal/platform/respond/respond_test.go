@@ -1094,11 +1094,12 @@ func TestRecoverer_CommittedResponse(t *testing.T) {
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
+	defer func() {
+		if err, ok := recover().(error); !ok || !errors.Is(err, http.ErrAbortHandler) {
+			t.Fatalf("expected http.ErrAbortHandler, got %v", err)
+		}
+	}()
 	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 (committed), got %d", rec.Code)
-	}
 }
 
 func TestHTTPErrorHandler_CommittedResponse(t *testing.T) {

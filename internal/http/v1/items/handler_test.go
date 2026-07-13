@@ -64,6 +64,23 @@ func TestListItems_CustomLimit(t *testing.T) {
 	}
 }
 
+func TestListItems_RepeatedLimitUsesFirstValue(t *testing.T) {
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=2&limit=5", nil)
+	rec := httptest.NewRecorder()
+	setupEcho().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var data ListData
+	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(data.Items) != 2 {
+		t.Fatalf("expected first repeated limit value to win, got %d items", len(data.Items))
+	}
+}
+
 func TestListItems_FilterCategory(t *testing.T) {
 	e := setupEcho()
 
@@ -128,6 +145,42 @@ func TestListItems_CursorTypeMismatch(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor="+cursor, nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListItems_RejectsEmptyCursorType(t *testing.T) {
+	cursor := pagination.Cursor{Value: "item-001"}.Encode()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor="+cursor, nil)
+	rec := httptest.NewRecorder()
+	setupEcho().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListItems_RejectsOversizedCursor(t *testing.T) {
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/items?cursor="+strings.Repeat("a", 2049),
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	setupEcho().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rec.Code)
+	}
+}
+
+func TestListItems_RejectsUnknownQuery(t *testing.T) {
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limti=5", nil)
+	rec := httptest.NewRecorder()
+	setupEcho().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)

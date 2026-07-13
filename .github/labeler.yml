@@ -23,6 +23,21 @@ documentation:
           - '.github/**/*.md'
           - '.agents/**/*.md'
 
+# Build, quality, container, and repository automation
+tooling:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'Justfile'
+          - 'go.mod'
+          - 'go.sum'
+          - 'functions/go.mod'
+          - 'functions/go.sum'
+          - '.golangci.yml'
+          - 'Dockerfile'
+          - '.dockerignore'
+          - 'firebase.json'
+          - '.github/workflows/**'
+
 # Branch-name based labels
 feature:
   - head-branch: ['^feature', 'feature']

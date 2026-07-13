@@ -15,6 +15,7 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/auth"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
+	testfake "github.com/janisto/echo-playground/internal/testutil/fake"
 )
 
 func testApplication(t *testing.T, timeout time.Duration) *echo.Echo {
@@ -25,8 +26,8 @@ func testApplication(t *testing.T, timeout time.Duration) *echo.Echo {
 	}
 	cfg.RequestTimeout = timeout
 	return newEcho(cfg, zap.NewNop(), &applicationClients{
-		verifier: &auth.MockVerifier{User: auth.TestUser()},
-		profiles: profilesvc.NewMockStore(),
+		verifier: &testfake.MockVerifier{User: testfake.TestUser()},
+		profiles: testfake.NewProfileStore(),
 	})
 }
 
@@ -116,6 +117,10 @@ func TestNewFirebaseClientsOfflineMode(t *testing.T) {
 	_, err = clients.verifier.Verify(t.Context(), "token")
 	if !errors.Is(err, auth.ErrAuthUnavailable) {
 		t.Fatalf("expected ErrAuthUnavailable, got %v", err)
+	}
+	_, err = clients.profiles.Get(t.Context(), "user")
+	if !errors.Is(err, profilesvc.ErrUnavailable) {
+		t.Fatalf("expected ErrUnavailable, got %v", err)
 	}
 	if err := clients.Close(); err != nil {
 		t.Fatalf("close offline clients: %v", err)

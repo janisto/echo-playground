@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -45,18 +46,46 @@ func TestSetupEmulator(t *testing.T) {
 	}
 }
 
-func TestSuccessfulResponseError(t *testing.T) {
-	if err := successfulResponseError(&http.Response{StatusCode: http.StatusNoContent}, "cleanup"); err != nil {
+func TestUnexpectedStatusError(t *testing.T) {
+	if err := unexpectedStatusError(
+		&http.Response{StatusCode: http.StatusNoContent},
+		http.StatusNoContent,
+	); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
 
-	err := successfulResponseError(&http.Response{
+	err := unexpectedStatusError(&http.Response{
 		StatusCode: http.StatusInternalServerError,
-		Status:     "500 Internal Server Error",
-		Body:       io.NopCloser(strings.NewReader("emulator failed")),
-	}, "cleanup")
-	if err == nil || !strings.Contains(err.Error(), "cleanup: unexpected status 500") ||
-		!strings.Contains(err.Error(), "emulator failed") {
-		t.Fatalf("unexpected error: %v", err)
+		Body:       io.NopCloser(strings.NewReader(strings.Repeat("x", 9<<10))),
+	}, http.StatusOK)
+	if err == nil || !strings.HasPrefix(err.Error(), "status 500: ") ||
+		len(err.Error()) != len("status 500: ")+(8<<10) {
+		t.Fatalf("unexpected bounded error: %v", err)
 	}
+
+	err = unexpectedStatusError(&http.Response{
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(errorReader{}),
+	}, http.StatusOK)
+	if err == nil || err.Error() != "status 502; read response: read failed" {
+		t.Fatalf("unexpected read error: %v", err)
+	}
+}
+
+func TestDecodeSignUpResponse(t *testing.T) {
+	result, err := decodeSignUpResponse(strings.NewReader(`{"idToken":"token","localId":"user"}`))
+	if err != nil || result.IDToken != "token" || result.LocalID != "user" {
+		t.Fatalf("unexpected result=%#v error=%v", result, err)
+	}
+	for _, body := range []string{`{}`, `{"idToken":"token"}`, `{"localId":"user"}`} {
+		if _, err := decodeSignUpResponse(strings.NewReader(body)); err == nil {
+			t.Fatalf("expected incomplete identity error for %s", body)
+		}
+	}
+}
+
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("read failed")
 }
