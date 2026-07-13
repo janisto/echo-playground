@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -19,6 +20,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.FirebaseProject != "demo-test-project" {
 		t.Fatalf("unexpected project %q", cfg.FirebaseProject)
 	}
+	if cfg.FirebaseMode != firebaseModeOffline || cfg.Environment != environmentDevelopment {
+		t.Fatalf("unexpected Firebase defaults: %#v", cfg)
+	}
 	if cfg.LogLevel != zapcore.InfoLevel || cfg.IPExtractor != "direct" {
 		t.Fatalf("unexpected defaults: %#v", cfg)
 	}
@@ -32,6 +36,7 @@ func TestLoadConfigValues(t *testing.T) {
 		"HOST":                "127.0.0.1",
 		"PORT":                "9090",
 		"APP_ENVIRONMENT":     "staging",
+		"FIREBASE_MODE":       "live",
 		"FIREBASE_PROJECT_ID": "project-1",
 		"LOG_LEVEL":           "debug",
 		"IP_EXTRACTOR":        "xff",
@@ -55,34 +60,57 @@ func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 		match  string
 	}{
 		{name: "port", values: map[string]string{"PORT": "0"}, match: "PORT"},
+		{name: "environment", values: map[string]string{"APP_ENVIRONMENT": "prod"}, match: "APP_ENVIRONMENT"},
 		{name: "log level", values: map[string]string{"LOG_LEVEL": "verbose"}, match: "LOG_LEVEL"},
+		{name: "terminating log level", values: map[string]string{"LOG_LEVEL": "fatal"}, match: "LOG_LEVEL"},
 		{name: "IP extractor", values: map[string]string{"IP_EXTRACTOR": "forwarded"}, match: "IP_EXTRACTOR"},
 		{
 			name:   "project outside development",
 			values: map[string]string{"APP_ENVIRONMENT": "production"},
-			match:  "FIREBASE_PROJECT_ID",
+			match:  "offline is allowed only in development",
 		},
 		{
 			name: "demo project outside development",
 			values: map[string]string{
-				"APP_ENVIRONMENT": "production", "FIREBASE_PROJECT_ID": "demo-test-project",
+				"APP_ENVIRONMENT": "production", "FIREBASE_MODE": "live", "FIREBASE_PROJECT_ID": "demo-test-project",
 			},
-			match: "demo Firebase projects",
+			match: "rejects demo-*",
 		},
 		{
-			name:   "partial emulator configuration",
-			values: map[string]string{"FIREBASE_AUTH_EMULATOR_HOST": "127.0.0.1:7110"},
-			match:  "configured together",
+			name: "partial emulator configuration",
+			values: map[string]string{
+				"FIREBASE_MODE": "emulator", "FIREBASE_AUTH_EMULATOR_HOST": "127.0.0.1:7110",
+			},
+			match: "configured together",
 		},
 		{
 			name: "emulators outside development",
 			values: map[string]string{
 				"APP_ENVIRONMENT":             "production",
-				"FIREBASE_PROJECT_ID":         "prod-project",
+				"FIREBASE_MODE":               "emulator",
+				"FIREBASE_PROJECT_ID":         "demo-project",
 				"FIREBASE_AUTH_EMULATOR_HOST": "127.0.0.1:7110",
 				"FIRESTORE_EMULATOR_HOST":     "127.0.0.1:7130",
 			},
-			match: "emulators are allowed only in development",
+			match: "emulator is allowed only in development",
+		},
+		{
+			name: "emulator URL",
+			values: map[string]string{
+				"FIREBASE_MODE":               "emulator",
+				"FIREBASE_AUTH_EMULATOR_HOST": "http://127.0.0.1:7110",
+				"FIRESTORE_EMULATOR_HOST":     "127.0.0.1:7130",
+			},
+			match: "host:port",
+		},
+		{
+			name: "emulator surrounding whitespace",
+			values: map[string]string{
+				"FIREBASE_MODE":               "emulator",
+				"FIREBASE_AUTH_EMULATOR_HOST": " 127.0.0.1:7110",
+				"FIRESTORE_EMULATOR_HOST":     "127.0.0.1:7130",
+			},
+			match: "whitespace",
 		},
 	}
 	for _, tt := range tests {
@@ -95,16 +123,30 @@ func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-func TestNewStartConfig(t *testing.T) {
+func TestLoadConfigEmulator(t *testing.T) {
+	values := map[string]string{
+		"FIREBASE_MODE":               "emulator",
+		"FIREBASE_PROJECT_ID":         "demo-local",
+		"FIREBASE_AUTH_EMULATOR_HOST": "[::1]:7110",
+		"FIRESTORE_EMULATOR_HOST":     "firestore:7130",
+	}
+	cfg, err := loadConfig(func(key string) string { return values[key] })
+	if err != nil {
+		t.Fatalf("load emulator config: %v", err)
+	}
+	if cfg.FirebaseMode != firebaseModeEmulator || cfg.FirebaseProject != "demo-local" {
+		t.Fatalf("unexpected emulator config: %#v", cfg)
+	}
+}
+
+func TestNewServer(t *testing.T) {
 	cfg, err := loadConfig(func(string) string { return "" })
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	sc := newStartConfig(cfg)
-	if !sc.HideBanner || !sc.HidePort {
-		t.Fatal("expected duplicate Echo startup output to be hidden")
-	}
-	if sc.GracefulTimeout != 10*time.Second {
-		t.Fatalf("unexpected graceful timeout %s", sc.GracefulTimeout)
+	server := newServer(cfg, echo.New())
+	if server.Addr != cfg.Address || server.ReadTimeout != 5*time.Second ||
+		server.WriteTimeout != 10*time.Second || server.MaxHeaderBytes != 64<<10 {
+		t.Fatalf("unexpected server: %#v", server)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 	"github.com/janisto/echo-playground/internal/testutil"
+	testfake "github.com/janisto/echo-playground/internal/testutil/fake"
 )
 
 func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo {
@@ -40,8 +41,8 @@ func setupTestServerWithLogger(verifier auth.Verifier, svc profilesvc.Service, l
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
@@ -62,8 +63,8 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestHelloGetEndpoint(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/hello", nil)
@@ -76,8 +77,8 @@ func TestHelloGetEndpoint(t *testing.T) {
 }
 
 func TestHelloPostEndpoint(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	body := `{"name":"Integration"}`
@@ -92,8 +93,8 @@ func TestHelloPostEndpoint(t *testing.T) {
 }
 
 func TestItemsEndpoint(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/items?limit=5", nil)
@@ -111,8 +112,8 @@ func TestItemsEndpoint(t *testing.T) {
 }
 
 func TestNotFoundReturns404(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/nonexistent", nil)
@@ -136,8 +137,8 @@ func TestNotFoundReturns404(t *testing.T) {
 }
 
 func TestMethodNotAllowedReturns405(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/hello", nil)
@@ -158,8 +159,8 @@ func TestMethodNotAllowedReturns405(t *testing.T) {
 }
 
 func TestRequestIDHeader(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
@@ -178,8 +179,8 @@ func TestRequestIDHeader(t *testing.T) {
 }
 
 func TestInvalidRequestIDIsReplaced(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
@@ -199,8 +200,8 @@ func TestInvalidRequestIDIsReplaced(t *testing.T) {
 func TestObservabilityCorrelatesHandlerAndAccessLogs(t *testing.T) {
 	core, recorded := observer.New(zapcore.InfoLevel)
 	logger := zap.New(core)
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServerWithLogger(verifier, svc, logger)
 
 	const (
@@ -226,8 +227,8 @@ func TestObservabilityCorrelatesHandlerAndAccessLogs(t *testing.T) {
 }
 
 func TestProfileRequiresAuth(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/profile", nil)
@@ -240,8 +241,8 @@ func TestProfileRequiresAuth(t *testing.T) {
 }
 
 func TestProfileCRUD(t *testing.T) {
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServer(verifier, svc)
 
 	// Create.
@@ -296,8 +297,8 @@ func TestProfileCRUD(t *testing.T) {
 func TestPanicRecovery(t *testing.T) {
 	core, recorded := observer.New(zapcore.DebugLevel)
 	logger := zap.New(core)
-	verifier := &auth.MockVerifier{User: auth.TestUser()}
-	svc := profilesvc.NewMockStore()
+	verifier := &testfake.MockVerifier{User: testfake.TestUser()}
+	svc := testfake.NewProfileStore()
 	e := setupTestServerWithLogger(verifier, svc, logger)
 
 	e.GET("/panic", func(_ *echo.Context) error {

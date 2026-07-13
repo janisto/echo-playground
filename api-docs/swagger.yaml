@@ -185,6 +185,7 @@ paths:
   /hello:
     get:
       description: Returns a hello greeting
+      operationId: getHello
       responses:
         "200":
           content:
@@ -200,6 +201,7 @@ paths:
       - hello
     post:
       description: Creates a personalized greeting
+      operationId: createHello
       requestBody:
         content:
           application/json:
@@ -261,11 +263,13 @@ paths:
   /items:
     get:
       description: Returns a paginated list of items with optional category filtering
+      operationId: listItems
       parameters:
       - description: Pagination cursor
         in: query
         name: cursor
         schema:
+          maxLength: 2048
           type: string
       - description: Items per page
         in: query
@@ -325,6 +329,7 @@ paths:
   /profile:
     delete:
       description: Deletes the authenticated user's profile
+      operationId: deleteProfile
       responses:
         "204":
           description: No Content
@@ -371,6 +376,7 @@ paths:
       - profile
     get:
       description: Returns the authenticated user's profile
+      operationId: getProfile
       responses:
         "200":
           content:
@@ -424,6 +430,7 @@ paths:
       - profile
     patch:
       description: Partially updates the authenticated user's profile
+      operationId: updateProfile
       requestBody:
         content:
           application/json:
@@ -522,6 +529,7 @@ paths:
       - profile
     post:
       description: Creates a new user profile
+      operationId: createProfile
       requestBody:
         content:
           application/json:

@@ -29,32 +29,155 @@ func TestGeneratedOpenAPIContract(t *testing.T) {
 	}
 
 	paths := requireObject(t, document["paths"])
-	hello := requireObject(t, paths["/hello"])
-	post := requireObject(t, hello["post"])
-	responses := requireObject(t, post["responses"])
-	if _, ok := responses["200"]; !ok {
-		t.Fatalf("POST /hello does not document 200: %#v", responses)
+	expected := map[string]map[string]operationContract{
+		"/hello": {
+			"get": {id: "getHello", statuses: []string{"200"}, successStatus: "200"},
+			"post": {
+				id:            "createHello",
+				statuses:      []string{"200", "400", "413", "415", "422"},
+				requestBody:   true,
+				successStatus: "200",
+			},
+		},
+		"/items": {
+			"get": {id: "listItems", statuses: []string{"200", "400", "422"}, successStatus: "200", header: "Link"},
+		},
+		"/profile": {
+			"post": {
+				id: "createProfile", statuses: []string{"201", "400", "401", "409", "413", "415", "422", "500", "503"},
+				secured: true, requestBody: true, successStatus: "201", header: "Location",
+			},
+			"get": {
+				id:            "getProfile",
+				statuses:      []string{"200", "401", "404", "500", "503"},
+				secured:       true,
+				successStatus: "200",
+			},
+			"patch": {
+				id: "updateProfile", statuses: []string{"200", "400", "401", "404", "413", "415", "422", "500", "503"},
+				secured: true, requestBody: true, successStatus: "200",
+			},
+			"delete": {
+				id:            "deleteProfile",
+				statuses:      []string{"204", "401", "404", "500", "503"},
+				secured:       true,
+				successStatus: "204",
+			},
+		},
 	}
-	badRequest := requireObject(t, responses["400"])
-	content := requireObject(t, badRequest["content"])
-	if _, ok := content["application/problem+json"]; !ok {
-		t.Fatalf("400 response lacks application/problem+json: %#v", content)
-	}
-	for _, status := range []string{"413", "415"} {
-		if _, ok := responses[status]; !ok {
-			t.Fatalf("POST /hello does not document %s: %#v", status, responses)
-		}
-	}
-
-	profile := requireObject(t, paths["/profile"])
-	for _, method := range []string{"get", "post", "patch", "delete"} {
-		operation := requireObject(t, profile[method])
-		operationResponses := requireObject(t, operation["responses"])
-		if _, ok := operationResponses["503"]; !ok {
-			t.Fatalf("%s /profile does not document 503: %#v", method, operationResponses)
-		}
-	}
+	assertExactOperations(t, paths, expected)
 	assertProblemMediaTypes(t, paths)
+}
+
+type operationContract struct {
+	id            string
+	statuses      []string
+	secured       bool
+	requestBody   bool
+	successStatus string
+	header        string
+}
+
+func assertExactOperations(t *testing.T, paths map[string]any, expected map[string]map[string]operationContract) {
+	t.Helper()
+	if !reflect.DeepEqual(sortedKeys(paths), sortedKeys(expected)) {
+		t.Fatalf("paths = %v, want %v", sortedKeys(paths), sortedKeys(expected))
+	}
+	operationIDs := make(map[string]string)
+	for pathName, methods := range expected {
+		path := requireObject(t, paths[pathName])
+		if !reflect.DeepEqual(sortedKeys(path), sortedKeys(methods)) {
+			t.Fatalf("%s methods = %v, want %v", pathName, sortedKeys(path), sortedKeys(methods))
+		}
+		for method, contract := range methods {
+			operation := requireObject(t, path[method])
+			if operation["operationId"] != contract.id {
+				t.Fatalf("%s %s operationId = %v, want %q", method, pathName, operation["operationId"], contract.id)
+			}
+			if previous, exists := operationIDs[contract.id]; exists {
+				t.Fatalf("duplicate operationId %q on %s and %s %s", contract.id, previous, method, pathName)
+			}
+			operationIDs[contract.id] = method + " " + pathName
+
+			responses := requireObject(t, operation["responses"])
+			if !reflect.DeepEqual(sortedKeys(responses), contract.statuses) {
+				t.Fatalf("%s %s statuses = %v, want %v", method, pathName, sortedKeys(responses), contract.statuses)
+			}
+			assertSecurity(t, method, pathName, operation, contract.secured)
+			assertRequestBody(t, method, pathName, operation, contract.requestBody)
+			assertSuccessResponse(t, method, pathName, responses, contract)
+		}
+	}
+}
+
+func assertSecurity(t *testing.T, method, path string, operation map[string]any, secured bool) {
+	t.Helper()
+	security, exists := operation["security"]
+	if !secured {
+		if exists {
+			t.Fatalf("%s %s unexpectedly has security: %#v", method, path, security)
+		}
+		return
+	}
+	requirements, ok := security.([]any)
+	if !ok || len(requirements) != 1 {
+		t.Fatalf("%s %s security = %#v", method, path, security)
+	}
+	requirement := requireObject(t, requirements[0])
+	if !reflect.DeepEqual(sortedKeys(requirement), []string{"BearerAuth"}) {
+		t.Fatalf("%s %s security = %#v", method, path, security)
+	}
+}
+
+func assertRequestBody(t *testing.T, method, path string, operation map[string]any, expected bool) {
+	t.Helper()
+	requestBody, exists := operation["requestBody"]
+	if !expected {
+		if exists {
+			t.Fatalf("%s %s unexpectedly has request body", method, path)
+		}
+		return
+	}
+	content := requireObject(t, requireObject(t, requestBody)["content"])
+	if !reflect.DeepEqual(sortedKeys(content), []string{"application/json"}) {
+		t.Fatalf("%s %s request media = %v", method, path, sortedKeys(content))
+	}
+}
+
+func assertSuccessResponse(
+	t *testing.T,
+	method, path string,
+	responses map[string]any,
+	contract operationContract,
+) {
+	t.Helper()
+	response := requireObject(t, responses[contract.successStatus])
+	if contract.successStatus == "204" {
+		if _, exists := response["content"]; exists {
+			t.Fatalf("%s %s 204 unexpectedly has content", method, path)
+		}
+	} else {
+		content := requireObject(t, response["content"])
+		want := []string{"application/cbor", "application/json"}
+		if !reflect.DeepEqual(sortedKeys(content), want) {
+			t.Fatalf("%s %s success media = %v, want %v", method, path, sortedKeys(content), want)
+		}
+	}
+	if contract.header != "" {
+		headers := requireObject(t, response["headers"])
+		if _, exists := headers[contract.header]; !exists {
+			t.Fatalf("%s %s lacks %s header", method, path, contract.header)
+		}
+	}
+}
+
+func sortedKeys[T any](values map[string]T) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func assertProblemMediaTypes(t *testing.T, paths map[string]any) {

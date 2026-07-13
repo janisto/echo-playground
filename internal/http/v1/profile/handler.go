@@ -28,6 +28,7 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 // handleCreateProfile godoc
 //
 //	@Summary		Create profile
+//	@ID				createProfile
 //	@Description	Creates a new user profile
 //	@Tags			profile
 //	@Produce		json,application/cbor
@@ -68,7 +69,7 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 			Marketing:   input.Marketing,
 		})
 		if err != nil {
-			return mapServiceError(ctx, err)
+			return mapServiceError(ctx, "create profile", err)
 		}
 
 		c.Response().Header().Set("Location", c.Request().URL.Path)
@@ -79,6 +80,7 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 // handleGetProfile godoc
 //
 //	@Summary		Get profile
+//	@ID				getProfile
 //	@Description	Returns the authenticated user's profile
 //	@Tags			profile
 //	@Produce		json,application/cbor
@@ -99,7 +101,7 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 		ctx := c.Request().Context()
 		profile, err := svc.Get(ctx, user.UID)
 		if err != nil {
-			return mapServiceError(ctx, err)
+			return mapServiceError(ctx, "get profile", err)
 		}
 
 		return respond.Negotiate(c, http.StatusOK, toHTTPProfile(profile))
@@ -109,6 +111,7 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 // handleUpdateProfile godoc
 //
 //	@Summary		Update profile
+//	@ID				updateProfile
 //	@Description	Partially updates the authenticated user's profile
 //	@Tags			profile
 //	@Produce		json,application/cbor
@@ -151,7 +154,7 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 			Marketing:   input.Marketing,
 		})
 		if err != nil {
-			return mapServiceError(ctx, err)
+			return mapServiceError(ctx, "update profile", err)
 		}
 
 		return respond.Negotiate(c, http.StatusOK, toHTTPProfile(profile))
@@ -161,6 +164,7 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 // handleDeleteProfile godoc
 //
 //	@Summary		Delete profile
+//	@ID				deleteProfile
 //	@Description	Deletes the authenticated user's profile
 //	@Tags			profile
 //	@Produce		json,application/cbor
@@ -180,14 +184,14 @@ func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
 
 		ctx := c.Request().Context()
 		if err := svc.Delete(ctx, user.UID); err != nil {
-			return mapServiceError(ctx, err)
+			return mapServiceError(ctx, "delete profile", err)
 		}
 
 		return c.NoContent(http.StatusNoContent)
 	}
 }
 
-func mapServiceError(ctx context.Context, err error) error {
+func mapServiceError(ctx context.Context, operation string, err error) error {
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return respond.Error503("request deadline exceeded")
@@ -197,8 +201,11 @@ func mapServiceError(ctx context.Context, err error) error {
 		return respond.Error404(profilesvc.ErrNotFound.Error())
 	case errors.Is(err, profilesvc.ErrAlreadyExists):
 		return respond.Error409(profilesvc.ErrAlreadyExists.Error())
+	case errors.Is(err, profilesvc.ErrUnavailable):
+		obs.Logger(ctx).Warn("profile dependency unavailable", zap.String("operation", operation))
+		return respond.Error503("profile service temporarily unavailable")
 	default:
-		obs.Logger(ctx).Error("unexpected service error", zap.Error(err))
+		obs.Logger(ctx).Error("unexpected service error", zap.String("operation", operation), zap.Error(err))
 		return respond.Error500("internal error")
 	}
 }

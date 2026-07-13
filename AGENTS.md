@@ -65,33 +65,37 @@ Echo Playground is a minimal REST API skeleton built with [Echo v5](https://gith
 The project includes a `Justfile` for common development tasks. Run `just` to list available commands.
 
 Key recipes:
-- `just build` - Build the application
+- `just build` - Build both Go modules
 - `just run` - Run the server
-- `just test` - Run all tests
+- `just test` - Test both Go modules
 - `just coverage` - Run tests and generate coverage report
-- `just lint` - Run linter
-- `just fmt` - Apply formatters
-- `just fix` - Run linter and apply formatters
-- `just check` - Full check (build + test + lint)
-- `just check-all` - Build, test, and lint both Go modules
+- `just lint` - Lint both Go modules
+- `just fmt` - Format both Go modules
+- `just fix` - Run lint fixes for both Go modules
+- `just check` - Whole-repository format, lint, build, and test check (`check-all` is a compatibility alias)
 - `just functions-check` - Build, test, and lint the separate function module
-- `just test-race` / `just functions-test-race` - Race-test each module
+- `just test-race` - Race-test both modules
 - `just qa` - Quality assurance (tidy + fix + build + test)
-- `just vuln` - Check for vulnerabilities
+- `just vuln` - Check both modules for vulnerabilities
 - `just functions-vuln` - Check the function module for vulnerabilities
 - `just update` - Update root dependencies, root Go tools, and the function module
 - `just functions-update` - Update only the function module
 - `just install` - Download module dependencies (alias for download)
 - `just fresh` - Recreate the root module from clean state
 - `just emulators` - Start Firebase emulators (Auth + Firestore)
+- `just test-integration-ci` - Require emulators and generate separate integration coverage
+- `just functions-smoke` / `just container-smoke` - Probe the registered function and final image
+- `just fmt-check` / `just tidy-check` / `just modernize-check` / `just workflow-check` - Non-mutating quality gates
 - `just docs` - Generate OpenAPI 3.1 spec (alias for gen-openapi)
 - `just gen-openapi` - Generate OpenAPI 3.1 spec
 - `just fmt-openapi` - Format swag annotations
 
 The Justfile uses `set dotenv-load` so all recipes automatically load `.env`. The `.env` sets `GOTOOLCHAIN` to pin the Go version, preventing automatic upgrades from a newer local Go installation. Always prefer `just` recipes over raw `go` or `golangci-lint` commands.
 
-Emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`) are **commented out by default** in `.env`. These are only needed when running the server locally against emulators. Tests use hardcoded emulator addresses via `internal/testutil` and auto-skip when emulators are unreachable. CI sets `REQUIRE_FIREBASE_EMULATORS=1`, which makes missing emulators a hard failure.
-The application rejects both emulator variables outside development because Firebase Auth emulator mode accepts unsigned test tokens.
+`FIREBASE_MODE` is `offline`, `emulator`, or `live`. Offline and emulator modes are development-only. Emulator mode
+requires both strict `host:port` variables and a `demo-*` project; live mode requires a non-demo project and rejects
+emulator hosts. Tests use hardcoded emulator addresses via `internal/testutil` and auto-skip when unreachable. CI sets
+`REQUIRE_FIREBASE_EMULATORS=1`, which makes missing emulators a hard failure.
 
 ---
 
@@ -323,8 +327,8 @@ func getHandler(c *echo.Context) error {
 
 ### Input Binding and Validation
 
-Use a source-specific decoder plus `c.Validate()`. Use `request.DecodeJSON` for JSON bodies,
-`echo.BindQueryParams` for query DTOs, and the corresponding path binder for path DTOs. Avoid
+Use a source-specific decoder plus `c.Validate()`. Use `request.DecodeJSON` for exactly one top-level JSON object,
+`request.RejectUnknownQuery` before `echo.BindQueryParams` for closed query contracts, and the corresponding path binder for path DTOs. Avoid
 generic `c.Bind`, which can merge multiple sources.
 
 ```go
@@ -514,7 +518,8 @@ All errors use RFC 9457 Problem Details format:
 
 ### Pagination
 
-Use cursor-based pagination via `internal/platform/pagination`. Invalid cursors must return 400 Bad Request per JSON:API cursor pagination best practices.
+Use cursor-based pagination via `internal/platform/pagination`. Bound cursor input length. Every non-empty cursor must
+carry the exact endpoint type; malformed, empty-type, cross-endpoint, and stale cursors return 400 Bad Request.
 
 Links provided via HTTP `Link` header per RFC 8288.
 
@@ -636,6 +641,7 @@ Validate the module independently with `just functions-check`, `just functions-t
 - **NEVER add test-related code to production code.** No `if testing` branches, no test flags, no mock injection points.
 - If code is not unit testable, refactor it. Use dependency injection, extract interfaces, or restructure. Do not pollute production code with test scaffolding.
 - Tests belong in `*_test.go` files; production code must remain test-agnostic.
+- Reusable application-boundary fakes live under `internal/testutil/fake`; production packages do not export mocks.
 
 ---
 
@@ -646,6 +652,7 @@ Validate the module independently with `just functions-check`, `just functions-t
 - Don't log secrets or PII; ensure logs redact sensitive fields.
 - Typical env vars:
   - `FIREBASE_PROJECT_ID` (`demo-test-project` is the local development default)
+  - `FIREBASE_MODE` (`offline`, `emulator`, or `live`)
   - `FIRESTORE_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
   - `FIREBASE_AUTH_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
   - `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON; uses ADC if not set)

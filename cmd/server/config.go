@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -11,13 +12,21 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const environmentDevelopment = "development"
+const (
+	environmentDevelopment = "development"
+	environmentStaging     = "staging"
+	environmentProduction  = "production"
+
+	firebaseModeOffline  = "offline"
+	firebaseModeEmulator = "emulator"
+	firebaseModeLive     = "live"
+)
 
 type config struct {
 	Address           string
 	Environment       string
 	FirebaseProject   string
-	FirebaseEmulators bool
+	FirebaseMode      string
 	IPExtractor       string
 	LogLevel          zapcore.Level
 	RequestTimeout    time.Duration
@@ -29,38 +38,45 @@ type config struct {
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
-	host := valueOrDefault(getenv("HOST"), "0.0.0.0")
-	port := valueOrDefault(getenv("PORT"), "8080")
+	host := valueOrDefault(strings.TrimSpace(getenv("HOST")), "0.0.0.0")
+	port := valueOrDefault(strings.TrimSpace(getenv("PORT")), "8080")
 	portNumber, err := strconv.Atoi(port)
 	if err != nil || portNumber < 1 || portNumber > 65535 {
 		return config{}, errors.New("PORT must be an integer from 1 to 65535")
 	}
 
-	environment := valueOrDefault(getenv("APP_ENVIRONMENT"), environmentDevelopment)
-	projectID := strings.TrimSpace(getenv("FIREBASE_PROJECT_ID"))
-	if projectID == "" {
-		if environment != environmentDevelopment {
-			return config{}, errors.New("FIREBASE_PROJECT_ID is required outside development")
-		}
-		projectID = "demo-test-project"
-	}
-	if environment != environmentDevelopment && strings.HasPrefix(projectID, "demo-") {
-		return config{}, errors.New("demo Firebase projects are allowed only in development")
-	}
-	authEmulator := getenv("FIREBASE_AUTH_EMULATOR_HOST") != ""
-	firestoreEmulator := getenv("FIRESTORE_EMULATOR_HOST") != ""
-	if authEmulator != firestoreEmulator {
-		return config{}, errors.New(
-			"FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST must be configured together",
-		)
-	}
-	if environment != environmentDevelopment && authEmulator {
-		return config{}, errors.New("firebase emulators are allowed only in development")
+	environment := valueOrDefault(strings.TrimSpace(getenv("APP_ENVIRONMENT")), environmentDevelopment)
+	switch environment {
+	case environmentDevelopment, environmentStaging, environmentProduction:
+	default:
+		return config{}, errors.New("APP_ENVIRONMENT must be development, staging, or production")
 	}
 
+	mode := valueOrDefault(strings.TrimSpace(getenv("FIREBASE_MODE")), firebaseModeOffline)
+	projectID := strings.TrimSpace(getenv("FIREBASE_PROJECT_ID"))
+	authEmulatorRaw := getenv("FIREBASE_AUTH_EMULATOR_HOST")
+	firestoreEmulatorRaw := getenv("FIRESTORE_EMULATOR_HOST")
+	authEmulator := strings.TrimSpace(authEmulatorRaw)
+	firestoreEmulator := strings.TrimSpace(firestoreEmulatorRaw)
+	if authEmulator != authEmulatorRaw || firestoreEmulator != firestoreEmulatorRaw {
+		return config{}, errors.New("firebase emulator hosts must not contain leading or trailing whitespace")
+	}
+	if err := validateFirebaseConfig(environment, mode, projectID, authEmulator, firestoreEmulator); err != nil {
+		return config{}, err
+	}
+	if projectID == "" && mode != firebaseModeLive {
+		projectID = "demo-test-project"
+	}
+
+	levelName := valueOrDefault(strings.TrimSpace(getenv("LOG_LEVEL")), "info")
+	switch levelName {
+	case "debug", "info", "warn", "error":
+	default:
+		return config{}, errors.New("LOG_LEVEL must be debug, info, warn, or error")
+	}
 	var level zapcore.Level
-	if err := level.UnmarshalText([]byte(valueOrDefault(getenv("LOG_LEVEL"), "info"))); err != nil {
-		return config{}, fmt.Errorf("LOG_LEVEL must be debug, info, warn, or error: %w", err)
+	if err := level.UnmarshalText([]byte(levelName)); err != nil {
+		return config{}, fmt.Errorf("parse LOG_LEVEL: %w", err)
 	}
 
 	ipExtractor := valueOrDefault(getenv("IP_EXTRACTOR"), "direct")
@@ -72,7 +88,7 @@ func loadConfig(getenv func(string) string) (config, error) {
 		Address:           net.JoinHostPort(host, port),
 		Environment:       environment,
 		FirebaseProject:   projectID,
-		FirebaseEmulators: authEmulator && firestoreEmulator,
+		FirebaseMode:      mode,
 		IPExtractor:       ipExtractor,
 		LogLevel:          level,
 		RequestTimeout:    8 * time.Second,
@@ -82,6 +98,66 @@ func loadConfig(getenv func(string) string) (config, error) {
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}, nil
+}
+
+func validateFirebaseConfig(environment, mode, projectID, authEmulator, firestoreEmulator string) error {
+	if (authEmulator == "") != (firestoreEmulator == "") {
+		return errors.New("FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST must be configured together")
+	}
+	switch mode {
+	case firebaseModeOffline:
+		if environment != environmentDevelopment {
+			return errors.New("FIREBASE_MODE=offline is allowed only in development")
+		}
+		if authEmulator != "" {
+			return errors.New("firebase emulator hosts require FIREBASE_MODE=emulator")
+		}
+	case firebaseModeEmulator:
+		if environment != environmentDevelopment {
+			return errors.New("FIREBASE_MODE=emulator is allowed only in development")
+		}
+		if authEmulator == "" {
+			return errors.New("FIREBASE_MODE=emulator requires Auth and Firestore emulator hosts")
+		}
+		if err := validateHostPort("FIREBASE_AUTH_EMULATOR_HOST", authEmulator); err != nil {
+			return err
+		}
+		if err := validateHostPort("FIRESTORE_EMULATOR_HOST", firestoreEmulator); err != nil {
+			return err
+		}
+		if projectID != "" && !strings.HasPrefix(projectID, "demo-") {
+			return errors.New("FIREBASE_MODE=emulator requires a demo-* project ID")
+		}
+	case firebaseModeLive:
+		if projectID == "" {
+			return errors.New("FIREBASE_MODE=live requires FIREBASE_PROJECT_ID")
+		}
+		if strings.HasPrefix(projectID, "demo-") {
+			return errors.New("FIREBASE_MODE=live rejects demo-* project IDs")
+		}
+		if authEmulator != "" {
+			return errors.New("FIREBASE_MODE=live rejects emulator hosts")
+		}
+	default:
+		return errors.New("FIREBASE_MODE must be offline, emulator, or live")
+	}
+	return nil
+}
+
+func validateHostPort(name, value string) error {
+	host, port, err := net.SplitHostPort(value)
+	if err != nil || strings.TrimSpace(host) == "" {
+		return fmt.Errorf("%s must use host:port without a URL scheme", name)
+	}
+	endpoint, err := url.Parse("http://" + value)
+	if err != nil || endpoint.Host != value || endpoint.Hostname() != host || endpoint.Port() != port {
+		return fmt.Errorf("%s must contain a valid host and port", name)
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
+		return fmt.Errorf("%s port must be an integer from 1 to 65535", name)
+	}
+	return nil
 }
 
 func valueOrDefault(value, fallback string) string {

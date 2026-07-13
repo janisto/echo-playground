@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/janisto/echo-playground/internal/platform/pagination"
+	"github.com/janisto/echo-playground/internal/platform/request"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 )
 
@@ -21,10 +22,11 @@ func Register(g *echo.Group) {
 // listHandler godoc
 //
 //	@Summary		List items
+//	@ID				listItems
 //	@Description	Returns a paginated list of items with optional category filtering
 //	@Tags			items
 //	@Produce		json,application/cbor
-//	@Param			cursor		query		string	false	"Pagination cursor"
+//	@Param			cursor		query		string	false	"Pagination cursor"	maxlength(2048)
 //	@Param			limit		query		int		false	"Items per page"		minimum(1)	maximum(100)
 //	@Param			category	query		string	false	"Filter by category"	Enums(electronics, tools, accessories, robotics, power, components)
 //	@Success		200			{object}	ListData
@@ -33,6 +35,10 @@ func Register(g *echo.Group) {
 //	@Header			200			{string}	Link	"RFC 8288 pagination links"
 //	@Router			/items [get]
 func listHandler(c *echo.Context) error {
+	if err := request.RejectUnknownQuery(c, "cursor", "limit", "category"); err != nil {
+		return err
+	}
+
 	var input ListInput
 	if err := echo.BindQueryParams(c, &input); err != nil {
 		return err
@@ -51,7 +57,7 @@ func listHandler(c *echo.Context) error {
 		return respond.Error400("invalid cursor format")
 	}
 
-	if cursor.Type != "" && cursor.Type != cursorType {
+	if input.Cursor != "" && cursor.Type != cursorType {
 		return respond.Error400("cursor type mismatch")
 	}
 

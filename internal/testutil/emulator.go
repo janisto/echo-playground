@@ -20,13 +20,15 @@ const (
 	fakeAPIKey            = "fake-api-key" //nolint:gosec // Test-only fake key for emulator
 )
 
+var emulatorHTTPClient = &http.Client{Timeout: 5 * time.Second}
+
 // EmulatorAvailable checks if the Firebase emulators (Auth + Firestore) are reachable.
 func EmulatorAvailable() bool {
 	return emulatorAvailable(AuthEmulatorHost) && emulatorAvailable(FirestoreEmulatorHost)
 }
 
 func emulatorAvailable(host string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", host)
@@ -63,14 +65,7 @@ func ClearAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("failed to clear accounts: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if err := successfulResponseError(resp, "clear Auth emulator accounts"); err != nil {
-		t.Fatal(err)
-	}
+	doEmulatorRequest(t, req, http.StatusOK)
 }
 
 // ClearFirestore removes all documents from the Firestore emulator.
@@ -85,14 +80,7 @@ func ClearFirestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("failed to clear Firestore: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if err := successfulResponseError(resp, "clear Firestore emulator documents"); err != nil {
-		t.Fatal(err)
-	}
+	doEmulatorRequest(t, req, http.StatusOK)
 }
 
 // ClearEmulators clears both Auth accounts and Firestore documents.
@@ -134,29 +122,52 @@ func CreateTestUser(t *testing.T, email, password string) *SignUpResponse {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := emulatorHTTPClient.Do(req)
 	if err != nil {
 		t.Fatalf("failed to create test user: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if err := successfulResponseError(resp, "create Auth emulator user"); err != nil {
-		t.Fatal(err)
+	if statusErr := unexpectedStatusError(resp, http.StatusOK); statusErr != nil {
+		t.Fatalf("create test user: %v", statusErr)
 	}
 
-	var result SignUpResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	result, err := decodeSignUpResponse(resp.Body)
+	if err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	return &result
+	return result
 }
 
-func successfulResponseError(resp *http.Response, operation string) error {
-	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+func doEmulatorRequest(t *testing.T, req *http.Request, expectedStatus int) {
+	t.Helper()
+	resp, err := emulatorHTTPClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", req.Method, req.URL, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err := unexpectedStatusError(resp, expectedStatus); err != nil {
+		t.Fatalf("%s %s: %v", req.Method, req.URL, err)
+	}
+}
+
+func decodeSignUpResponse(r io.Reader) (*SignUpResponse, error) {
+	var result SignUpResponse
+	if err := json.NewDecoder(r).Decode(&result); err != nil {
+		return nil, err
+	}
+	if result.IDToken == "" || result.LocalID == "" {
+		return nil, fmt.Errorf("incomplete identity: token=%t local_id=%q", result.IDToken != "", result.LocalID)
+	}
+	return &result, nil
+}
+
+func unexpectedStatusError(resp *http.Response, expectedStatus int) error {
+	if resp.StatusCode == expectedStatus {
 		return nil
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
 	if err != nil {
-		return fmt.Errorf("%s: unexpected status %s; read response: %w", operation, resp.Status, err)
+		return fmt.Errorf("status %d; read response: %w", resp.StatusCode, err)
 	}
-	return fmt.Errorf("%s: unexpected status %s: %s", operation, resp.Status, string(body))
+	return fmt.Errorf("status %d: %s", resp.StatusCode, body)
 }

@@ -10,6 +10,7 @@ import (
 var (
 	ErrNotFound      = errors.New("profile not found")
 	ErrAlreadyExists = errors.New("profile already exists")
+	ErrUnavailable   = errors.New("profile store unavailable")
 )
 
 // Profile represents stored profile data.

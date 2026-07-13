@@ -2,6 +2,7 @@
 package request
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -23,11 +24,22 @@ func DecodeJSON(c *echo.Context, target any) error {
 	}
 
 	decoder := json.NewDecoder(req.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
 		return echo.ErrBadRequest.Wrap(err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return echo.ErrBadRequest.Wrap(err)
+	}
+
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || raw[0] != '{' {
+		return echo.ErrBadRequest
+	}
+
+	decoder = json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
 		return echo.ErrBadRequest.Wrap(err)
 	}
 	return nil

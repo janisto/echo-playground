@@ -19,7 +19,7 @@ Before analysis, read these files:
 4. `internal/platform/auth/middleware.go` - Authentication middleware and failure logging
 5. `internal/platform/audit/audit.go` - Request-scoped audit logging
 6. `internal/platform/respond/respond.go` - Error handling and panic recovery
-7. `internal/platform/request/json.go` - Strict JSON body decoding
+7. `internal/platform/request/json.go` and `internal/platform/request/query.go` - Strict body and query contracts
 8. All files in `internal/http/v1/` - Endpoint definitions
 9. `internal/service/profile/firestore.go` - Data access and audit-event calls
 10. `go.mod` - echo-observability and other security-relevant dependency versions
@@ -37,11 +37,13 @@ trace correlation, logger field safety, and access-log behavior. Do not assume t
 - [ ] Token validation handles all error cases (expired, revoked, invalid)
 - [ ] `WWW-Authenticate: Bearer` header included in 401 responses
 - [ ] No sensitive operations allowed without verified identity
+- [ ] Successful verification cannot install a nil or blank-UID identity
 
 ### 2. Input Validation & Data Sanitization
 - [ ] All inputs validated via go-playground/validator struct tags with strict types
 - [ ] Path parameters have proper type constraints
 - [ ] Query parameters validated with validate tags
+- [ ] Closed query contracts reject unknown keys and bound cursor length
 - [ ] Request body limits enforced
 - [ ] No raw string interpolation in database queries (prevent injection)
 
@@ -81,7 +83,8 @@ plain local HTTP responses.
 - [ ] Secrets loaded via environment variables
 - [ ] Service account files excluded from version control
 - [ ] Debug mode disabled in production configuration
-- [ ] Firebase emulator variables are rejected outside development
+- [ ] Firebase offline and emulator modes are development-only; live mode rejects demo projects and emulator hosts
+- [ ] Emulator authorities use strict `host:port` values without schemes, whitespace, or invalid ports
 
 ### 7. CORS & Origin Policy
 - [ ] Wildcard CORS is documented as an intentional public-playground policy with credentials disabled
@@ -107,6 +110,7 @@ plain local HTTP responses.
 - [ ] Panic recovery middleware is in place
 - [ ] Panics are logged with stack traces (server-side only)
 - [ ] Panics return proper Problem Details response to client
+- [ ] Panics after response commit re-panic with `http.ErrAbortHandler` to abort partial responses
 - [ ] No sensitive information leaked in panic responses
 
 ### 11. Content Negotiation Security
@@ -123,7 +127,9 @@ plain local HTTP responses.
 
 ### 13. Build, Function, and Supply Chain
 - [ ] The runtime image is non-root and excludes repository-only or sensitive material
+- [ ] OCI version and source revision metadata are not conflated
 - [ ] Workflow permissions are least privilege and every action uses an exact release tag that Dependabot can update
+- [ ] Read-only checkouts disable persisted credentials, workflows pass pinned `actionlint`, and emulator coverage is separate
 - [ ] Ruleset-required `ci` and `lint` aggregate jobs fail unless every internal dependency succeeds
 - [ ] Root and function modules receive independent build, test, lint, race, and vulnerability checks
 - [ ] The function enforces its documented method, media type, body-size, and JSON contracts

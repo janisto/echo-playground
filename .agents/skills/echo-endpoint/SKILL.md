@@ -44,12 +44,13 @@ func getHandler(c *echo.Context) error {
 Bind only the source the endpoint accepts:
 
 - path parameters: `echo.BindPathParams`
-- query parameters: `echo.BindQueryParams`
+- query parameters: reject unknown keys with `request.RejectUnknownQuery`, then use `echo.BindQueryParams`
 - JSON bodies: `request.DecodeJSON`, followed by `c.Validate`
 
-`request.DecodeJSON` enforces `application/json`, known fields, and one JSON value. The composed application middleware
-applies the global 1 MiB body limit. CBOR is response-only. Do not replace the decoder with generic `c.Bind` or add a
-second decoder in a handler.
+`request.DecodeJSON` enforces `application/json`, exactly one top-level object, and known fields. It rejects `null`,
+arrays, scalars, malformed input, and trailing values with 400. The composed application middleware applies the global
+1 MiB body limit. CBOR is response-only. Do not replace the decoder with generic `c.Bind` or add a second decoder in a
+handler.
 
 Use `respond.Negotiate` for response bodies and `c.NoContent` for 204. Set a request-derived `Location` for 201:
 
@@ -62,6 +63,9 @@ Return expected errors with `respond.Error400`, `Error401`, `Error403`, `Error40
 `Error503`. Log unexpected internal errors once, without tokens or PII, then return `Error500`. Do not leak dependency
 errors to clients.
 
+Map temporary service failures to a stable `ErrUnavailable` sentinel and generic 503 response. Preserve cancellation
+and error chains, log dependency failures once with a stable operation name, and keep raw SDK details out of responses.
+
 Use `obs.Logger(c.Request().Context())` only for useful request-scoped events. The access logger already records every
 request. Startup and background work must use the explicit process logger.
 
@@ -70,6 +74,7 @@ request. Startup and background work must use the explicit process logger.
 Add operation annotations to the handler and keep them consistent with runtime behavior:
 
 - `@Produce json,application/cbor` for any endpoint with a response body or negotiated errors.
+- a stable, unique `@ID` for every operation.
 - `@Param body body <Input> true ...` for JSON bodies; omit `@Accept json` because of the tracked swag v2 issue.
 - Document every reachable error status with `respond.ProblemDetails`.
 - Add `@Security BearerAuth` to protected operations.
@@ -92,4 +97,5 @@ just test
 just lint
 ```
 
-Run `just docs` and `just check-all` when the public contract, shared routing, or both modules are affected.
+Run `just docs` when the public contract changes. The unqualified build, test, and lint recipes cover both modules;
+`just check` is the aggregate repository check.

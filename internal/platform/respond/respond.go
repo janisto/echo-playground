@@ -207,7 +207,7 @@ func Recoverer(loggers ...*zap.Logger) echo.MiddlewareFunc {
 
 					resp, unwrapErr := echo.UnwrapResponse(c.Response())
 					if unwrapErr == nil && resp.Committed {
-						return
+						panic(http.ErrAbortHandler)
 					}
 
 					writeProblem(

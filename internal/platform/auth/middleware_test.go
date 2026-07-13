@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,21 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/respond"
 )
 
+type MockVerifier struct {
+	User  *FirebaseUser
+	Error error
+}
+
+func (m *MockVerifier) Verify(context.Context, string) (*FirebaseUser, error) {
+	return m.User, m.Error
+}
+
+func testUser() *FirebaseUser {
+	return &FirebaseUser{UID: "test-user-123"}
+}
+
 func TestMiddleware_Success(t *testing.T) {
-	user := TestUser()
+	user := testUser()
 	verifier := &MockVerifier{User: user}
 
 	e := echo.New()
@@ -45,7 +59,7 @@ func TestMiddleware_Success(t *testing.T) {
 }
 
 func TestMiddleware_MissingAuthHeader(t *testing.T) {
-	verifier := &MockVerifier{User: TestUser()}
+	verifier := &MockVerifier{User: testUser()}
 
 	e := echo.New()
 	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
@@ -153,8 +167,38 @@ func TestMiddleware_AuthDependencyUnavailable(t *testing.T) {
 	}
 }
 
+func TestMiddleware_RejectsMissingIdentity(t *testing.T) {
+	for _, verifier := range []Verifier{
+		&MockVerifier{},
+		&MockVerifier{User: &FirebaseUser{}},
+		&MockVerifier{User: &FirebaseUser{UID: "   "}},
+		nil,
+	} {
+		e := echo.New()
+		e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+		e.Use(Middleware(verifier))
+		handled := false
+		e.GET("/test", func(c *echo.Context) error {
+			handled = true
+			return c.NoContent(http.StatusNoContent)
+		})
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Authorization", "Bearer token")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusServiceUnavailable || handled {
+			t.Fatalf("expected fail-closed 503 without handler, got status=%d handled=%v", rec.Code, handled)
+		}
+		if got := rec.Header().Get("Retry-After"); got != "30" {
+			t.Fatalf("expected Retry-After 30, got %q", got)
+		}
+	}
+}
+
 func TestMiddleware_BadBearerFormat(t *testing.T) {
-	verifier := &MockVerifier{User: TestUser()}
+	verifier := &MockVerifier{User: testUser()}
 
 	e := echo.New()
 	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()

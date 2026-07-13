@@ -3,6 +3,7 @@ package profile
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -20,8 +21,25 @@ func categorizeError(err error) string {
 		return "already_exists"
 	case errors.Is(err, ErrNotFound):
 		return "not_found"
+	case errors.Is(err, ErrUnavailable):
+		return "unavailable"
 	default:
 		return "internal_error"
+	}
+}
+
+func classifyDependencyError(err error) error {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return err
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return errors.Join(ErrUnavailable, err)
+	}
+	switch status.Code(err) {
+	case codes.Aborted, codes.DeadlineExceeded, codes.ResourceExhausted, codes.Unavailable:
+		return errors.Join(ErrUnavailable, err)
+	default:
+		return err
 	}
 }
 
@@ -77,13 +95,18 @@ func (s *FirestoreStore) Create(ctx context.Context, userID string, params Creat
 	now := time.Now().UTC()
 	fp := newFirestoreProfile(params, now)
 	_, err := docRef.Create(ctx, fp)
-	if status.Code(err) == codes.AlreadyExists {
-		err = ErrAlreadyExists
-	}
 	if err != nil {
+		if status.Code(err) == codes.AlreadyExists {
+			err = ErrAlreadyExists
+		} else {
+			err = classifyDependencyError(err)
+		}
 		audit.LogEvent(ctx, "create", userID, "profile", userID, "failure",
 			map[string]any{"error": categorizeError(err)})
-		return nil, err
+		if errors.Is(err, ErrAlreadyExists) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("create profile: %w", err)
 	}
 
 	audit.LogEvent(ctx, "create", userID, "profile", userID, "success", nil)
@@ -99,12 +122,12 @@ func (s *FirestoreStore) Get(ctx context.Context, userID string) (*Profile, erro
 		if status.Code(err) == codes.NotFound {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("get profile: %w", classifyDependencyError(err))
 	}
 
 	var fp firestoreProfile
 	if err := doc.DataTo(&fp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode profile: %w", err)
 	}
 
 	return fp.toProfile(userID), nil
@@ -155,9 +178,13 @@ func (s *FirestoreStore) Update(ctx context.Context, userID string, params Updat
 		return nil
 	})
 	if err != nil {
+		err = classifyDependencyError(err)
 		audit.LogEvent(ctx, "update", userID, "profile", userID, "failure",
 			map[string]any{"error": categorizeError(err)})
-		return nil, err
+		if errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("update profile: %w", err)
 	}
 
 	audit.LogEvent(ctx, "update", userID, "profile", userID, "success", nil)
@@ -185,25 +212,23 @@ func profileUpdates(params UpdateParams, updatedAt time.Time) []firestore.Update
 	return append(updates, firestore.Update{Path: "updated_at", Value: updatedAt})
 }
 
-// Delete removes a profile using a transaction to ensure it exists.
+// Delete atomically removes an existing profile.
 func (s *FirestoreStore) Delete(ctx context.Context, userID string) error {
 	docRef := s.client.Collection(profilesCollection).Doc(userID)
-
-	err := s.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		_, err := tx.Get(docRef)
-		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				return ErrNotFound
-			}
-			return err
-		}
-
-		return tx.Delete(docRef)
-	})
+	_, err := docRef.Delete(ctx, firestore.Exists)
 	if err != nil {
+		switch status.Code(err) {
+		case codes.FailedPrecondition, codes.NotFound:
+			err = ErrNotFound
+		default:
+			err = classifyDependencyError(err)
+		}
 		audit.LogEvent(ctx, "delete", userID, "profile", userID, "failure",
 			map[string]any{"error": categorizeError(err)})
-		return err
+		if errors.Is(err, ErrNotFound) {
+			return err
+		}
+		return fmt.Errorf("delete profile: %w", err)
 	}
 
 	audit.LogEvent(ctx, "delete", userID, "profile", userID, "success", nil)
