@@ -1,5 +1,10 @@
 # Echo Playground
 
+[![Application CI](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-ci.yml?branch=main&label=application%20CI&logo=githubactions&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-ci.yml)
+[![Code quality](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-lint.yml?branch=main&label=code%20quality&logo=go&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-lint.yml)
+[![Go 1.26.5](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![MIT license](https://img.shields.io/github/license/janisto/echo-playground)](LICENSE)
+
 A compact, high-quality REST API example built with [Echo v5](https://github.com/labstack/echo/tree/v5) and Go 1.26.
 It demonstrates HTTP contracts, structured observability, Firebase Authentication, Firestore CRUD, OpenAPI 3.1,
 and production-shaped verification without pretending to be a complete production platform.
