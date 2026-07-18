@@ -60,6 +60,7 @@ endpoint is dependency-free liveness; it does not claim Firebase readiness.
 - [Firebase CLI](https://firebase.google.com/docs/cli) for Auth and Firestore emulators
 - Docker or Podman for the final-image checks
 - Google Cloud CLI only when deploying the function example
+- [Gremlins](https://github.com/go-gremlins/gremlins) only when running mutation tests
 
 The root service and `functions/` are independent Go modules. An optional ignored `go.work` is useful
 for editor navigation, but repository recipes set `GOWORK=off` for nested-module checks so a clean checkout behaves
@@ -111,6 +112,11 @@ and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origin
 | `just check` | Format-check, lint, build, and test both modules |
 | `just build`, `just test`, `just lint` | Run the named check for both modules |
 | `just test-race`, `just vuln` | Race-test or vulnerability-scan both modules |
+| `just mutation` | Mutation-test both modules with Gremlins |
+| `just mutation-app`, `just mutation-functions` | Mutation-test one module |
+| `just fuzz [target] [duration] [package]` | Fuzz one root-module target for a bounded duration |
+| `just fuzz-functions [target] [duration]` | Fuzz the separate function module |
+| `just fuzz-all [duration]` | Run every curated fuzz target; duration applies to each target |
 | `just functions-check` | Narrow build, test, and lint of the function module |
 | `just update` | Update root dependencies, root Go tools, and the function module |
 | `just functions-update` | Update only the function module |
@@ -123,6 +129,71 @@ and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origin
 
 Firebase integration tests skip locally when emulators are absent. CI sets
 `REQUIRE_FIREBASE_EMULATORS=1`, which converts absence into failure.
+
+## Mutation testing
+
+Install Gremlins with Homebrew on macOS before running mutation tests:
+
+```bash
+brew tap go-gremlins/tap
+brew install gremlins
+```
+
+Then run its mutation campaigns against covered production code in both Go modules:
+
+```bash
+just mutation
+```
+
+The unqualified command runs separate root and `functions/` campaigns; use `just mutation-app` or
+`just mutation-functions` for a deliberately narrow run. Gremlins changes expressions and conditions, then checks
+whether the existing tests detect each behavioral change. In addition to Gremlins' default mutations, this repository
+enables logical-operator inversion for compound guards and bitwise inversion for CBOR masks, encoded lengths, and size
+limits. Review `LIVED` mutants as possible test gaps; equivalent transformations do not need artificial assertions.
+
+Gremlins mutates only code covered by the tests available to that run. With no Firebase emulators running, Auth and
+Firestore integration tests skip and their unexecuted mutations are reported as `NOT COVERED`, not `LIVED`. Start
+`just emulators` in another terminal before `just mutation-app` when changing those paths. Mutation testing
+intentionally runs outside `just qa` and may take several minutes. The configured per-mutant safety timeout does not
+limit the total campaign time.
+
+## Fuzz testing
+
+Go's native fuzzing engine targets the input spaces where examples alone are least convincing:
+
+| Target | Package | Invariant |
+|---|---|---|
+| `FuzzDecodeJSON` | `./internal/platform/request` | Content type, object shape, unknown fields, and trailing values follow the strict request contract |
+| `FuzzDecodeCursor` | `./internal/platform/pagination` | Every encoded cursor round-trips; arbitrary accepted cursors remain stable |
+| `FuzzPaginate` | `./internal/platform/pagination` | Page bounds, item order, next/previous cursors, filters, and caller-owned query values stay consistent |
+| `FuzzSelectFormat` | `./internal/platform/respond` | Media-type selection is invariant to token casing and surrounding whitespace |
+| `FuzzSelectFormatQuality` | `./internal/platform/respond` | Exact JSON/CBOR quality ordering, ties, exclusions, and header order select the documented format |
+| `FuzzTimeUnmarshalCBOR` | `./internal/platform/timeutil` | Arbitrary accepted CBOR timestamps survive canonical encode/decode round trips |
+| `FuzzTimeCBORRoundTrip` | `./internal/platform/timeutil` | Canonically encoded timestamps always decode to the same millisecond |
+| `FuzzHelloHandler` | `./functions` | GET/POST precedence, Unicode rune counting, and the 100-rune boundary remain exact |
+
+Run the default ten-second strict-JSON session, select one target while developing, or exercise the complete curated
+set. `just fuzz-all` applies its duration to each target, so its total run is longer:
+
+```bash
+just fuzz
+just fuzz FuzzPaginate 1m ./internal/platform/pagination
+just fuzz-functions
+just fuzz-all 30s
+```
+
+The equivalent native Go command for the default target is:
+
+```bash
+go test -fuzz='^FuzzDecodeJSON$' -fuzztime=10s ./internal/platform/request
+```
+
+Go first replays the seed corpus and then generates new inputs. When fuzzing finds a failure, it minimizes the input and
+writes it below the target package at `testdata/fuzz/<target>`; `just test` or the corresponding module's
+`go test ./...` runs saved corpus inputs as regression tests. Review and commit a failing input together with the fix
+when it represents behavior the boundary must preserve.
+
+See the [Go fuzzing documentation](https://go.dev/doc/security/fuzz/) for the engine's workflow and additional flags.
 
 ## Go function: Firebase CLI versus gcloud
 

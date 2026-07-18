@@ -3,6 +3,8 @@ package pagination
 import (
 	"errors"
 	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +36,118 @@ func mustPaginate(
 		t.Fatalf("paginate: %v", err)
 	}
 	return result
+}
+
+func FuzzPaginate(f *testing.F) {
+	f.Add(uint8(0), uint8(0), int16(-1))
+	f.Add(uint8(10), uint8(1), int16(-1))
+	f.Add(uint8(10), uint8(4), int16(-1))
+	f.Add(uint8(10), uint8(4), int16(2))
+	f.Add(uint8(5), uint8(17), int16(4))
+
+	f.Fuzz(func(t *testing.T, countInput, limitInput uint8, cursorPosition int16) {
+		count := int(countInput % 64)
+		limit := int(limitInput%18) - 1
+		items := makeItems(count)
+		cursor := Cursor{}
+		start := 0
+		if count > 0 && cursorPosition >= 0 {
+			index := int(cursorPosition) % count
+			cursor = Cursor{Type: "item", Value: items[index].ID}
+			start = index + 1
+		}
+
+		query := url.Values{"category": {"tools"}, "cursor": {"stale"}}
+		result, err := Paginate(items, cursor, limit, "item", getTestID, "/items", query)
+		if limit <= 0 {
+			if !errors.Is(err, ErrInvalidLimit) {
+				t.Fatalf("non-positive limit %d error = %v, want %v", limit, err, ErrInvalidLimit)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatalf("paginate valid cursor: %v", err)
+		}
+
+		end := min(start+limit, count)
+		if result.Total != count {
+			t.Fatalf("total = %d, want %d", result.Total, count)
+		}
+		if len(result.Items) != end-start {
+			t.Fatalf("page length = %d, want %d", len(result.Items), end-start)
+		}
+		for i, item := range result.Items {
+			if want := items[start+i]; item != want {
+				t.Fatalf("item %d = %#v, want %#v", i, item, want)
+			}
+		}
+
+		wantNext := end < count && end > start
+		if (result.NextCursor != "") != wantNext {
+			t.Fatalf("next cursor presence = %t, want %t", result.NextCursor != "", wantNext)
+		}
+		if wantNext {
+			next, decodeErr := DecodeCursor(result.NextCursor)
+			if decodeErr != nil {
+				t.Fatalf("decode next cursor: %v", decodeErr)
+			}
+			if want := (Cursor{Type: "item", Value: items[end-1].ID}); next != want {
+				t.Fatalf("next cursor = %#v, want %#v", next, want)
+			}
+		}
+
+		wantPrev := start > 0
+		if (result.PrevCursor != "") != wantPrev {
+			t.Fatalf("previous cursor presence = %t, want %t", result.PrevCursor != "", wantPrev)
+		}
+		if wantPrev {
+			prev, decodeErr := DecodeCursor(result.PrevCursor)
+			if decodeErr != nil {
+				t.Fatalf("decode previous cursor: %v", decodeErr)
+			}
+			wantValue := ""
+			if start > limit {
+				wantValue = items[start-limit-1].ID
+			}
+			if want := (Cursor{Type: "item", Value: wantValue}); prev != want {
+				t.Fatalf("previous cursor = %#v, want %#v", prev, want)
+			}
+		}
+
+		wantLinks := 0
+		if wantNext {
+			wantLinks++
+		}
+		if wantPrev {
+			wantLinks++
+		}
+		if got := strings.Count(result.LinkHeader, "rel=\""); got != wantLinks {
+			t.Fatalf("link count = %d, want %d: %q", got, wantLinks, result.LinkHeader)
+		}
+		if wantLinks > 0 {
+			if !strings.Contains(result.LinkHeader, "category=tools") ||
+				!strings.Contains(result.LinkHeader, "limit="+strconv.Itoa(limit)) {
+				t.Fatalf("link did not preserve filters and limit: %q", result.LinkHeader)
+			}
+			if strings.Contains(result.LinkHeader, "cursor=stale") {
+				t.Fatalf("link retained stale cursor: %q", result.LinkHeader)
+			}
+		}
+		if got := query.Get("cursor"); got != "stale" {
+			t.Fatalf("input query cursor mutated to %q", got)
+		}
+	})
+}
+
+func TestPaginate_RejectsNonPositiveLimit(t *testing.T) {
+	for _, limit := range []int{-1, 0} {
+		t.Run(strconv.Itoa(limit), func(t *testing.T) {
+			_, err := Paginate(makeItems(3), Cursor{}, limit, "item", getTestID, "/items", nil)
+			if !errors.Is(err, ErrInvalidLimit) {
+				t.Fatalf("Paginate limit %d error = %v, want %v", limit, err, ErrInvalidLimit)
+			}
+		})
+	}
 }
 
 func TestPaginate_FirstPage(t *testing.T) {
@@ -115,6 +229,9 @@ func TestPaginate_PreservesQueryParams(t *testing.T) {
 	result := mustPaginate(t, items, Cursor{}, 3, q)
 	if result.LinkHeader == "" {
 		t.Fatal("expected link header")
+	}
+	if !strings.Contains(result.LinkHeader, "category=electronics") {
+		t.Fatalf("expected category in link header, got %q", result.LinkHeader)
 	}
 }
 

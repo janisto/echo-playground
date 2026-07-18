@@ -1,13 +1,89 @@
 package hello
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
+
+func FuzzHelloHandler(f *testing.F) {
+	f.Add("", "", false)
+	f.Add("Grace", "Ada", true)
+	f.Add("", "Ada", true)
+	f.Add(strings.Repeat("a", 100), "", false)
+	f.Add(strings.Repeat("a", 101), "", false)
+	f.Add(strings.Repeat("🙂", 100), "", true)
+	f.Add(strings.Repeat("🙂", 101), "", true)
+
+	f.Fuzz(func(t *testing.T, bodyName, queryName string, post bool) {
+		if !utf8.ValidString(bodyName) || !utf8.ValidString(queryName) {
+			return
+		}
+
+		method := http.MethodGet
+		target := "/?" + url.Values{"name": {queryName}}.Encode()
+		var body []byte
+		if post {
+			method = http.MethodPost
+			var err error
+			body, err = json.Marshal(Request{Name: bodyName})
+			if err != nil {
+				t.Fatalf("marshal request: %v", err)
+			}
+		}
+
+		req := httptest.NewRequestWithContext(t.Context(), method, target, bytes.NewReader(body))
+		if post {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		rec := httptest.NewRecorder()
+		helloHandler(rec, req)
+
+		if post && len(body) > 1<<20 {
+			if rec.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("oversized body status = %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
+			}
+			return
+		}
+
+		name := queryName
+		if post && bodyName != "" {
+			name = bodyName
+		}
+		if name == "" {
+			name = "World"
+		}
+		if utf8.RuneCountInString(name) > 100 {
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("overlong name status = %d, want %d", rec.Code, http.StatusBadRequest)
+			}
+			return
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("valid name status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		if got := rec.Header().Get("Content-Type"); got != "application/json" {
+			t.Fatalf("content type = %q, want application/json", got)
+		}
+		var response Response
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if want := "Hello, " + name + "!"; response.Message != want {
+			t.Fatalf("message = %q, want %q", response.Message, want)
+		}
+		if _, err := time.Parse(RFC3339Millis, response.Timestamp); err != nil {
+			t.Fatalf("invalid timestamp %q: %v", response.Timestamp, err)
+		}
+	})
+}
 
 func TestHelloHandler(t *testing.T) {
 	tests := []struct {
@@ -53,6 +129,13 @@ func TestHelloHandler(t *testing.T) {
 			body:        `{} {}`,
 			contentType: "application/json",
 			wantStatus:  http.StatusBadRequest,
+		},
+		{
+			name:       "name at limit",
+			method:     http.MethodGet,
+			target:     "/?name=" + strings.Repeat("a", 100),
+			wantStatus: http.StatusOK,
+			want:       "Hello, " + strings.Repeat("a", 100) + "!",
 		},
 		{
 			name:       "name too long",

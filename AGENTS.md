@@ -75,6 +75,10 @@ Key recipes:
 - `just check` - Whole-repository format, lint, build, and test check (`check-all` is a compatibility alias)
 - `just functions-check` - Build, test, and lint the separate function module
 - `just test-race` - Race-test both modules
+- `just mutation` - Mutation-test both modules (`mutation-app` and `mutation-functions` are narrow variants)
+- `just fuzz` - Fuzz one named root-module target in its package for a bounded duration
+- `just fuzz-functions` - Fuzz the separate function module
+- `just fuzz-all` - Run every curated fuzz target for the requested per-target duration
 - `just qa` - Quality assurance (tidy + fix + build + test)
 - `just vuln` - Check both modules for vulnerabilities
 - `just functions-vuln` - Check the function module for vulnerabilities
@@ -526,6 +530,30 @@ Links provided via HTTP `Link` header per RFC 8288.
 ---
 
 ## Testing Guidelines
+
+### Mutation and fuzzing
+
+- Run `just mutation` when changing production logic or its tests. Investigate meaningful `LIVED` mutants and add a
+  behavioral test only when the mutant exposes a real contract gap; equivalent transformations do not justify brittle assertions.
+- Keep logical and bitwise inversion enabled in `.gremlins.yaml`. They target the compound authorization,
+  configuration, request, and negotiation guards plus the CBOR masks, encoded lengths, and body-size shifts that the
+  default Gremlins operators miss.
+- Gremlins tests only covered mutations. When changing Firebase Auth or Firestore behavior, start `just emulators`
+  before `just mutation-app`; otherwise emulator-only paths are `NOT COVERED` and provide no mutation evidence.
+- Leave Gremlins `workers` unset in `.gremlins.yaml` and do not hard-code `--workers` in the Justfile. Its default
+  scales to the machine's logical CPUs. Use a one-off lower value only for a constrained machine or if concurrent
+  mutation runs contend for shared Firebase emulator state.
+- Keep mutation testing separate from `just fuzz`: Gremlins mutates covered production code, while Go fuzzing mutates
+  inputs to one target in one package.
+- Use fuzz targets for parsers, decoders, negotiators, and other bounded input surfaces with precise invariants. A
+  no-panic assertion alone is appropriate only when malformed input is explicitly allowed to produce any non-panicking result.
+- During development, run the narrow root target with `just fuzz <target> <duration> <package>` or the function target
+  with `just fuzz-functions`. Use `just fuzz-all <duration>` when changes affect multiple strict-JSON, pagination,
+  content-negotiation, CBOR time, or function-input boundaries.
+- Leave Go fuzz `-parallel` unset in the Justfile. Its default follows `GOMAXPROCS`; use a one-off lower value only when
+  the available CPU or memory makes the default impractical.
+- Pass the target, duration, and package to `just fuzz` when using a non-default target. Preserve minimized regression
+  inputs under the package's `testdata/fuzz/<target>` directory when they represent required behavior.
 
 ### Test Structure
 

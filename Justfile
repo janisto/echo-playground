@@ -82,6 +82,42 @@ test-race-app:
 test-race-functions:
     cd functions && GOWORK=off go test -race ./...
 
+# Run mutation testing across both Go modules with the installed Gremlins CLI.
+[group('test')]
+mutation *args:
+    gremlins unleash . {{ args }}
+    cd functions && GOWORK=off gremlins --config ../.gremlins.yaml unleash . {{ args }}
+
+[group('test')]
+mutation-app *args:
+    gremlins unleash . {{ args }}
+
+[group('test')]
+mutation-functions *args:
+    cd functions && GOWORK=off gremlins --config ../.gremlins.yaml unleash . {{ args }}
+
+# Run a named root-module fuzz target in its package for a bounded duration.
+[group('test')]
+fuzz target='FuzzDecodeJSON' duration='10s' pkg='./internal/platform/request' *args:
+    go test -fuzz=^{{ target }}$ -fuzztime={{ duration }} {{ args }} {{ pkg }}
+
+# Run the separate function module's public-handler fuzz target.
+[group('test')]
+fuzz-functions target='FuzzHelloHandler' duration='10s' *args:
+    cd functions && GOWORK=off go test -fuzz=^{{ target }}$ -fuzztime={{ duration }} {{ args }} .
+
+# Run every curated fuzz target against the project's high-risk input boundaries.
+[group('test')]
+fuzz-all duration='10s':
+    just fuzz FuzzDecodeJSON {{ duration }} ./internal/platform/request
+    just fuzz FuzzDecodeCursor {{ duration }} ./internal/platform/pagination
+    just fuzz FuzzPaginate {{ duration }} ./internal/platform/pagination
+    just fuzz FuzzSelectFormat {{ duration }} ./internal/platform/respond
+    just fuzz FuzzSelectFormatQuality {{ duration }} ./internal/platform/respond
+    just fuzz FuzzTimeUnmarshalCBOR {{ duration }} ./internal/platform/timeutil
+    just fuzz FuzzTimeCBORRoundTrip {{ duration }} ./internal/platform/timeutil
+    just fuzz-functions FuzzHelloHandler {{ duration }}
+
 [group('test')]
 test-verbose *args:
     just test-app -v {{ args }}

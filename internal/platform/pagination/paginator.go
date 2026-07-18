@@ -6,8 +6,12 @@ import (
 	"strconv"
 )
 
-// ErrCursorNotFound indicates that a cursor no longer references an item.
-var ErrCursorNotFound = errors.New("cursor not found")
+var (
+	// ErrCursorNotFound indicates that a cursor no longer references an item.
+	ErrCursorNotFound = errors.New("cursor not found")
+	// ErrInvalidLimit indicates that the requested page size is not positive.
+	ErrInvalidLimit = errors.New("pagination limit must be positive")
+)
 
 // DefaultLimit is the default page size for list endpoints.
 const DefaultLimit = 20
@@ -26,7 +30,7 @@ type Result[T any] struct {
 // Parameters:
 //   - items: The full slice of items to paginate
 //   - cursor: The decoded cursor from the request
-//   - limit: Maximum items per page
+//   - limit: Positive maximum number of items per page; non-positive values return ErrInvalidLimit
 //   - cursorType: Type identifier for cursor validation (e.g., "item", "user")
 //   - getID: Function to extract the ID from an item
 //   - baseURL: Base URL path for Link header (e.g., "/items")
@@ -42,6 +46,10 @@ func Paginate[T any](
 	baseURL string,
 	query url.Values,
 ) (Result[T], error) {
+	if limit <= 0 {
+		return Result[T]{}, ErrInvalidLimit
+	}
+
 	total := len(items)
 
 	startIdx := 0
@@ -65,7 +73,7 @@ func Paginate[T any](
 
 	var nextCursor, prevCursor string
 
-	if endIdx < total && len(pageItems) > 0 {
+	if endIdx < total {
 		nextCursor = Cursor{Type: cursorType, Value: getID(pageItems[len(pageItems)-1])}.Encode()
 	}
 
@@ -79,9 +87,7 @@ func Paginate[T any](
 	}
 
 	q := cloneValues(query)
-	if limit > 0 {
-		q.Set("limit", strconv.Itoa(limit))
-	}
+	q.Set("limit", strconv.Itoa(limit))
 	linkHeader := BuildLinkHeader(baseURL, q, nextCursor, prevCursor)
 
 	return Result[T]{

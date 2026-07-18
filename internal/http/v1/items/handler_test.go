@@ -363,4 +363,7 @@ func TestListItems_FilterCategoryWithPagination(t *testing.T) {
 			t.Fatalf("expected category 'electronics', got %q", item.Category)
 		}
 	}
+	if link := rec.Header().Get("Link"); !strings.Contains(link, "category=electronics") {
+		t.Fatalf("expected pagination link to preserve category, got %q", link)
+	}
 }

@@ -26,9 +26,45 @@ func FuzzTimeUnmarshalCBOR(f *testing.F) {
 	f.Add(seed)
 	f.Add([]byte{})
 	f.Add([]byte{0xc0, 0x61, 'x'})
-	f.Fuzz(func(_ *testing.T, data []byte) {
+	f.Fuzz(func(t *testing.T, data []byte) {
 		var value Time
-		_ = value.UnmarshalCBOR(data)
+		if err := value.UnmarshalCBOR(data); err != nil {
+			return
+		}
+		encoded, err := value.MarshalCBOR()
+		if err != nil {
+			t.Fatalf("marshal accepted time: %v", err)
+		}
+		var roundTrip Time
+		if err := roundTrip.UnmarshalCBOR(encoded); err != nil {
+			t.Fatalf("unmarshal encoded time: %v", err)
+		}
+		if !roundTrip.Equal(value.Time) {
+			t.Fatalf("round trip mismatch: got %s, want %s", roundTrip.Time, value.Time)
+		}
+	})
+}
+
+func FuzzTimeCBORRoundTrip(f *testing.F) {
+	f.Add(int64(0))
+	f.Add(int64(1))
+	f.Add(int64(-1))
+	f.Add(int64(1705314600123))
+
+	f.Fuzz(func(t *testing.T, millis int64) {
+		const twoHundredYearsMillis = int64(200 * 365 * 24 * time.Hour / time.Millisecond)
+		original := NewTime(time.UnixMilli(millis % twoHundredYearsMillis).UTC())
+		encoded, err := original.MarshalCBOR()
+		if err != nil {
+			t.Fatalf("marshal time: %v", err)
+		}
+		var decoded Time
+		if err := decoded.UnmarshalCBOR(encoded); err != nil {
+			t.Fatalf("unmarshal encoded time: %v", err)
+		}
+		if !decoded.Equal(original.Time) {
+			t.Fatalf("round trip mismatch: got %s, want %s", decoded.Time, original.Time)
+		}
 	})
 }
 

@@ -3,6 +3,7 @@ package respond
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,8 +22,37 @@ func FuzzSelectFormat(f *testing.F) {
 	f.Add("")
 	f.Add("application/json")
 	f.Add("application/cbor;q=0.9, application/json;q=1")
-	f.Fuzz(func(_ *testing.T, accept string) {
-		_ = selectFormat(accept)
+	f.Fuzz(func(t *testing.T, accept string) {
+		selected := selectFormat(accept)
+		if got := selectFormat(" \t" + accept + "\t "); got != selected {
+			t.Fatalf("surrounding whitespace changed selection: got CBOR=%t, want CBOR=%t", got, selected)
+		}
+		if got := selectFormat(strings.ToUpper(accept)); got != selected {
+			t.Fatalf("token casing changed selection: got CBOR=%t, want CBOR=%t", got, selected)
+		}
+	})
+}
+
+func FuzzSelectFormatQuality(f *testing.F) {
+	f.Add(uint16(0), uint16(0), false)
+	f.Add(uint16(1000), uint16(1000), true)
+	f.Add(uint16(1000), uint16(999), false)
+	f.Add(uint16(999), uint16(1000), true)
+
+	f.Fuzz(func(t *testing.T, jsonInput, cborInput uint16, reverse bool) {
+		jsonQ := jsonInput % 1001
+		cborQ := cborInput % 1001
+		jsonRange := fmt.Sprintf("application/json;q=%.3f", float64(jsonQ)/1000)
+		cborRange := fmt.Sprintf("application/cbor;q=%.3f", float64(cborQ)/1000)
+		header := jsonRange + ", " + cborRange
+		if reverse {
+			header = cborRange + ", " + jsonRange
+		}
+
+		wantCBOR := cborQ > jsonQ
+		if got := selectFormat(header); got != wantCBOR {
+			t.Fatalf("selectFormat(%q) = CBOR %t, want %t", header, got, wantCBOR)
+		}
 	})
 }
 
