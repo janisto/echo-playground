@@ -18,11 +18,14 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   collect-prs:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
 
     outputs:
       pr_numbers: ${{ steps.get_prs.outputs.pr_numbers }}
@@ -64,6 +67,11 @@ jobs:
     needs: collect-prs
 
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
 
     strategy:
       max-parallel: 10

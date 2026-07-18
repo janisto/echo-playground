@@ -56,6 +56,11 @@ jobs:
       - name: Validate workflows
         run: just workflow-check
 
+      - name: Audit workflow security
+        uses: zizmorcore/zizmor-action@v0.6.0
+        with:
+          advanced-security: false
+
       - name: Check Go modernizations
         run: just modernize-check
 

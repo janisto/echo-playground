@@ -233,6 +233,10 @@ workflow-check:
     go tool actionlint
 
 [group('qa')]
+workflow-security-check:
+    zizmor --offline .
+
+[group('qa')]
 modernize-check:
     go fix -diff ./...
     cd functions && GOWORK=off go fix -diff ./...

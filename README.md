@@ -61,6 +61,7 @@ endpoint is dependency-free liveness; it does not claim Firebase readiness.
 - Docker or Podman for the final-image checks
 - Google Cloud CLI only when deploying the function example
 - [Gremlins](https://github.com/go-gremlins/gremlins) only when running mutation tests
+- [zizmor](https://docs.zizmor.sh/) only when auditing GitHub Actions locally
 
 The root service and `functions/` are independent Go modules. An optional ignored `go.work` is useful
 for editor navigation, but repository recipes set `GOWORK=off` for nested-module checks so a clean checkout behaves
@@ -124,7 +125,8 @@ and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origin
 | `just docs` | Generate, normalize, and embed-review OpenAPI artifacts |
 | `just emulators` | Start Auth and Firestore emulators |
 | `just test-integration-ci` | Require emulators and generate separate integration coverage |
-| `just workflow-check`, `just modernize-check` | Run non-mutating workflow and Go modernization checks |
+| `just workflow-check`, `just workflow-security-check` | Run actionlint or zizmor against GitHub Actions |
+| `just modernize-check` | Report available Go modernizations without changing files |
 | `just container-smoke` | Build and verify the final service image |
 
 Firebase integration tests skip locally when emulators are absent. CI sets
@@ -301,7 +303,7 @@ instead of immutable commit pins. Required jobs cover:
 - both-module vulnerability scans;
 - OpenAPI regeneration and semantic validation;
 - final container probes for liveness, embedded docs, non-root execution, and honest OCI metadata;
-- both-module formatting, linting, module tidiness, Go modernization, and pinned `actionlint` checks.
+- both-module formatting, linting, module tidiness, Go modernization, and pinned actionlint and zizmor checks.
 
 Branch protection requires the stable aggregate checks `ci` and `lint`. Each aggregate runs even when a dependency fails
 and succeeds only when every specialized job in its workflow succeeds; internal job names are not part of the ruleset contract.

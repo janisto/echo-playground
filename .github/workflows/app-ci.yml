@@ -113,8 +113,9 @@ jobs:
       - name: Set up Just
         uses: extractions/setup-just@v4.0.0
 
+      # The emulator CLI is a pinned CI tool; this repository has no Node dependency graph to lock.
       - name: Install Firebase CLI
-        run: npm install --global firebase-tools@15.22.1
+        run: npm install --global firebase-tools@15.24.0 # zizmor: ignore[adhoc-packages]
 
       - name: Run required emulator tests
         run: just test-integration-ci

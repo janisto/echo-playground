@@ -92,6 +92,7 @@ Key recipes:
 - `just test-integration-ci` - Require emulators and generate separate integration coverage
 - `just functions-smoke` / `just container-smoke` - Probe the registered function and final image
 - `just fmt-check` / `just tidy-check` / `just modernize-check` / `just workflow-check` - Non-mutating quality gates
+- `just workflow-security-check` - Audit GitHub Actions with the repository's zizmor policy
 - `just docs` - Generate OpenAPI 3.1 spec (alias for gen-openapi)
 - `just gen-openapi` - Generate OpenAPI 3.1 spec
 - `just fmt-openapi` - Format swag annotations
@@ -260,6 +261,10 @@ Keep `ci` and `lint` as the stable ruleset-required aggregate job names. Each ag
 `if: ${{ always() }}` and fail unless every job it needs completed successfully, so a failed or cancelled dependency
 cannot make the required check disappear or pass. Dependabot covers both Go modules, GitHub Actions, and Docker; labeler configuration treats
 `.agents/**/*.md` and `.github/**/*.md` as documentation.
+
+Run `just workflow-security-check` when changing GitHub Actions. Keep `.github/zizmor.yml` aligned with the repository's
+exact-tag policy and one-day Dependabot cooldown. Suppress a finding only at the narrowest affected workflow step and
+document why the flagged behavior is intentional.
 
 Every Go setup step intentionally uses this baseline configuration:
 
