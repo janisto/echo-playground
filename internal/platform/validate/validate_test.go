@@ -27,6 +27,12 @@ type mixedInput struct {
 	Name string `           validate:"required,min=1,max=100" json:"name"`
 }
 
+type requiredStructInput struct {
+	Metadata struct {
+		Source string `json:"source"`
+	} `json:"metadata" validate:"required"`
+}
+
 func TestValidationErrorStatusCode(t *testing.T) {
 	t.Parallel()
 	err := &ValidationError{Message: "validation failed"}
@@ -71,6 +77,17 @@ func TestValidate_RequiredFields(t *testing.T) {
 	assertField(t, fieldMap, "name", "name is required")
 	assertField(t, fieldMap, "email", "email is required")
 	assertField(t, fieldMap, "phoneNumber", "phoneNumber is required")
+}
+
+func TestValidate_RequiredStructUsesFutureValidatorSemantics(t *testing.T) {
+	err := New().Validate(requiredStructInput{})
+	if err == nil {
+		t.Fatal("expected an empty required struct to fail validation")
+	}
+	ve := validationError(t, err)
+	if len(ve.Fields) != 1 || ve.Fields[0].Field != "metadata" || ve.Fields[0].Message != "metadata is required" {
+		t.Fatalf("unexpected required struct error: %#v", ve.Fields)
+	}
 }
 
 func TestValidate_InvalidEmail(t *testing.T) {

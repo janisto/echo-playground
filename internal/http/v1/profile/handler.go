@@ -36,6 +36,7 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 //	@Success		201		{object}	Profile
 //	@Failure		400		{object}	respond.ProblemDetails
 //	@Failure		401		{object}	respond.ProblemDetails
+//	@Failure		406		{object}	respond.ProblemDetails
 //	@Failure		409		{object}	respond.ProblemDetails
 //	@Failure		413		{object}	respond.ProblemDetails
 //	@Failure		415		{object}	respond.ProblemDetails
@@ -87,6 +88,7 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Success		200	{object}	Profile
 //	@Failure		401	{object}	respond.ProblemDetails
 //	@Failure		404	{object}	respond.ProblemDetails
+//	@Failure		406	{object}	respond.ProblemDetails
 //	@Failure		500	{object}	respond.ProblemDetails
 //	@Failure		503	{object}	respond.ProblemDetails
 //	@Security		BearerAuth
@@ -119,6 +121,7 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Success		200		{object}	Profile
 //	@Failure		400		{object}	respond.ProblemDetails
 //	@Failure		401		{object}	respond.ProblemDetails
+//	@Failure		406		{object}	respond.ProblemDetails
 //	@Failure		404		{object}	respond.ProblemDetails
 //	@Failure		413		{object}	respond.ProblemDetails
 //	@Failure		415		{object}	respond.ProblemDetails
@@ -171,6 +174,7 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Success		204
 //	@Failure		401	{object}	respond.ProblemDetails
 //	@Failure		404	{object}	respond.ProblemDetails
+//	@Failure		406	{object}	respond.ProblemDetails
 //	@Failure		500	{object}	respond.ProblemDetails
 //	@Failure		503	{object}	respond.ProblemDetails
 //	@Security		BearerAuth

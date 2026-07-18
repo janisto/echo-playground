@@ -3,6 +3,7 @@
 .gitignore
 .github
 .agents
+.vscode
 
 # IDE
 .idea
@@ -42,6 +43,7 @@ Justfile
 # Development and Firebase configuration
 .firebaserc
 .golangci.yml
+.gremlins.yaml
 firebase.json
 firestore.indexes.json
 firestore.rules

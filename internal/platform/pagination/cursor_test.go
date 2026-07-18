@@ -23,6 +23,15 @@ func FuzzDecodeCursor(f *testing.F) {
 	f.Add(Cursor{Type: "item", Value: "42"}.Encode())
 	f.Add("not-base64")
 	f.Fuzz(func(t *testing.T, value string) {
+		want := Cursor{Type: "item", Value: value}
+		decoded, err := DecodeCursor(want.Encode())
+		if err != nil {
+			t.Fatalf("decode encoded cursor: %v", err)
+		}
+		if decoded != want {
+			t.Fatalf("encoded cursor mismatch: got %#v, want %#v", decoded, want)
+		}
+
 		cursor, err := DecodeCursor(value)
 		if err != nil {
 			return

@@ -1,7 +1,7 @@
 # Auto-label PRs based on changed file paths
 # Docs: https://github.com/actions/labeler
 
-# Internal changes in app folders
+# Application code
 app:
   - changed-files:
       - any-glob-to-any-file:
@@ -9,12 +9,14 @@ app:
           - 'internal/**'
           - 'api-docs/**'
 
-# Functions changes in functions folder
+tests:
+  - changed-files:
+      - any-glob-to-any-file: '**/*_test.go'
+
 functions:
   - changed-files:
       - any-glob-to-any-file: 'functions/**'
 
-# Documentation and repository guidance
 documentation:
   - changed-files:
       - any-glob-to-any-file:
@@ -23,7 +25,6 @@ documentation:
           - '.github/**/*.md'
           - '.agents/**/*.md'
 
-# Build, quality, container, and repository automation
 tooling:
   - changed-files:
       - any-glob-to-any-file:
@@ -33,12 +34,20 @@ tooling:
           - 'functions/go.mod'
           - 'functions/go.sum'
           - '.golangci.yml'
+          - '.gremlins.yaml'
           - 'Dockerfile'
           - '.dockerignore'
           - 'firebase.json'
-          - '.github/workflows/**'
+          - 'go.work'
+          - 'go.work.sum'
 
-# Branch-name based labels
+github-actions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/dependabot.yml'
+          - '.github/zizmor.yml'
+
 feature:
   - head-branch: ['^feature', 'feature']
 

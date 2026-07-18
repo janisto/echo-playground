@@ -31,35 +31,47 @@ func TestGeneratedOpenAPIContract(t *testing.T) {
 	paths := requireObject(t, document["paths"])
 	expected := map[string]map[string]operationContract{
 		"/hello": {
-			"get": {id: "getHello", statuses: []string{"200"}, successStatus: "200"},
+			"get": {id: "getHello", statuses: []string{"200", "406"}, successStatus: "200"},
 			"post": {
 				id:            "createHello",
-				statuses:      []string{"200", "400", "413", "415", "422"},
+				statuses:      []string{"200", "400", "406", "413", "415", "422"},
 				requestBody:   true,
 				successStatus: "200",
 			},
 		},
 		"/items": {
-			"get": {id: "listItems", statuses: []string{"200", "400", "422"}, successStatus: "200", header: "Link"},
+			"get": {
+				id:            "listItems",
+				statuses:      []string{"200", "400", "406", "422"},
+				successStatus: "200",
+				header:        "Link",
+			},
 		},
 		"/profile": {
 			"post": {
-				id: "createProfile", statuses: []string{"201", "400", "401", "409", "413", "415", "422", "500", "503"},
-				secured: true, requestBody: true, successStatus: "201", header: "Location",
+				id:            "createProfile",
+				statuses:      []string{"201", "400", "401", "406", "409", "413", "415", "422", "500", "503"},
+				secured:       true,
+				requestBody:   true,
+				successStatus: "201",
+				header:        "Location",
 			},
 			"get": {
 				id:            "getProfile",
-				statuses:      []string{"200", "401", "404", "500", "503"},
+				statuses:      []string{"200", "401", "404", "406", "500", "503"},
 				secured:       true,
 				successStatus: "200",
 			},
 			"patch": {
-				id: "updateProfile", statuses: []string{"200", "400", "401", "404", "413", "415", "422", "500", "503"},
-				secured: true, requestBody: true, successStatus: "200",
+				id:            "updateProfile",
+				statuses:      []string{"200", "400", "401", "404", "406", "413", "415", "422", "500", "503"},
+				secured:       true,
+				requestBody:   true,
+				successStatus: "200",
 			},
 			"delete": {
 				id:            "deleteProfile",
-				statuses:      []string{"204", "401", "404", "500", "503"},
+				statuses:      []string{"204", "401", "404", "406", "500", "503"},
 				secured:       true,
 				successStatus: "204",
 			},

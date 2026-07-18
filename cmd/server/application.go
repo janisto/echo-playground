@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -86,13 +85,28 @@ func (unavailableProfileStore) Delete(context.Context, string) error {
 }
 
 func newEcho(cfg config, logger *zap.Logger, clients *applicationClients) *echo.Echo {
-	e := echo.New()
-	e.Validator = validate.New()
-	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
-	e.IPExtractor = echo.ExtractIPDirect()
+	ipExtractor := echo.ExtractIPDirect()
 	if cfg.IPExtractor == "xff" {
-		e.IPExtractor = echo.ExtractIPFromXFFHeader()
+		trustOptions := []echo.TrustOption{
+			echo.TrustLoopback(false),
+			echo.TrustLinkLocal(false),
+			echo.TrustPrivateNet(false),
+		}
+		for _, trustedRange := range cfg.TrustedProxyCIDRs {
+			trustOptions = append(trustOptions, echo.TrustIPRange(trustedRange))
+		}
+		ipExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
 	}
+	e := echo.NewWithConfig(echo.Config{
+		Router: echo.NewRouter(echo.RouterConfig{
+			AllowOverwritingRoute: false,
+			AutoHandleHEAD:        true,
+		}),
+		HTTPErrorHandler:             respond.NewHTTPErrorHandler(),
+		IPExtractor:                  ipExtractor,
+		Validator:                    validate.New(),
+		NoGroupAutoRegister404Routes: true,
+	})
 
 	e.Use(
 		obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
@@ -119,17 +133,21 @@ func newEcho(cfg config, logger *zap.Logger, clients *applicationClients) *echo.
 	return e
 }
 
-func newServer(cfg config, handler *echo.Echo) *http.Server {
+func newServer(cfg config, handler *echo.Echo, logger *zap.Logger) (*http.Server, error) {
+	errorLog, err := zap.NewStdLogAt(logger.Named("http.server"), zap.ErrorLevel)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP server logger: %w", err)
+	}
 	return &http.Server{
 		Addr:              cfg.Address,
 		Handler:           handler,
-		ErrorLog:          slog.NewLogLogger(handler.Logger.Handler(), slog.LevelError),
+		ErrorLog:          errorLog,
 		ReadTimeout:       cfg.ReadTimeout,
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 		MaxHeaderBytes:    64 << 10,
-	}
+	}, nil
 }
 
 func serve(ctx context.Context, server *http.Server, shutdownTimeout time.Duration, logger *zap.Logger) error {

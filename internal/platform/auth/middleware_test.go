@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -219,24 +220,25 @@ func TestMiddleware_BadBearerFormat(t *testing.T) {
 
 func TestExtractBearerToken(t *testing.T) {
 	tests := []struct {
-		name    string
-		header  string
-		want    string
-		wantErr bool
+		name   string
+		header string
+		want   string
+		err    error
 	}{
-		{"valid", "Bearer my-token", "my-token", false},
-		{"case insensitive", "bearer my-token", "my-token", false},
-		{"empty", "", "", true},
-		{"no bearer prefix", "Token abc", "", true},
-		{"only bearer", "Bearer", "", true},
-		{"empty token", "Bearer ", "", true},
-		{"extra component", "Bearer token extra", "", true},
+		{"valid", "Bearer my-token", "my-token", nil},
+		{"case insensitive", "bearer my-token", "my-token", nil},
+		{"empty", "", "", ErrNoToken},
+		{"whitespace only", " \t", "", ErrInvalidToken},
+		{"no bearer prefix", "Token abc", "", ErrInvalidToken},
+		{"only bearer", "Bearer", "", ErrInvalidToken},
+		{"empty token", "Bearer ", "", ErrInvalidToken},
+		{"extra component", "Bearer token extra", "", ErrInvalidToken},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ExtractBearerToken(tt.header)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("ExtractBearerToken(%q): err=%v, wantErr=%v", tt.header, err, tt.wantErr)
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("ExtractBearerToken(%q) error = %v, want %v", tt.header, err, tt.err)
 			}
 			if got != tt.want {
 				t.Fatalf("ExtractBearerToken(%q) = %q, want %q", tt.header, got, tt.want)

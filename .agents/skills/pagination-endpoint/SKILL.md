@@ -31,7 +31,7 @@ Bind query parameters only, validate them, apply `pagination.DefaultLimit`, then
 
 ```go
 var input ListInput
-if err := request.RejectUnknownQuery(c, "cursor", "limit", "category"); err != nil {
+if err := request.RejectUnknownOrRepeatedQuery(c, "cursor", "limit", "category"); err != nil {
 	return err
 }
 if err := echo.BindQueryParams(c, &input); err != nil {
@@ -85,8 +85,8 @@ return respond.Negotiate(c, http.StatusOK, ListData{
 })
 ```
 
-Malformed, empty-type, cross-endpoint, and stale cursors are client input errors and return 400. Unknown query keys also
-return 400. Validation failures such as an oversized cursor or out-of-range limit return 422 through the validator.
+Malformed, empty-type, cross-endpoint, and stale cursors are client input errors and return 400. Unknown and repeated
+scalar query keys also return 400. Validation failures such as an oversized cursor or out-of-range limit return 422 through the validator.
 
 The `Link` header follows RFC 8288 and can include `next` and `prev`. Cursor values are opaque URL-safe Base64; clients
 must not construct or interpret them. Do not set an empty Link header.

@@ -245,7 +245,7 @@
         "url": ""
     },
     "info": {
-        "description": "Example API built with Echo v5. CBOR is supported for responses through content negotiation.",
+        "description": "Example API built with Echo 5.3. CBOR is supported for responses through content negotiation.",
         "title": "Echo Playground API",
         "version": "1.0"
     },
@@ -270,6 +270,21 @@
                             }
                         },
                         "description": "OK"
+                    },
+                    "406": {
+                        "content": {
+                            "application/problem+cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Acceptable"
                     }
                 },
                 "summary": "Greeting endpoint",
@@ -323,6 +338,21 @@
                             }
                         },
                         "description": "Bad Request"
+                    },
+                    "406": {
+                        "content": {
+                            "application/problem+cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Acceptable"
                     },
                     "413": {
                         "content": {
@@ -456,6 +486,21 @@
                         },
                         "description": "Bad Request"
                     },
+                    "406": {
+                        "content": {
+                            "application/problem+cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Acceptable"
+                    },
                     "422": {
                         "content": {
                             "application/problem+cbor": {
@@ -515,6 +560,21 @@
                             }
                         },
                         "description": "Not Found"
+                    },
+                    "406": {
+                        "content": {
+                            "application/problem+cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Acceptable"
                     },
                     "500": {
                         "content": {
@@ -605,6 +665,21 @@
                             }
                         },
                         "description": "Not Found"
+                    },
+                    "406": {
+                        "content": {
+                            "application/problem+cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Acceptable"
                     },
                     "500": {
                         "content": {
@@ -723,6 +798,21 @@
                             }
                         },
                         "description": "Not Found"
+                    },
+                    "406": {
+                        "content": {
+                            "application/problem+cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Acceptable"
                     },
                     "413": {
                         "content": {
@@ -879,6 +969,21 @@
                             }
                         },
                         "description": "Unauthorized"
+                    },
+                    "406": {
+                        "content": {
+                            "application/problem+cbor": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/respond.ProblemDetails"
+                                }
+                            }
+                        },
+                        "description": "Not Acceptable"
                     },
                     "409": {
                         "content": {

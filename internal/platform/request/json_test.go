@@ -1,6 +1,9 @@
 package request
 
 import (
+	"bytes"
+	"encoding/json"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +14,83 @@ import (
 
 type jsonInput struct {
 	Name string `json:"name"`
+}
+
+func FuzzDecodeJSON(f *testing.F) {
+	f.Add([]byte(`{"name":"Ada"}`), "application/json")
+	f.Add([]byte(`{"name":null}`), "application/json; charset=utf-8")
+	f.Add([]byte(`{"other":true}`), "application/json")
+	f.Add([]byte(`{} {}`), "application/json")
+	f.Add([]byte(`[]`), "application/json")
+	f.Add([]byte(`{}`), "application/cbor")
+	f.Add([]byte{}, "application/json")
+
+	f.Fuzz(func(t *testing.T, body []byte, contentType string) {
+		e := echo.New()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", bytes.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, contentType)
+		c := e.NewContext(req, httptest.NewRecorder())
+
+		var got jsonInput
+		err := DecodeJSON(c, &got)
+
+		if len(body) == 0 {
+			if status := echo.StatusCode(err); status != http.StatusBadRequest {
+				t.Fatalf("empty body status = %d, want %d", status, http.StatusBadRequest)
+			}
+			return
+		}
+
+		mediaType, _, mediaErr := mime.ParseMediaType(contentType)
+		if mediaErr != nil || mediaType != echo.MIMEApplicationJSON {
+			if status := echo.StatusCode(err); status != http.StatusUnsupportedMediaType {
+				t.Fatalf(
+					"unsupported content type %q status = %d, want %d",
+					contentType,
+					status,
+					http.StatusUnsupportedMediaType,
+				)
+			}
+			return
+		}
+
+		want, valid := validJSONInput(body)
+		if !valid {
+			if status := echo.StatusCode(err); status != http.StatusBadRequest {
+				t.Fatalf("invalid JSON object %q status = %d, want %d", body, status, http.StatusBadRequest)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatalf("valid JSON object %q was rejected: %v", body, err)
+		}
+		if got != want {
+			t.Fatalf("decoded input = %#v, want %#v", got, want)
+		}
+	})
+}
+
+func validJSONInput(data []byte) (jsonInput, bool) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {
+		return jsonInput{}, false
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &fields); err != nil {
+		return jsonInput{}, false
+	}
+	for field := range fields {
+		if !strings.EqualFold(field, "name") {
+			return jsonInput{}, false
+		}
+	}
+
+	var input jsonInput
+	if err := json.Unmarshal(trimmed, &input); err != nil {
+		return jsonInput{}, false
+	}
+	return input, true
 }
 
 func TestDecodeJSON(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"go.uber.org/zap"
 
 	"github.com/janisto/echo-playground/internal/platform/httpheader"
@@ -23,6 +24,14 @@ const (
 	mediaTypeApplicationCBOR = "application/cbor"
 	mediaTypeProblemCBOR     = "application/problem+cbor"
 	mediaTypeProblemJSON     = "application/problem+json"
+)
+
+type responseFormat uint8
+
+const (
+	formatNotAcceptable responseFormat = iota
+	formatJSON
+	formatCBOR
 )
 
 // mediaRange represents a parsed Accept header media range with quality value.
@@ -71,76 +80,71 @@ func parseAccept(header string) []mediaRange {
 	return ranges
 }
 
-// selectFormat determines the preferred response format based on Accept header.
-// Returns true for CBOR, false for JSON (default).
-// Per RFC 9110, the most-specific range determines each format's effective quality;
-// the effective qualities are then compared, with specificity breaking ties.
-func selectFormat(header string) bool {
+func selectSuccessFormat(header string) responseFormat {
+	return selectFormat(header, []string{"json"}, []string{"cbor"})
+}
+
+func selectProblemFormat(header string) responseFormat {
+	return selectFormat(header, []string{"problem+json", "json"}, []string{"problem+cbor", "cbor"})
+}
+
+// selectFormat chooses between supported JSON and CBOR subtypes. The first
+// subtype in each list is the canonical representation; later entries are
+// explicit aliases with lower specificity.
+func selectFormat(header string, jsonSubtypes, cborSubtypes []string) responseFormat {
 	ranges := parseAccept(header)
 	if len(ranges) == 0 {
-		return false
+		return formatJSON
 	}
 
 	var cborQ, jsonQ float64 = -1, -1
 	cborSpecificity, jsonSpecificity := 0, 0
 
 	for _, mr := range ranges {
-		specificity := 0
-		matchesCBOR, matchesJSON := false, false
-
-		switch {
-		case mr.typ == "application" && mr.subtype == "problem+cbor":
-			matchesCBOR = true
-			specificity = 4
-		case mr.typ == "application" && mr.subtype == "problem+json":
-			matchesJSON = true
-			specificity = 4
-		case mr.typ == "application" && mr.subtype == "cbor":
-			matchesCBOR = true
-			specificity = 3
-		case mr.typ == "application" && mr.subtype == "json":
-			matchesJSON = true
-			specificity = 3
-		case mr.typ == "application" && strings.HasSuffix(mr.subtype, "+cbor"):
-			matchesCBOR = true
-			specificity = 3
-		case mr.typ == "application" && strings.HasSuffix(mr.subtype, "+json"):
-			matchesJSON = true
-			specificity = 3
-		case mr.typ == "application" && mr.subtype == "*":
-			matchesCBOR = true
-			matchesJSON = true
-			specificity = 2
-		case mr.typ == "*" && mr.subtype == "*":
-			matchesCBOR = true
-			matchesJSON = true
-			specificity = 1
-		}
-
-		if matchesCBOR && (specificity > cborSpecificity || (specificity == cborSpecificity && mr.q > cborQ)) {
+		cborMatch := matchSpecificity(mr, cborSubtypes)
+		jsonMatch := matchSpecificity(mr, jsonSubtypes)
+		if cborMatch > cborSpecificity || (cborMatch != 0 && cborMatch == cborSpecificity && mr.q > cborQ) {
 			cborQ = mr.q
-			cborSpecificity = specificity
+			cborSpecificity = cborMatch
 		}
-		if matchesJSON && (specificity > jsonSpecificity || (specificity == jsonSpecificity && mr.q > jsonQ)) {
+		if jsonMatch > jsonSpecificity || (jsonMatch != 0 && jsonMatch == jsonSpecificity && mr.q > jsonQ) {
 			jsonQ = mr.q
-			jsonSpecificity = specificity
+			jsonSpecificity = jsonMatch
 		}
 	}
 
 	if cborQ <= 0 && jsonQ <= 0 {
-		return false
+		return formatNotAcceptable
 	}
 
 	if cborQ > jsonQ {
-		return true
+		return formatCBOR
 	}
 	if jsonQ > cborQ {
-		return false
+		return formatJSON
 	}
 	if cborSpecificity > jsonSpecificity {
-		return true
+		return formatCBOR
 	}
-	return false
+	return formatJSON
+}
+
+func matchSpecificity(mr mediaRange, subtypes []string) int {
+	if mr.typ == "*" && mr.subtype == "*" {
+		return 1
+	}
+	if mr.typ != "application" {
+		return 0
+	}
+	if mr.subtype == "*" {
+		return 2
+	}
+	for i, subtype := range subtypes {
+		if mr.subtype == subtype {
+			return 4 - i
+		}
+	}
+	return 0
 }
 
 // writeProblem writes a Problem Details response honoring content negotiation.
@@ -153,15 +157,27 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 
 	httpheader.AddVary(w.Header(), "Origin", "Accept")
 
-	if selectFormat(r.Header.Get("Accept")) {
+	format := selectProblemFormat(r.Header.Get("Accept"))
+	if format == formatNotAcceptable {
+		problem = newProblem(http.StatusNotAcceptable, problemDetailRepresentationUnavailable)
+		format = formatJSON
+	}
+
+	if format == formatCBOR {
 		w.Header().Set("Content-Type", mediaTypeProblemCBOR)
 		w.WriteHeader(problem.Status)
+		if r.Method == http.MethodHead {
+			return
+		}
 		if err := cbor.NewEncoder(w).Encode(problem); err != nil {
 			obs.Logger(r.Context()).Error("failed to encode problem+cbor", zap.Error(err))
 		}
 	} else {
 		w.Header().Set("Content-Type", mediaTypeProblemJSON)
 		w.WriteHeader(problem.Status)
+		if r.Method == http.MethodHead {
+			return
+		}
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(problem); err != nil {
@@ -173,14 +189,18 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 // Negotiate writes a response using content negotiation (JSON or CBOR).
 func Negotiate(c *echo.Context, status int, data any) error {
 	httpheader.AddVary(c.Response().Header(), "Accept")
-	if selectFormat(c.Request().Header.Get("Accept")) {
+	switch selectSuccessFormat(c.Request().Header.Get("Accept")) {
+	case formatCBOR:
 		b, err := cbor.Marshal(data)
 		if err != nil {
 			return err
 		}
 		return c.Blob(status, mediaTypeApplicationCBOR, b)
+	case formatNotAcceptable:
+		return echo.NewHTTPError(http.StatusNotAcceptable, problemDetailRepresentationUnavailable)
+	default:
+		return c.JSON(status, data)
 	}
-	return c.JSON(status, data)
 }
 
 // Recoverer returns Echo middleware that recovers from panics with Problem Details.
@@ -237,6 +257,10 @@ func NewHTTPErrorHandler() echo.HTTPErrorHandler {
 	return func(c *echo.Context, err error) {
 		resp, unwrapErr := echo.UnwrapResponse(c.Response())
 		if unwrapErr == nil && resp.Committed {
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			c.Response().WriteHeader(middleware.StatusCodeContextCanceled)
 			return
 		}
 

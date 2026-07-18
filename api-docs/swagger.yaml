@@ -176,7 +176,7 @@ externalDocs:
   description: ""
   url: ""
 info:
-  description: Example API built with Echo v5. CBOR is supported for responses through
+  description: Example API built with Echo 5.3. CBOR is supported for responses through
     content negotiation.
   title: Echo Playground API
   version: "1.0"
@@ -196,6 +196,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/hello.Data'
           description: OK
+        "406":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Not Acceptable
       summary: Greeting endpoint
       tags:
       - hello
@@ -230,6 +239,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Bad Request
+        "406":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Not Acceptable
         "413":
           content:
             application/problem+cbor:
@@ -314,6 +332,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Bad Request
+        "406":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Not Acceptable
         "422":
           content:
             application/problem+cbor:
@@ -351,6 +378,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
+        "406":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Not Acceptable
         "500":
           content:
             application/problem+cbor:
@@ -405,6 +441,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
+        "406":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Not Acceptable
         "500":
           content:
             application/problem+cbor:
@@ -477,6 +522,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Not Found
+        "406":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Not Acceptable
         "413":
           content:
             application/problem+cbor:
@@ -572,6 +626,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
+        "406":
+          content:
+            application/problem+cbor:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/respond.ProblemDetails'
+          description: Not Acceptable
         "409":
           content:
             application/problem+cbor:
