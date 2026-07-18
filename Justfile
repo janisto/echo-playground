@@ -293,7 +293,9 @@ update: update-app update-functions
 
 [group('lifecycle')]
 update-app:
-    go get -u -t ./... tool
+    go get -u -t ./...
+    # Update tool modules without forcing their transitive dependencies past supported versions.
+    go get tool
     go mod tidy
 
 [group('lifecycle')]
