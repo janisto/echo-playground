@@ -14,7 +14,7 @@ import (
 
 //	@title					Echo Playground API
 //	@version				1.0
-//	@description			Example API built with Echo v5. CBOR is supported for responses through content negotiation.
+//	@description			Example API built with Echo 5.3. CBOR is supported for responses through content negotiation.
 //	@servers.url			/v1
 //	@servers.description	Version 1 API
 
@@ -65,7 +65,11 @@ func run(parent context.Context) (runErr error) {
 	}()
 
 	e := newEcho(cfg, logger, firebaseClients)
-	if err := serve(ctx, newServer(cfg, e), cfg.ShutdownTimeout, logger); err != nil {
+	server, err := newServer(cfg, e, logger)
+	if err != nil {
+		return err
+	}
+	if err := serve(ctx, server, cfg.ShutdownTimeout, logger); err != nil {
 		return fmt.Errorf("serve HTTP: %w", err)
 	}
 

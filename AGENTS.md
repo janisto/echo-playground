@@ -36,11 +36,11 @@ Instructions for coding agents working in this repository.
 
 ## Project Overview
 
-Echo Playground is a minimal REST API skeleton built with [Echo v5](https://github.com/labstack/echo/tree/v5). It demonstrates structured logging, RFC 9457 Problem Details for errors, and a modular route layout.
+Echo Playground is a minimal REST API skeleton built with [Echo 5.3](https://github.com/labstack/echo/tree/v5). It demonstrates structured logging, RFC 9457 Problem Details for errors, and a modular route layout.
 
 ### Key Features
 
-- Echo v5 middleware stack with security headers, CORS, real IP detection, request correlation, structured access logging, and panic recovery
+- Echo 5.3 middleware stack with security headers, CORS, real IP detection, request correlation, structured access logging, and panic recovery
 - Request-scoped Zap logger through echo-observability with Google Cloud trace metadata enrichment
 - Plain response bodies with RFC 9457 Problem Details for errors
 - Content negotiation supporting JSON and CBOR formats
@@ -53,7 +53,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo v5](https://gith
 ### Tech & Tooling
 
 - Language/runtime: Go 1.26+
-- Frameworks/libs: Echo v5, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
+- Frameworks/libs: Echo v5.3+, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
 - Logging: Zap via github.com/janisto/echo-observability
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
 - OpenAPI: swaggo/swag v2 (OAS 3.1)
@@ -245,7 +245,7 @@ Current task-specific guidance:
 | Name | Location | Purpose |
 |---|---|---|
 | `adversarial-testing` | `.agents/skills/adversarial-testing/` | Enforce risk-driven, mutation-resistant testing across every test layer |
-| `echo-endpoint` | `.agents/skills/echo-endpoint/` | Implement or change Echo v5 endpoints |
+| `echo-endpoint` | `.agents/skills/echo-endpoint/` | Implement or change Echo 5.3 endpoints |
 | `go-testing` | `.agents/skills/go-testing/` | Write and review tests in either Go module |
 | `pagination-endpoint` | `.agents/skills/pagination-endpoint/` | Implement cursor-paginated list endpoints |
 | `readme-maintenance` | `.agents/skills/readme-maintenance/` | Reconcile README claims with the repository |
@@ -319,7 +319,7 @@ The `internal/platform/` packages provide shared infrastructure used by HTTP han
 
 ### Handler Signature
 
-All handlers use Echo v5's pointer-to-concrete-struct signature:
+All handlers use Echo 5.3's pointer-to-concrete-struct signature:
 
 ```go
 func handler(c *echo.Context) error {
@@ -340,7 +340,7 @@ func getHandler(c *echo.Context) error {
 ### Input Binding and Validation
 
 Use a source-specific decoder plus `c.Validate()`. Use `request.DecodeJSON` for exactly one top-level JSON object,
-`request.RejectUnknownQuery` before `echo.BindQueryParams` for closed query contracts, and the corresponding path binder for path DTOs. Avoid
+`request.RejectUnknownOrRepeatedQuery` before `echo.BindQueryParams` for closed scalar query contracts, and the corresponding path binder for path DTOs. Avoid
 generic `c.Bind`, which can merge multiple sources.
 
 ```go
@@ -402,7 +402,7 @@ obs.Logger(ctx).Error("message", zap.Error(err), zap.String("key", "value"))
 
 `obs.Logger(ctx)` includes request IDs and valid W3C trace metadata. It intentionally returns a no-op logger outside
 an observability request context. Use the explicit process logger returned by `obs.NewLogger` for startup, shutdown,
-background jobs, and other non-request paths. Use `internal/platform/audit.LogEvent` for audit events.
+background jobs, `net/http` server errors, and other non-request paths. Use `internal/platform/audit.LogEvent` for audit events.
 
 Install `obs.RequestContext` before `obs.AccessLogger` at the outer middleware boundary. Keep recovery inside the
 access logger so downstream middleware failures and panics retain request correlation and produce access logs.
@@ -481,9 +481,11 @@ func createHandler(c *echo.Context) error {
 | 403 Forbidden | Authenticated but not authorized |
 | 404 Not Found | Resource does not exist |
 | 405 Method Not Allowed | HTTP method not supported for resource |
+| 406 Not Acceptable | No supported success representation matches `Accept` |
 | 413 Content Too Large | Request body exceeds the global 1 MiB limit |
 | 415 Unsupported Media Type | Body is not `application/json` |
 | 422 Unprocessable Entity | Validation failures on specific fields |
+| 499 Client Closed Request | Observational status for canceled requests; do not write an error body |
 | 500 Internal Server Error | Unexpected server error |
 | 503 Service Unavailable | Authentication dependency or request deadline failure |
 
@@ -518,7 +520,13 @@ All errors use RFC 9457 Problem Details format:
 - Errors: `application/problem+json` (RFC 9457) or `application/problem+cbor` (extension)
 - Format selected via `Accept` header
 - Apply the most-specific matching media range before comparing effective quality values; a specific `q=0` overrides a broader range when another supported representation remains
+- Keep success and Problem Details negotiation separate. Problem media types do not opt a successful response into their base format.
+- Return 406 when no success representation is acceptable. If neither Problem Details format is acceptable, use JSON only as the final 406 diagnostic fallback.
 - Error format is controlled by `Accept` header, not request `Content-Type`
+
+Echo 5.3 is the minimum framework baseline. Configure `AutoHandleHEAD` and reject duplicate route registration through
+`RouterConfig`; retain `NoGroupAutoRegister404Routes` so authenticated group middleware cannot intercept unmatched
+public routes. HEAD runs the corresponding GET handler but Echo suppresses the response body.
 
 ### Timestamps
 
@@ -691,6 +699,8 @@ Validate the module independently with `just functions-check`, `just functions-t
   - `FIREBASE_MODE` (`offline`, `emulator`, or `live`)
   - `FIRESTORE_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
   - `FIREBASE_AUTH_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
+  - `IP_EXTRACTOR` (`direct` or `xff`; defaults to `direct`)
+  - `TRUSTED_PROXY_CIDRS` (comma-separated CIDRs required only for `IP_EXTRACTOR=xff`)
   - `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON; uses ADC if not set)
   - `GOOGLE_CLOUD_PROJECT`, `GCP_PROJECT`, `GCLOUD_PROJECT`, or `PROJECT_ID` (for Cloud Trace correlation)
 

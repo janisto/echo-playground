@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v5"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestLoadConfigDefaults(t *testing.T) {
@@ -40,6 +42,7 @@ func TestLoadConfigValues(t *testing.T) {
 		"FIREBASE_PROJECT_ID": "project-1",
 		"LOG_LEVEL":           "debug",
 		"IP_EXTRACTOR":        "xff",
+		"TRUSTED_PROXY_CIDRS": "10.0.0.0/8, 2001:db8::/32",
 	}
 	cfg, err := loadConfig(func(key string) string { return values[key] })
 	if err != nil {
@@ -50,6 +53,10 @@ func TestLoadConfigValues(t *testing.T) {
 	}
 	if cfg.LogLevel != zapcore.DebugLevel || cfg.IPExtractor != "xff" {
 		t.Fatalf("unexpected config: %#v", cfg)
+	}
+	if len(cfg.TrustedProxyCIDRs) != 2 || cfg.TrustedProxyCIDRs[0].String() != "10.0.0.0/8" ||
+		cfg.TrustedProxyCIDRs[1].String() != "2001:db8::/32" {
+		t.Fatalf("unexpected trusted proxy ranges: %v", cfg.TrustedProxyCIDRs)
 	}
 }
 
@@ -64,6 +71,30 @@ func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 		{name: "log level", values: map[string]string{"LOG_LEVEL": "verbose"}, match: "LOG_LEVEL"},
 		{name: "terminating log level", values: map[string]string{"LOG_LEVEL": "fatal"}, match: "LOG_LEVEL"},
 		{name: "IP extractor", values: map[string]string{"IP_EXTRACTOR": "forwarded"}, match: "IP_EXTRACTOR"},
+		{
+			name:   "XFF without trusted proxies",
+			values: map[string]string{"IP_EXTRACTOR": "xff"},
+			match:  "requires TRUSTED_PROXY_CIDRS",
+		},
+		{
+			name:   "trusted proxies in direct mode",
+			values: map[string]string{"TRUSTED_PROXY_CIDRS": "10.0.0.0/8"},
+			match:  "requires IP_EXTRACTOR=xff",
+		},
+		{
+			name: "invalid trusted proxy CIDR",
+			values: map[string]string{
+				"IP_EXTRACTOR": "xff", "TRUSTED_PROXY_CIDRS": "10.0.0.1",
+			},
+			match: "invalid CIDR",
+		},
+		{
+			name: "empty trusted proxy CIDR entry",
+			values: map[string]string{
+				"IP_EXTRACTOR": "xff", "TRUSTED_PROXY_CIDRS": "10.0.0.0/8, ,192.0.2.0/24",
+			},
+			match: "without empty entries",
+		},
 		{
 			name:   "project outside development",
 			values: map[string]string{"APP_ENVIRONMENT": "production"},
@@ -144,9 +175,18 @@ func TestNewServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	server := newServer(cfg, echo.New())
+	core, logs := observer.New(zapcore.ErrorLevel)
+	server, err := newServer(cfg, echo.New(), zap.New(core))
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
 	if server.Addr != cfg.Address || server.ReadTimeout != 5*time.Second ||
 		server.WriteTimeout != 10*time.Second || server.MaxHeaderBytes != 64<<10 {
 		t.Fatalf("unexpected server: %#v", server)
+	}
+	server.ErrorLog.Print("accept failed")
+	entries := logs.All()
+	if len(entries) != 1 || entries[0].LoggerName != "http.server" || entries[0].Message != "accept failed" {
+		t.Fatalf("expected net/http error through process logger, got %#v", entries)
 	}
 }

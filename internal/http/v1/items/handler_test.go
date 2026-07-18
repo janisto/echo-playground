@@ -64,20 +64,19 @@ func TestListItems_CustomLimit(t *testing.T) {
 	}
 }
 
-func TestListItems_RepeatedLimitUsesFirstValue(t *testing.T) {
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=2&limit=5", nil)
-	rec := httptest.NewRecorder()
-	setupEcho().ServeHTTP(rec, req)
+func TestListItems_RejectsRepeatedScalarParameters(t *testing.T) {
+	for _, rawQuery := range []string{
+		"limit=2&limit=5",
+		"cursor=first&cursor=second",
+		"category=tools&category=robotics",
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?"+rawQuery, nil)
+		rec := httptest.NewRecorder()
+		setupEcho().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	var data ListData
-	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(data.Items) != 2 {
-		t.Fatalf("expected first repeated limit value to win, got %d items", len(data.Items))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("query %q: expected 400, got %d: %s", rawQuery, rec.Code, rec.Body.String())
+		}
 	}
 }
 

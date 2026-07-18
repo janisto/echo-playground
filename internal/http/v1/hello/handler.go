@@ -24,6 +24,7 @@ func Register(g *echo.Group) {
 //	@Tags			hello
 //	@Produce		json,application/cbor
 //	@Success		200	{object}	Data
+//	@Failure		406	{object}	respond.ProblemDetails
 //	@Router			/hello [get]
 func getHandler(c *echo.Context) error {
 	return respond.Negotiate(c, http.StatusOK, Data{Message: "Hello, World!"})
@@ -39,6 +40,7 @@ func getHandler(c *echo.Context) error {
 //	@Param			body	body		CreateInput	true	"Greeting request body"
 //	@Success		200		{object}	Data
 //	@Failure		400		{object}	respond.ProblemDetails
+//	@Failure		406		{object}	respond.ProblemDetails
 //	@Failure		413		{object}	respond.ProblemDetails
 //	@Failure		415		{object}	respond.ProblemDetails
 //	@Failure		422		{object}	respond.ProblemDetails

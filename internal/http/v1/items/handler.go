@@ -26,16 +26,17 @@ func Register(g *echo.Group) {
 //	@Description	Returns a paginated list of items with optional category filtering
 //	@Tags			items
 //	@Produce		json,application/cbor
-//	@Param			cursor		query		string	false	"Pagination cursor"	maxlength(2048)
+//	@Param			cursor		query		string	false	"Pagination cursor"		maxlength(2048)
 //	@Param			limit		query		int		false	"Items per page"		minimum(1)	maximum(100)
 //	@Param			category	query		string	false	"Filter by category"	Enums(electronics, tools, accessories, robotics, power, components)
 //	@Success		200			{object}	ListData
 //	@Failure		400			{object}	respond.ProblemDetails
+//	@Failure		406			{object}	respond.ProblemDetails
 //	@Failure		422			{object}	respond.ProblemDetails
 //	@Header			200			{string}	Link	"RFC 8288 pagination links"
 //	@Router			/items [get]
 func listHandler(c *echo.Context) error {
-	if err := request.RejectUnknownQuery(c, "cursor", "limit", "category"); err != nil {
+	if err := request.RejectUnknownOrRepeatedQuery(c, "cursor", "limit", "category"); err != nil {
 		return err
 	}
 

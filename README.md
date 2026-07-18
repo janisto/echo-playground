@@ -5,7 +5,7 @@
 [![Go 1.26.5](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![MIT license](https://img.shields.io/github/license/janisto/echo-playground)](LICENSE)
 
-A compact, high-quality REST API example built with [Echo v5](https://github.com/labstack/echo/tree/v5) and Go 1.26.
+A compact, high-quality REST API example built with [Echo 5.3](https://github.com/labstack/echo/tree/v5) and Go 1.26.
 It demonstrates HTTP contracts, structured observability, Firebase Authentication, Firestore CRUD, OpenAPI 3.1,
 and production-shaped verification without pretending to be a complete production platform.
 
@@ -15,7 +15,7 @@ and production-shaped verification without pretending to be a complete productio
 
 ## Features
 
-- Echo v5 with strict single-object JSON decoding, bounded request bodies, request deadlines, server timeouts, panic recovery, CORS, and security headers
+- Echo 5.3 with strict single-object JSON decoding, bounded request bodies, request deadlines, server timeouts, panic recovery, CORS, and security headers
 - Request-scoped Zap logging through [echo-observability](https://pkg.go.dev/github.com/janisto/echo-observability)
 - RFC 9457 Problem Details with JSON and CBOR response negotiation
 - Cursor pagination with RFC 8288 `Link` headers
@@ -31,7 +31,9 @@ and production-shaped verification without pretending to be a complete productio
 JSON is the only supported request-body format. Successful and error responses use JSON by default and CBOR when
 the `Accept` header prefers `application/cbor`.
 Negotiation follows RFC 9110 specificity and quality rules, so an explicit `q=0` exclusion overrides a broader
-range when another supported representation remains. Requests with no supported range retain the documented JSON fallback.
+range when another supported representation remains. A request with no acceptable success representation returns 406;
+when the client also rejects both Problem Details formats, the 406 explanation uses JSON as a final diagnostic fallback.
+Echo 5.3 automatically serves bodyless HEAD responses through the corresponding GET route.
 
 Errors use:
 
@@ -39,7 +41,8 @@ Errors use:
 - `application/problem+cbor`
 
 Malformed input returns 400. Valid input that fails field or PATCH semantics returns 422. The `/health`
-endpoint is dependency-free liveness; it does not claim Firebase readiness.
+endpoint is dependency-free liveness; it does not claim Firebase readiness. Query contracts are closed and reject
+repeated scalar parameters instead of choosing an arbitrary value.
 
 | Method | Path | Result |
 |---|---|---|
@@ -98,10 +101,12 @@ deployed misconfiguration cannot accept unsigned emulator tokens or silently fal
 | `FIREBASE_MODE` | `offline` | `offline`, `emulator`, or `live` |
 | `FIREBASE_PROJECT_ID` | `demo-test-project` outside live mode | Firebase project |
 | `IP_EXTRACTOR` | `direct` | `direct` or explicitly configured `xff` proxy mode |
+| `TRUSTED_PROXY_CIDRS` | none | Comma-separated proxy CIDRs, required for `IP_EXTRACTOR=xff` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | ADC | Optional service-account file |
 
-`direct` is deliberately safe by default and ignores forwarding headers. Use `xff` only when the service
-is behind a trusted proxy topology such as Cloud Run. Client IP is observational data, never authorization input.
+`direct` is deliberately safe by default, ignores forwarding headers, and rejects `TRUSTED_PROXY_CIDRS`. XFF mode
+requires explicit proxy ranges and reads `X-Forwarded-For` only when the direct peer falls within one of them. For
+example, `TRUSTED_PROXY_CIDRS=10.0.0.0/8,2001:db8::/32`. Client IP is observational data, never authorization input.
 
 CORS intentionally permits all origins for this public playground API, does not permit credentialed browser requests,
 and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origins before adapting the example to a private API.

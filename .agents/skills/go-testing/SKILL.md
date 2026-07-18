@@ -58,7 +58,7 @@ Verify observable contracts, not implementation trivia:
 
 - exact HTTP status and relevant headers (`Content-Type`, `Location`, `Link`, `WWW-Authenticate`, `X-Request-ID`);
 - decoded response fields and RFC 9457 `respond.ProblemDetails` errors;
-- JSON and CBOR negotiation, including a specific `q=0` exclusion overriding broader wildcards;
+- JSON and CBOR negotiation, including a specific `q=0` exclusion overriding broader wildcards and 406 when no success representation is acceptable;
 - strict JSON failures: missing or unsupported content type, `null`, arrays, scalars, malformed syntax, unknown fields,
   multiple values, and the 1 MiB limit where application middleware is in scope;
 - service error mapping, request deadlines, and no sensitive data in observed logs;

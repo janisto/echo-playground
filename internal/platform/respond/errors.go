@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	problemTypeAboutBlank        = "about:blank"
-	problemDetailInternalError   = "internal server error"
-	problemDetailResourceMissing = "resource not found"
+	problemTypeAboutBlank                  = "about:blank"
+	problemDetailInternalError             = "internal server error"
+	problemDetailResourceMissing           = "resource not found"
+	problemDetailRepresentationUnavailable = "no acceptable response representation is available"
 )
 
 // ProblemDetails represents an RFC 9457 Problem Details response.

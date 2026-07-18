@@ -42,27 +42,35 @@ func TestSecurity_SetsHeaders(t *testing.T) {
 	}
 }
 
-func TestSecurity_DocsPolicy(t *testing.T) {
-	e := echo.New()
-	e.Use(Security())
-	e.GET("/api-docs", func(c *echo.Context) error {
-		return c.JSON(http.StatusOK, nil)
-	})
+func TestSecurity_DocsPolicyCoversEverySwaggerUIAsset(t *testing.T) {
+	wantCSP := "default-src 'none'; " +
+		"connect-src 'self'; " +
+		"img-src data:; " +
+		"script-src 'self' https://unpkg.com; " +
+		"style-src https://unpkg.com; " +
+		"frame-ancestors 'none'"
+	for _, path := range []string{"/api-docs", "/api-docs/", "/api-docs/swagger-init.js"} {
+		t.Run(path, func(t *testing.T) {
+			e := echo.New()
+			e.Use(Security())
+			e.GET(path, func(c *echo.Context) error {
+				return c.JSON(http.StatusOK, nil)
+			})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs", nil)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-
-	csp := rec.Header().Get("Content-Security-Policy")
-	if csp != contentSecurityPolicy("/api-docs") {
-		t.Fatalf("unexpected docs CSP %q", csp)
-	}
-	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
-		t.Fatalf("expected docs to retain no-store, got %q", cc)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", rec.Code)
+			}
+			if csp := rec.Header().Get("Content-Security-Policy"); csp != wantCSP {
+				t.Fatalf("unexpected docs CSP %q", csp)
+			}
+			if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+				t.Fatalf("expected docs to retain no-store, got %q", cc)
+			}
+		})
 	}
 }
 

@@ -64,6 +64,29 @@ func TestGetHello_CBOR(t *testing.T) {
 	}
 }
 
+func TestGetHello_RejectsUnsupportedSuccessRepresentations(t *testing.T) {
+	for _, accept := range []string{"text/html", "application/problem+json"} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/hello", nil)
+		req.Header.Set("Accept", accept)
+		rec := httptest.NewRecorder()
+		setupEcho().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotAcceptable {
+			t.Fatalf("Accept %q: expected 406, got %d: %s", accept, rec.Code, rec.Body.String())
+		}
+		if contentType := rec.Header().Get("Content-Type"); contentType != "application/problem+json" {
+			t.Fatalf("Accept %q: expected JSON Problem Details fallback, got %q", accept, contentType)
+		}
+		var problem respond.ProblemDetails
+		if err := json.Unmarshal(rec.Body.Bytes(), &problem); err != nil {
+			t.Fatalf("Accept %q: decode problem: %v", accept, err)
+		}
+		if problem.Status != http.StatusNotAcceptable {
+			t.Fatalf("Accept %q: expected problem status 406, got %d", accept, problem.Status)
+		}
+	}
+}
+
 func TestCreateHello_Success(t *testing.T) {
 	e := setupEcho()
 

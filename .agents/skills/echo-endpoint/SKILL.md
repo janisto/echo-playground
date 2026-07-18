@@ -3,7 +3,7 @@ name: echo-endpoint
 description: Create or change Echo v5 endpoints in echo-playground, including route registration, strict JSON input, validation, authentication, Problem Details, JSON or CBOR responses, OpenAPI, and tests.
 ---
 
-# Echo v5 endpoints
+# Echo 5.3 endpoints
 
 Read `AGENTS.md`, the neighboring handler package, `internal/http/v1/routes/routes.go`, and the relevant platform or
 service contracts before editing the root Echo application.
@@ -21,7 +21,7 @@ Do not apply this skill to `functions/`. That module is intentionally a separate
 
 ## Handler patterns
 
-Echo v5 handlers receive `*echo.Context`:
+Echo 5.3 handlers receive `*echo.Context`:
 
 ```go
 func Register(g *echo.Group) {
@@ -44,7 +44,7 @@ func getHandler(c *echo.Context) error {
 Bind only the source the endpoint accepts:
 
 - path parameters: `echo.BindPathParams`
-- query parameters: reject unknown keys with `request.RejectUnknownQuery`, then use `echo.BindQueryParams`
+- scalar query parameters: reject unknown and repeated keys with `request.RejectUnknownOrRepeatedQuery`, then use `echo.BindQueryParams`
 - JSON bodies: `request.DecodeJSON`, followed by `c.Validate`
 
 `request.DecodeJSON` enforces `application/json`, exactly one top-level object, and known fields. It rejects `null`,
@@ -62,6 +62,8 @@ return respond.Negotiate(c, http.StatusCreated, resource)
 Return expected errors with `respond.Error400`, `Error401`, `Error403`, `Error404`, `Error409`, `Error422`, or
 `Error503`. Log unexpected internal errors once, without tokens or PII, then return `Error500`. Do not leak dependency
 errors to clients.
+
+`respond.Negotiate` returns 406 when `Accept` excludes JSON and CBOR. Document 406 for every operation that uses it.
 
 Map temporary service failures to a stable `ErrUnavailable` sentinel and generic 503 response. Preserve cancellation
 and error chains, log dependency failures once with a stable operation name, and keep raw SDK details out of responses.

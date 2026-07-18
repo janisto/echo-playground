@@ -10,8 +10,15 @@ import (
 // NewTestEcho returns an Echo instance configured with the standard
 // validator and HTTP error handler used by handler tests.
 func NewTestEcho() *echo.Echo {
-	e := echo.New()
-	e.Validator = validate.New()
-	e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+	e := echo.NewWithConfig(echo.Config{
+		Router: echo.NewRouter(echo.RouterConfig{
+			AllowOverwritingRoute: false,
+			AutoHandleHEAD:        true,
+		}),
+		HTTPErrorHandler:             respond.NewHTTPErrorHandler(),
+		IPExtractor:                  echo.ExtractIPDirect(),
+		Validator:                    validate.New(),
+		NoGroupAutoRegister404Routes: true,
+	})
 	return e
 }

@@ -37,7 +37,7 @@ type AppValidator struct {
 
 // New creates a new AppValidator.
 func New() *AppValidator {
-	v := validator.New()
+	v := validator.New(validator.WithRequiredStructEnabled())
 
 	v.RegisterTagNameFunc(func(fld reflect.StructField) string {
 		if name := tagName(fld, "json"); name != "" {

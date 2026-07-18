@@ -31,6 +31,7 @@ registry, or add a runtime filesystem dependency for the specification.
 - Use `respond.ProblemDetails` for every documented error.
 - Include every status reachable from binding, body limits, strict JSON decoding, validation, authentication, service
   mapping, and request deadlines.
+- Include 406 for operations whose success or error representation is negotiated through `Accept`.
 - Add `@Security BearerAuth` to every protected operation and nowhere else.
 - Document `Location` and `Link` headers when the runtime emits them.
 - Keep examples consistent with JSON field names and the repository's UTC millisecond timestamp contract.

@@ -1,6 +1,7 @@
 package respond
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/janisto/echo-observability"
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -23,12 +26,12 @@ func FuzzSelectFormat(f *testing.F) {
 	f.Add("application/json")
 	f.Add("application/cbor;q=0.9, application/json;q=1")
 	f.Fuzz(func(t *testing.T, accept string) {
-		selected := selectFormat(accept)
-		if got := selectFormat(" \t" + accept + "\t "); got != selected {
-			t.Fatalf("surrounding whitespace changed selection: got CBOR=%t, want CBOR=%t", got, selected)
+		selected := selectSuccessFormat(accept)
+		if got := selectSuccessFormat(" \t" + accept + "\t "); got != selected {
+			t.Fatalf("surrounding whitespace changed selection: got %v, want %v", got, selected)
 		}
-		if got := selectFormat(strings.ToUpper(accept)); got != selected {
-			t.Fatalf("token casing changed selection: got CBOR=%t, want CBOR=%t", got, selected)
+		if got := selectSuccessFormat(strings.ToUpper(accept)); got != selected {
+			t.Fatalf("token casing changed selection: got %v, want %v", got, selected)
 		}
 	})
 }
@@ -49,9 +52,14 @@ func FuzzSelectFormatQuality(f *testing.F) {
 			header = cborRange + ", " + jsonRange
 		}
 
-		wantCBOR := cborQ > jsonQ
-		if got := selectFormat(header); got != wantCBOR {
-			t.Fatalf("selectFormat(%q) = CBOR %t, want %t", header, got, wantCBOR)
+		want := formatJSON
+		if cborQ > jsonQ {
+			want = formatCBOR
+		} else if jsonQ == 0 {
+			want = formatNotAcceptable
+		}
+		if got := selectSuccessFormat(header); got != want {
+			t.Fatalf("selectSuccessFormat(%q) = %v, want %v", header, got, want)
 		}
 	})
 }
@@ -227,90 +235,89 @@ func TestParseAcceptMultipleQParams(t *testing.T) {
 
 // --- selectFormat ---
 
-func TestSelectFormatEdgeCases(t *testing.T) {
+func TestSelectSuccessFormat(t *testing.T) {
 	tests := []struct {
-		name       string
-		accept     string
-		expectCBOR bool
+		name   string
+		accept string
+		want   responseFormat
 	}{
-		{"empty accept defaults to JSON", "", false},
-		{"wildcard defaults to JSON", "*/*", false},
-		{"application wildcard defaults to JSON", "application/*", false},
-		{"explicit JSON", "application/json", false},
-		{"explicit CBOR", "application/cbor", true},
-		{"CBOR with quality parameter", "application/cbor;q=1.0", true},
-		{"multiple types with equal q-values defaults to JSON", "application/json, application/cbor", false},
-		{"CBOR preferred with quality", "application/json;q=0.9, application/cbor;q=1.0", true},
-		{"text/html defaults to JSON", "text/html", false},
-		{"problem+cbor explicit", "application/problem+cbor", true},
-		{"problem+json explicit", "application/problem+json", false},
-		{
-			"problem+cbor preferred over problem+json",
-			"application/problem+cbor;q=1.0, application/problem+json;q=0.5",
-			true,
-		},
-		{
-			"problem+json preferred over problem+cbor",
-			"application/problem+cbor;q=0.5, application/problem+json;q=1.0",
-			false,
-		},
-		{"problem+cbor over base cbor same q", "application/cbor, application/problem+cbor", true},
-		{"CBOR excluded with q=0", "application/cbor;q=0, application/json", false},
-		{"JSON preferred with higher quality", "application/cbor;q=0.5, application/json;q=0.9", false},
-		{"CBOR only with low quality still accepted", "application/cbor;q=0.1", true},
-		{"wildcard with CBOR explicit prefers CBOR", "*/*;q=0.1, application/cbor;q=1.0", true},
-		{"wildcard with JSON explicit prefers JSON", "*/*;q=0.1, application/json;q=1.0", false},
-		{
-			"q-value wins over specificity - JSON base over CBOR problem",
-			"application/problem+cbor;q=0.1, application/json;q=1.0",
-			false,
-		},
-		{
-			"q-value wins over specificity - CBOR base over JSON problem",
-			"application/problem+json;q=0.1, application/cbor;q=1.0",
-			true,
-		},
-		{
-			"equal q-values use specificity as tie-breaker - CBOR wins",
-			"application/json;q=0.8, application/problem+cbor;q=0.8",
-			true,
-		},
-		{
-			"equal q-values use specificity as tie-breaker - JSON wins",
-			"application/cbor;q=0.8, application/problem+json;q=0.8",
-			false,
-		},
-		{"malformed quality defaults to 1.0", "application/cbor;q=invalid", true},
-		{"whitespace handling", "  application/cbor  ;  q=1.0  ", true},
-		{"case insensitive type matching", "Application/CBOR", true},
-		{"both excluded with q=0", "application/json;q=0, application/cbor;q=0", false},
-		{"only wildcard with q=0", "*/*;q=0", false},
-		{"structured suffix wildcard +cbor", "application/*+cbor", true},
-		{"structured suffix wildcard +json", "application/*+json", false},
-		{"no matching type", "image/png, text/plain", false},
-		{"CBOR excluded JSON accepted", "application/cbor;q=0, application/json;q=1.0", false},
-		{"JSON excluded CBOR accepted", "application/json;q=0, application/cbor;q=1.0", true},
+		{"empty defaults to JSON", "", formatJSON},
+		{"wildcard defaults to JSON", "*/*", formatJSON},
+		{"application wildcard defaults to JSON", "application/*", formatJSON},
+		{"explicit JSON", "application/json", formatJSON},
+		{"explicit CBOR", "application/cbor", formatCBOR},
+		{"equal quality defaults to JSON", "application/json, application/cbor", formatJSON},
+		{"CBOR preferred by quality", "application/json;q=0.9, application/cbor", formatCBOR},
+		{"unsupported type", "text/html", formatNotAcceptable},
+		{"problem JSON is not a success type", "application/problem+json", formatNotAcceptable},
+		{"problem CBOR is not a success type", "application/problem+cbor", formatNotAcceptable},
+		{"vendor JSON is not plain JSON", "application/vnd.example+json", formatNotAcceptable},
+		{"text wildcard is not global wildcard", "text/*", formatNotAcceptable},
+		{"wildcard type with JSON subtype is invalid", "*/json", formatNotAcceptable},
+		{"both excluded", "application/json;q=0, application/cbor;q=0", formatNotAcceptable},
+		{"wildcard excluded", "*/*;q=0", formatNotAcceptable},
+		{"CBOR excluded", "application/cbor;q=0, application/json", formatJSON},
+		{"JSON excluded", "application/json;q=0, application/cbor", formatCBOR},
 		{
 			"specific JSON exclusion overrides application wildcard",
 			"application/*;q=1, application/json;q=0",
-			true,
+			formatCBOR,
 		},
 		{
 			"specific CBOR exclusion overrides application wildcard",
 			"application/*;q=1, application/cbor;q=0",
-			false,
+			formatJSON,
 		},
 		{
-			"specific problem JSON exclusion overrides wildcard",
-			"*/*;q=1, application/problem+json;q=0",
-			true,
+			"later higher CBOR quality wins",
+			"application/cbor;q=0.2, application/cbor;q=0.8, application/json;q=0.5",
+			formatCBOR,
+		},
+		{
+			"earlier higher CBOR quality remains",
+			"application/cbor;q=0.8, application/cbor;q=0.2, application/json;q=0.5",
+			formatCBOR,
+		},
+		{
+			"later higher JSON quality wins",
+			"application/json;q=0.2, application/json;q=0.8, application/cbor;q=0.5",
+			formatJSON,
+		},
+		{
+			"earlier higher JSON quality remains",
+			"application/json;q=0.8, application/json;q=0.2, application/cbor;q=0.5",
+			formatJSON,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := selectFormat(tt.accept)
-			if got != tt.expectCBOR {
-				t.Fatalf("selectFormat(%q) = %v, want %v", tt.accept, got, tt.expectCBOR)
+			if got := selectSuccessFormat(tt.accept); got != tt.want {
+				t.Fatalf("selectSuccessFormat(%q) = %v, want %v", tt.accept, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSelectProblemFormat(t *testing.T) {
+	tests := []struct {
+		name   string
+		accept string
+		want   responseFormat
+	}{
+		{"empty defaults to JSON", "", formatJSON},
+		{"problem JSON", "application/problem+json", formatJSON},
+		{"plain JSON aliases problem JSON", "application/json", formatJSON},
+		{"problem CBOR", "application/problem+cbor", formatCBOR},
+		{"plain CBOR aliases problem CBOR", "application/cbor", formatCBOR},
+		{"problem subtype wins specificity tie", "application/json, application/problem+cbor", formatCBOR},
+		{"quality wins over specificity", "application/problem+cbor;q=0.5, application/json", formatJSON},
+		{"unsupported type", "text/html", formatNotAcceptable},
+		{"both excluded", "application/problem+json;q=0, application/problem+cbor;q=0", formatNotAcceptable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := selectProblemFormat(tt.accept); got != tt.want {
+				t.Fatalf("selectProblemFormat(%q) = %v, want %v", tt.accept, got, tt.want)
 			}
 		})
 	}
@@ -378,6 +385,28 @@ func TestWriteProblemCBOR(t *testing.T) {
 	}
 }
 
+func TestWriteProblemUnsupportedAcceptReturnsJSON406(t *testing.T) {
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/missing", nil)
+	req.Header.Set("Accept", "text/html")
+	rec := httptest.NewRecorder()
+
+	writeProblem(rec, req, *Error404("resource not found"))
+
+	if rec.Code != http.StatusNotAcceptable {
+		t.Fatalf("expected 406, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != mediaTypeProblemJSON {
+		t.Fatalf("expected JSON Problem Details fallback, got %q", got)
+	}
+	var problem ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &problem); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if problem.Status != http.StatusNotAcceptable || problem.Detail != problemDetailRepresentationUnavailable {
+		t.Fatalf("unexpected problem: %#v", problem)
+	}
+}
+
 func TestWriteProblemVaryHeaders(t *testing.T) {
 	problem := ProblemDetails{Type: "about:blank", Title: "Not Found", Status: 404}
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/missing", nil)
@@ -428,6 +457,26 @@ func TestNegotiateAddsVaryAccept(t *testing.T) {
 	}
 }
 
+func TestNegotiateRejectsUnsupportedAccept(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.GET("/test", func(c *echo.Context) error {
+		return Negotiate(c, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	req.Header.Set("Accept", "text/html")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotAcceptable {
+		t.Fatalf("expected 406, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != mediaTypeProblemJSON {
+		t.Fatalf("expected JSON Problem Details fallback, got %q", got)
+	}
+}
+
 // failWriter is an http.ResponseWriter that accepts WriteHeader but fails on Write.
 type failWriter struct {
 	header http.Header
@@ -440,38 +489,35 @@ func (w *failWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write failed")
 }
 
-func TestWriteProblem_JSONEncodeError(t *testing.T) {
-	problem := ProblemDetails{
-		Type:   "about:blank",
-		Title:  "Bad Request",
-		Status: http.StatusBadRequest,
-		Detail: "test",
-	}
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
-	w := &failWriter{header: make(http.Header)}
+func TestWriteProblem_EncodeErrorsAreLogged(t *testing.T) {
+	for _, tt := range []struct {
+		accept  string
+		message string
+	}{
+		{message: "failed to encode problem+json"},
+		{accept: "application/cbor", message: "failed to encode problem+cbor"},
+	} {
+		t.Run(tt.message, func(t *testing.T) {
+			core, recorded := observer.New(zapcore.ErrorLevel)
+			w := &failWriter{header: make(http.Header)}
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+			req.Header.Set("Accept", tt.accept)
+			handler := obs.HTTPRequestContext(obs.HTTPRequestContextConfig{Logger: zap.New(core)})(
+				http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+					writeProblem(responseWriter, request, *Error400("test"))
+				}),
+			)
 
-	writeProblem(w, req, problem)
+			handler.ServeHTTP(w, req)
 
-	if w.status != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.status)
-	}
-}
-
-func TestWriteProblem_CBOREncodeError(t *testing.T) {
-	problem := ProblemDetails{
-		Type:   "about:blank",
-		Title:  "Bad Request",
-		Status: http.StatusBadRequest,
-		Detail: "test",
-	}
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
-	req.Header.Set("Accept", "application/cbor")
-	w := &failWriter{header: make(http.Header)}
-
-	writeProblem(w, req, problem)
-
-	if w.status != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.status)
+			if w.status != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", w.status)
+			}
+			entries := recorded.FilterMessage(tt.message).All()
+			if len(entries) != 1 || entries[0].ContextMap()["error"] != "write failed" {
+				t.Fatalf("expected one encode failure log, got %#v", entries)
+			}
+		})
 	}
 }
 
@@ -623,6 +669,28 @@ func TestHTTPErrorHandler_BareError(t *testing.T) {
 	}
 	if problem.Detail != "internal server error" {
 		t.Fatalf("expected detail 'internal server error', got %q", problem.Detail)
+	}
+}
+
+func TestHTTPErrorHandler_ClientCancellationRecords499WithoutBody(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = NewHTTPErrorHandler()
+	e.GET("/canceled", func(*echo.Context) error {
+		return context.Canceled
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/canceled", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != middleware.StatusCodeContextCanceled {
+		t.Fatalf("expected 499, got %d", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("expected no response body after cancellation, got %q", rec.Body.String())
+	}
+	if contentType := rec.Header().Get("Content-Type"); contentType != "" {
+		t.Fatalf("expected no content type after cancellation, got %q", contentType)
 	}
 }
 
@@ -1147,6 +1215,12 @@ func TestHTTPErrorHandler_CommittedResponse(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 (committed), got %d", rec.Code)
+	}
+	if body := rec.Body.String(); body != "partial" {
+		t.Fatalf("expected committed body to remain unchanged, got %q", body)
+	}
+	if contentType := rec.Header().Get("Content-Type"); contentType != "" {
+		t.Fatalf("expected error handler not to modify committed headers, got %q", contentType)
 	}
 }
 
