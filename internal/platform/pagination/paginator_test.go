@@ -2,6 +2,7 @@ package pagination
 
 import (
 	"errors"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -44,10 +45,14 @@ func FuzzPaginate(f *testing.F) {
 	f.Add(uint8(10), uint8(4), int16(-1))
 	f.Add(uint8(10), uint8(4), int16(2))
 	f.Add(uint8(5), uint8(17), int16(4))
+	f.Add(uint8(2), uint8(math.MaxUint8), int16(0))
 
 	f.Fuzz(func(t *testing.T, countInput, limitInput uint8, cursorPosition int16) {
 		count := int(countInput % 64)
 		limit := int(limitInput%18) - 1
+		if limitInput == math.MaxUint8 {
+			limit = math.MaxInt
+		}
 		items := makeItems(count)
 		cursor := Cursor{}
 		start := 0
@@ -69,7 +74,7 @@ func FuzzPaginate(f *testing.F) {
 			t.Fatalf("paginate valid cursor: %v", err)
 		}
 
-		end := min(start+limit, count)
+		end := start + min(limit, count-start)
 		if result.Total != count {
 			t.Fatalf("total = %d, want %d", result.Total, count)
 		}
@@ -147,6 +152,28 @@ func TestPaginate_RejectsNonPositiveLimit(t *testing.T) {
 				t.Fatalf("Paginate limit %d error = %v, want %v", limit, err, ErrInvalidLimit)
 			}
 		})
+	}
+}
+
+func TestPaginate_MaximumLimitAfterCursor(t *testing.T) {
+	items := makeItems(2)
+	result, err := Paginate(
+		items,
+		Cursor{Type: "item", Value: items[0].ID},
+		math.MaxInt,
+		"item",
+		getTestID,
+		"/items",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Paginate maximum limit: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0] != items[1] {
+		t.Fatalf("items = %#v, want %#v", result.Items, items[1:])
+	}
+	if result.NextCursor != "" {
+		t.Fatalf("next cursor = %q, want empty", result.NextCursor)
 	}
 }
 

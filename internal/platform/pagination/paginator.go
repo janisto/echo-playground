@@ -67,7 +67,8 @@ func Paginate[T any](
 		}
 	}
 
-	endIdx := min(startIdx+limit, total)
+	remaining := total - startIdx
+	endIdx := startIdx + min(limit, remaining)
 
 	pageItems := items[startIdx:endIdx]
 

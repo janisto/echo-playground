@@ -24,6 +24,8 @@ func FuzzTimeUnmarshalCBOR(f *testing.F) {
 		f.Fatalf("marshal seed: %v", err)
 	}
 	f.Add(seed)
+	nanosecondSeed := append([]byte{0xc0}, appendCBORTextString(nil, "2024-01-15T10:30:00.123456789Z")...)
+	f.Add(nanosecondSeed)
 	f.Add([]byte{})
 	f.Add([]byte{0xc0, 0x61, 'x'})
 	f.Fuzz(func(t *testing.T, data []byte) {
@@ -39,8 +41,9 @@ func FuzzTimeUnmarshalCBOR(f *testing.F) {
 		if err := roundTrip.UnmarshalCBOR(encoded); err != nil {
 			t.Fatalf("unmarshal encoded time: %v", err)
 		}
-		if !roundTrip.Equal(value.Time) {
-			t.Fatalf("round trip mismatch: got %s, want %s", roundTrip.Time, value.Time)
+		want := value.Truncate(time.Millisecond)
+		if !roundTrip.Equal(want) {
+			t.Fatalf("canonical round trip mismatch: got %s, want %s", roundTrip.Time, want)
 		}
 	})
 }

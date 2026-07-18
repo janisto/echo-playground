@@ -168,7 +168,7 @@ Go's native fuzzing engine targets the input spaces where examples alone are lea
 | `FuzzPaginate` | `./internal/platform/pagination` | Page bounds, item order, next/previous cursors, filters, and caller-owned query values stay consistent |
 | `FuzzSelectFormat` | `./internal/platform/respond` | Media-type selection is invariant to token casing and surrounding whitespace |
 | `FuzzSelectFormatQuality` | `./internal/platform/respond` | Exact JSON/CBOR quality ordering, ties, exclusions, and header order select the documented format |
-| `FuzzTimeUnmarshalCBOR` | `./internal/platform/timeutil` | Arbitrary accepted CBOR timestamps survive canonical encode/decode round trips |
+| `FuzzTimeUnmarshalCBOR` | `./internal/platform/timeutil` | Accepted CBOR timestamps canonicalize to the same millisecond on encode/decode |
 | `FuzzTimeCBORRoundTrip` | `./internal/platform/timeutil` | Canonically encoded timestamps always decode to the same millisecond |
 | `FuzzHelloHandler` | `./functions` | GET/POST precedence, Unicode rune counting, and the 100-rune boundary remain exact |
 
