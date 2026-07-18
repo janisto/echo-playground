@@ -86,8 +86,8 @@ checked.
 ## Verification
 
 Add colocated tests for the success path, malformed and unknown JSON, validation, authentication or authorization,
-service failures, negotiated JSON and CBOR, and response headers relevant to the endpoint. Use the `go-testing` skill
-for repository test conventions.
+service failures, negotiated JSON and CBOR, and response headers relevant to the endpoint. Apply
+`$adversarial-testing`, then use `$go-testing` for repository test conventions.
 
 Run the narrow test first, then:
 

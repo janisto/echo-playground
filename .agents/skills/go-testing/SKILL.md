@@ -6,6 +6,8 @@ description: Write and review tests for echo-playground using Go testing, Echo v
 # Go testing
 
 Read `AGENTS.md`, the implementation under test, and nearby tests before choosing the test boundary in either Go module.
+Apply `$adversarial-testing` first to rank failure modes and select mutation-resistant cases; this skill supplies Go,
+Echo, fixture, emulator, and command conventions.
 
 ## Test at the narrowest useful boundary
 

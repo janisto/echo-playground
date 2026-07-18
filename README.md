@@ -255,7 +255,7 @@ assets and the embedded same-origin initialization script.
 ## Project layout
 
 ```text
-.agents/skills/         Five portable project workflows with Codex UI metadata
+.agents/skills/         Six portable project workflows with Codex UI metadata
 .github/agents/        Evidence-based security review profile for GitHub Copilot
 api-docs/              Generated OpenAPI plus embedded spec
 cmd/openapi/           Deterministic generated-spec normalization
