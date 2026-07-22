@@ -30,7 +30,7 @@ Keep the document concise and onboarding-oriented. Preserve or update these subj
 - project purpose and significant capabilities;
 - HTTP routes, status semantics, JSON requests, and negotiated JSON or CBOR responses;
 - requirements and a working quick start;
-- implemented environment variables, safe proxy defaults, CORS premise, and local Firebase behavior;
+- implemented environment variables, CORS premise, and local Firebase behavior;
 - root and function module development commands;
 - the explicit distinction that Firebase CLI runs Auth and Firestore emulators but does not deploy the Go function;
 - the `gcloud run deploy --source functions --function Hello --base-image go126` function path;

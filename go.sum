@@ -129,8 +129,8 @@ github.com/googleapis/enterprise-certificate-proxy v0.3.18 h1:hvVi34VucdrV1IIsiW
 github.com/googleapis/enterprise-certificate-proxy v0.3.18/go.mod h1:rSEsBUemEBZEexP2y6jPp16LUmUbjmSbcPMQizR0o4k=
 github.com/googleapis/gax-go/v2 v2.23.0 h1:Tchl7qkvE7Ip3y+ztvNufYFvkfqTe7NfLTYGIdJRLuE=
 github.com/googleapis/gax-go/v2 v2.23.0/go.mod h1:rBQKOVJCdb8IFEzg+FCwlt1LP/xMDGuqUXhUG+XMXEg=
-github.com/janisto/echo-observability v1.0.1 h1:cUCTWTeIdOy7aLNyJJO/Mvnc64tl0JmXTyXfQQsiChs=
-github.com/janisto/echo-observability v1.0.1/go.mod h1:rVN/mwUX32Vj2ZaTKTyu9WdGt7p5KbJY/X7pQ9tQNrY=
+github.com/janisto/echo-observability/v2 v2.0.0 h1:Y++0u5pVkYCUS+EeN0moiNaYijJ+a/ysO7EwijRqcgA=
+github.com/janisto/echo-observability/v2 v2.0.0/go.mod h1:X6m88pdKvkmGNaead/cnKfRkEcxVThFiFs74MP7hybU=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=

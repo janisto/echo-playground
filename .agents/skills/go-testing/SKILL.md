@@ -33,10 +33,15 @@ the behavior under test:
 func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo {
 	logger := zap.NewNop()
 	e := testutil.NewTestEcho()
+	const traceContextLevel = obs.TraceContextLevel1
 	e.Use(
-		obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
-		obs.AccessLogger(obs.AccessLoggerConfig{Logger: logger, Preset: obs.PresetGCP}),
+		obs.RequestContext(obs.RequestContextConfig{
+			Logger: logger, Preset: obs.PresetGCP, TraceContextLevel: traceContextLevel,
+		}),
 		respond.Recoverer(logger),
+		obs.AccessLogger(obs.AccessLoggerConfig{
+			Logger: logger, Preset: obs.PresetGCP, TraceContextLevel: traceContextLevel,
+		}),
 	)
 
 	e.GET("/health", health.Handler)
@@ -44,6 +49,8 @@ func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo 
 	return e
 }
 ```
+
+Keep recovery outside `obs.AccessLogger`; v2 classifies and rethrows panics before recovery writes the error response.
 
 Use `httptest.NewRequestWithContext(t.Context(), ...)`. Set `Content-Type: application/json` for bodies,
 `Authorization: Bearer test-token` for protected routes, and `Accept` only when exercising negotiation. Set a fixed

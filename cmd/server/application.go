@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/janisto/echo-observability"
+	"github.com/janisto/echo-observability/v2"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 	"go.uber.org/zap"
@@ -30,6 +30,8 @@ type applicationClients struct {
 	verifier auth.Verifier
 	profiles profilesvc.Service
 }
+
+const observabilityTraceContextLevel = obs.TraceContextLevel1
 
 func newFirebaseClients(ctx context.Context, cfg config, logger *zap.Logger) (*applicationClients, error) {
 	if cfg.FirebaseMode == firebaseModeOffline {
@@ -85,33 +87,29 @@ func (unavailableProfileStore) Delete(context.Context, string) error {
 }
 
 func newEcho(cfg config, logger *zap.Logger, clients *applicationClients) *echo.Echo {
-	ipExtractor := echo.ExtractIPDirect()
-	if cfg.IPExtractor == "xff" {
-		trustOptions := []echo.TrustOption{
-			echo.TrustLoopback(false),
-			echo.TrustLinkLocal(false),
-			echo.TrustPrivateNet(false),
-		}
-		for _, trustedRange := range cfg.TrustedProxyCIDRs {
-			trustOptions = append(trustOptions, echo.TrustIPRange(trustedRange))
-		}
-		ipExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
-	}
 	e := echo.NewWithConfig(echo.Config{
 		Router: echo.NewRouter(echo.RouterConfig{
 			AllowOverwritingRoute: false,
 			AutoHandleHEAD:        true,
 		}),
 		HTTPErrorHandler:             respond.NewHTTPErrorHandler(),
-		IPExtractor:                  ipExtractor,
+		IPExtractor:                  echo.ExtractIPDirect(),
 		Validator:                    validate.New(),
 		NoGroupAutoRegister404Routes: true,
 	})
 
 	e.Use(
-		obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
-		obs.AccessLogger(obs.AccessLoggerConfig{Logger: logger, Preset: obs.PresetGCP}),
+		obs.RequestContext(obs.RequestContextConfig{
+			Logger:            logger,
+			Preset:            obs.PresetGCP,
+			TraceContextLevel: observabilityTraceContextLevel,
+		}),
 		respond.Recoverer(logger),
+		obs.AccessLogger(obs.AccessLoggerConfig{
+			Logger:            logger,
+			Preset:            obs.PresetGCP,
+			TraceContextLevel: observabilityTraceContextLevel,
+		}),
 		middleware.ContextTimeoutWithConfig(middleware.ContextTimeoutConfig{
 			Timeout: cfg.RequestTimeout,
 			ErrorHandler: func(_ *echo.Context, err error) error {

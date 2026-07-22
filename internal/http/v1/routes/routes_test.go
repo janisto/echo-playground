@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/janisto/echo-observability"
+	"github.com/janisto/echo-observability/v2"
 	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,10 +27,19 @@ func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo 
 
 func setupTestServerWithLogger(verifier auth.Verifier, svc profilesvc.Service, logger *zap.Logger) *echo.Echo {
 	e := testutil.NewTestEcho()
+	const traceContextLevel = obs.TraceContextLevel1
 	e.Use(
-		obs.RequestContext(obs.RequestContextConfig{Logger: logger, Preset: obs.PresetGCP}),
-		obs.AccessLogger(obs.AccessLoggerConfig{Logger: logger, Preset: obs.PresetGCP}),
+		obs.RequestContext(obs.RequestContextConfig{
+			Logger:            logger,
+			Preset:            obs.PresetGCP,
+			TraceContextLevel: traceContextLevel,
+		}),
 		respond.Recoverer(logger),
+		obs.AccessLogger(obs.AccessLoggerConfig{
+			Logger:            logger,
+			Preset:            obs.PresetGCP,
+			TraceContextLevel: traceContextLevel,
+		}),
 	)
 
 	e.GET("/health", health.Handler)
@@ -323,9 +332,12 @@ func TestPanicRecovery(t *testing.T) {
 	assertObservedFields(t, recorded.FilterMessage("panic recovered").All(), map[string]any{
 		"request_id": rec.Header().Get(echo.HeaderXRequestID),
 	})
-	assertObservedFields(t, recorded.FilterMessage("request completed").All(), map[string]any{
-		"status": int64(http.StatusInternalServerError),
-	})
+	accessEntries := recorded.FilterMessage("request completed").All()
+	assertObservedFields(t, accessEntries, map[string]any{"terminal_reason": "panic"})
+	assertObservedFieldsAbsent(t, accessEntries, "status", "error")
+	if accessEntries[0].Level != zapcore.ErrorLevel {
+		t.Fatalf("expected ERROR access log, got %s", accessEntries[0].Level)
+	}
 }
 
 func assertObservedFields(t *testing.T, entries []observer.LoggedEntry, want map[string]any) {
@@ -337,6 +349,19 @@ func assertObservedFields(t *testing.T, entries []observer.LoggedEntry, want map
 	for key, expected := range want {
 		if got := fields[key]; got != expected {
 			t.Fatalf("expected %s=%v, got %v in %#v", key, expected, got, fields)
+		}
+	}
+}
+
+func assertObservedFieldsAbsent(t *testing.T, entries []observer.LoggedEntry, keys ...string) {
+	t.Helper()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	for _, key := range keys {
+		if value, ok := fields[key]; ok {
+			t.Fatalf("expected %s to be absent, got %v in %#v", key, value, fields)
 		}
 	}
 }

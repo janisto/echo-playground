@@ -16,7 +16,9 @@ and production-shaped verification without pretending to be a complete productio
 ## Features
 
 - Echo 5.3 with strict single-object JSON decoding, bounded request bodies, request deadlines, server timeouts, panic recovery, CORS, and security headers
-- Request-scoped Zap logging through [echo-observability](https://pkg.go.dev/github.com/janisto/echo-observability)
+- Request-scoped Zap logging and W3C trace correlation through
+  [echo-observability v2](https://pkg.go.dev/github.com/janisto/echo-observability/v2), without raw paths, peer IPs,
+  user agents, or returned error text in access logs
 - RFC 9457 Problem Details with JSON and CBOR response negotiation
 - Cursor pagination with RFC 8288 `Link` headers
 - Firebase ID-token validation with revocation checks and explicit dependency-failure handling
@@ -100,13 +102,7 @@ deployed misconfiguration cannot accept unsigned emulator tokens or silently fal
 | `APP_ENVIRONMENT` | `development` | `development`, `staging`, or `production` |
 | `FIREBASE_MODE` | `offline` | `offline`, `emulator`, or `live` |
 | `FIREBASE_PROJECT_ID` | `demo-test-project` outside live mode | Firebase project |
-| `IP_EXTRACTOR` | `direct` | `direct` or explicitly configured `xff` proxy mode |
-| `TRUSTED_PROXY_CIDRS` | none | Comma-separated proxy CIDRs, required for `IP_EXTRACTOR=xff` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | ADC | Optional service-account file |
-
-`direct` is deliberately safe by default, ignores forwarding headers, and rejects `TRUSTED_PROXY_CIDRS`. XFF mode
-requires explicit proxy ranges and reads `X-Forwarded-For` only when the direct peer falls within one of them. For
-example, `TRUSTED_PROXY_CIDRS=10.0.0.0/8,2001:db8::/32`. Client IP is observational data, never authorization input.
 
 CORS intentionally permits all origins for this public playground API, does not permit credentialed browser requests,
 and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origins before adapting the example to a private API.
