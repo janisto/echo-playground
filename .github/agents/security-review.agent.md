@@ -26,7 +26,7 @@ Before analysis, read these files:
 11. `functions/function.go`, `functions/cmd/server/main.go`, and `functions/go.mod` - independent function contract
 12. `Dockerfile`, `.dockerignore`, `firebase.json`, `firestore.rules`, and `.github/workflows/*.yml` - artifact and CI controls
 
-Inspect the `github.com/janisto/echo-observability` version selected by `go.mod` when validating request ID handling,
+Inspect the `github.com/janisto/echo-observability/v2` version selected by `go.mod` when validating request ID handling,
 trace correlation, logger field safety, and access-log behavior. Do not assume the removed local middleware contract.
 
 ## Security Review Checklist

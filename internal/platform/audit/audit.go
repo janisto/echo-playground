@@ -3,7 +3,7 @@ package audit
 import (
 	"context"
 
-	"github.com/janisto/echo-observability"
+	"github.com/janisto/echo-observability/v2"
 	"go.uber.org/zap"
 )
 

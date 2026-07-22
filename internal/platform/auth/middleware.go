@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/janisto/echo-observability"
+	"github.com/janisto/echo-observability/v2"
 	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 

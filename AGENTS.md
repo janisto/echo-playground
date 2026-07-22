@@ -40,7 +40,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo 5.3](https://git
 
 ### Key Features
 
-- Echo 5.3 middleware stack with security headers, CORS, real IP detection, request correlation, structured access logging, and panic recovery
+- Echo 5.3 middleware stack with security headers, CORS, request correlation, structured access logging, and panic recovery
 - Request-scoped Zap logger through echo-observability with Google Cloud trace metadata enrichment
 - Plain response bodies with RFC 9457 Problem Details for errors
 - Content negotiation supporting JSON and CBOR formats
@@ -54,7 +54,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo 5.3](https://git
 
 - Language/runtime: Go 1.26+
 - Frameworks/libs: Echo v5.3+, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
-- Logging: Zap via github.com/janisto/echo-observability
+- Logging: Zap via github.com/janisto/echo-observability/v2
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
 - OpenAPI: swaggo/swag v2 (OAS 3.1)
 - Task runner: [Just](https://github.com/casey/just) (required for pinned Go toolchain)
@@ -391,7 +391,7 @@ Use the request-scoped logger installed by echo-observability:
 
 ```go
 import (
-	"github.com/janisto/echo-observability"
+	"github.com/janisto/echo-observability/v2"
 	"go.uber.org/zap"
 )
 
@@ -404,8 +404,8 @@ obs.Logger(ctx).Error("message", zap.Error(err), zap.String("key", "value"))
 an observability request context. Use the explicit process logger returned by `obs.NewLogger` for startup, shutdown,
 background jobs, `net/http` server errors, and other non-request paths. Use `internal/platform/audit.LogEvent` for audit events.
 
-Install `obs.RequestContext` before `obs.AccessLogger` at the outer middleware boundary. Keep recovery inside the
-access logger so downstream middleware failures and panics retain request correlation and produce access logs.
+Install `obs.RequestContext` first, recovery middleware second, and `obs.AccessLogger` third. Echo makes the first
+listed middleware outermost, so the access logger classifies and rethrows panics before recovery writes the response.
 
 ### Adding New Routes
 
@@ -699,8 +699,6 @@ Validate the module independently with `just functions-check`, `just functions-t
   - `FIREBASE_MODE` (`offline`, `emulator`, or `live`)
   - `FIRESTORE_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
   - `FIREBASE_AUTH_EMULATOR_HOST` (only needed when running the server against emulators; tests use hardcoded addresses)
-  - `IP_EXTRACTOR` (`direct` or `xff`; defaults to `direct`)
-  - `TRUSTED_PROXY_CIDRS` (comma-separated CIDRs required only for `IP_EXTRACTOR=xff`)
   - `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON; uses ADC if not set)
   - `GOOGLE_CLOUD_PROJECT`, `GCP_PROJECT`, `GCLOUD_PROJECT`, or `PROJECT_ID` (for Cloud Trace correlation)
 

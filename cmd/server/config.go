@@ -27,8 +27,6 @@ type config struct {
 	Environment       string
 	FirebaseProject   string
 	FirebaseMode      string
-	IPExtractor       string
-	TrustedProxyCIDRs []*net.IPNet
 	LogLevel          zapcore.Level
 	RequestTimeout    time.Duration
 	ShutdownTimeout   time.Duration
@@ -80,22 +78,11 @@ func loadConfig(getenv func(string) string) (config, error) {
 		return config{}, fmt.Errorf("parse LOG_LEVEL: %w", err)
 	}
 
-	ipExtractor := valueOrDefault(getenv("IP_EXTRACTOR"), "direct")
-	if ipExtractor != "direct" && ipExtractor != "xff" {
-		return config{}, errors.New("IP_EXTRACTOR must be direct or xff")
-	}
-	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(ipExtractor, getenv("TRUSTED_PROXY_CIDRS"))
-	if err != nil {
-		return config{}, err
-	}
-
 	return config{
 		Address:           net.JoinHostPort(host, port),
 		Environment:       environment,
 		FirebaseProject:   projectID,
 		FirebaseMode:      mode,
-		IPExtractor:       ipExtractor,
-		TrustedProxyCIDRs: trustedProxyCIDRs,
 		LogLevel:          level,
 		RequestTimeout:    8 * time.Second,
 		ShutdownTimeout:   10 * time.Second,
@@ -104,34 +91,6 @@ func loadConfig(getenv func(string) string) (config, error) {
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}, nil
-}
-
-func parseTrustedProxyCIDRs(ipExtractor, value string) ([]*net.IPNet, error) {
-	value = strings.TrimSpace(value)
-	if ipExtractor == "direct" {
-		if value != "" {
-			return nil, errors.New("TRUSTED_PROXY_CIDRS requires IP_EXTRACTOR=xff")
-		}
-		return nil, nil
-	}
-	if value == "" {
-		return nil, errors.New("IP_EXTRACTOR=xff requires TRUSTED_PROXY_CIDRS")
-	}
-
-	parts := strings.Split(value, ",")
-	ranges := make([]*net.IPNet, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			return nil, errors.New("TRUSTED_PROXY_CIDRS must be a comma-separated list without empty entries")
-		}
-		_, network, err := net.ParseCIDR(part)
-		if err != nil {
-			return nil, fmt.Errorf("TRUSTED_PROXY_CIDRS contains invalid CIDR %q", part)
-		}
-		ranges = append(ranges, network)
-	}
-	return ranges, nil
 }
 
 func validateFirebaseConfig(environment, mode, projectID, authEmulator, firestoreEmulator string) error {

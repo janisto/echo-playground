@@ -7,7 +7,7 @@ require (
 	firebase.google.com/go/v4 v4.21.0
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/go-playground/validator/v10 v10.30.3
-	github.com/janisto/echo-observability v1.0.1
+	github.com/janisto/echo-observability/v2 v2.0.0
 	github.com/labstack/echo/v5 v5.3.0
 	go.uber.org/zap v1.28.0
 	google.golang.org/grpc v1.82.1
