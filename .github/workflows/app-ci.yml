@@ -19,14 +19,15 @@ env:
 jobs:
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6.5.0
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.26.x'
           check-latest: true
@@ -47,14 +48,14 @@ jobs:
       - name: Build both modules
         run: just build
 
-      - name: Test root module with coverage
+      - name: Test both modules with coverage
         run: just test-coverage
-
-      - name: Test function module
-        run: just test-functions
 
       - name: Smoke-test Functions Framework target
         run: just functions-smoke
+
+      - name: Fuzz curated input boundaries
+        run: just fuzz-all 1s
 
       - name: Race detector
         run: just test-race
@@ -63,16 +64,30 @@ jobs:
         run: |
           go tool cover -func=coverage.out > coverage-summary.txt
           go tool cover -html=coverage.out -o coverage.html
+          (
+            cd functions
+            GOWORK=off go tool cover -func=coverage.out > coverage-summary.txt
+            GOWORK=off go tool cover -html=coverage.out -o coverage.html
+          )
 
       - name: Publish coverage summary
         run: |
-          total=$(grep '^total:' coverage-summary.txt | awk '{print $3}')
+          root_total=$(grep '^total:' coverage-summary.txt | awk '{print $3}')
+          function_total=$(grep '^total:' functions/coverage-summary.txt | awk '{print $3}')
           {
             echo "### Test Coverage"
             echo
-            echo "Total coverage: ${total}"
+            echo "Root module: ${root_total}"
+            echo
+            echo "Function module: ${function_total}"
+            echo
+            echo "#### Root module"
             echo
             sed 's/^/    /' coverage-summary.txt
+            echo
+            echo "#### Function module"
+            echo
+            sed 's/^/    /' functions/coverage-summary.txt
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage artifacts
@@ -83,30 +98,34 @@ jobs:
             coverage.out
             coverage.html
             coverage-summary.txt
+            functions/coverage.out
+            functions/coverage.html
+            functions/coverage-summary.txt
 
   firebase-emulators:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6.5.0
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.26.x'
           check-latest: true
           cache: true
 
       - name: Set up Java
-        uses: actions/setup-java@v5.5.0
+        uses: actions/setup-java@v5.6.0
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6.4.0
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: '24'
 
@@ -142,14 +161,15 @@ jobs:
 
   vulnerability:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6.5.0
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.26.x'
           check-latest: true
@@ -166,26 +186,28 @@ jobs:
 
   dependency-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v4.9.0
+        uses: actions/dependency-review-action@v5.0.0
 
   generated-openapi:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6.5.0
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.26.x'
           check-latest: true
@@ -205,9 +227,10 @@ jobs:
 
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -227,6 +250,7 @@ jobs:
       - generated-openapi
       - container
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require all CI jobs
         env:

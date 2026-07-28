@@ -5,6 +5,6 @@ rules:
       days: 1
   unpinned-uses:
     config:
-      # Repository policy requires full release tags.
+      # Repository policy requires explicit full release tags.
       policies:
         "*": ref-pin

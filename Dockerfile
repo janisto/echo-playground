@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.19.0
+# syntax=docker/dockerfile:1.24.0
 # Dockerfile for a Go Echo application
 #
 # Uses multi-stage build with official Go and distroless images.

@@ -1,6 +1,7 @@
 package items
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"slices"
@@ -48,9 +49,9 @@ func listHandler(c *echo.Context) error {
 		return err
 	}
 
-	limit := input.Limit
-	if limit == 0 {
-		limit = pagination.DefaultLimit
+	limit := pagination.DefaultLimit
+	if input.Limit != nil {
+		limit = *input.Limit
 	}
 
 	cursor, err := pagination.DecodeCursor(input.Cursor)
@@ -79,6 +80,9 @@ func listHandler(c *echo.Context) error {
 		query,
 	)
 	if err != nil {
+		if errors.Is(err, pagination.ErrCursorScopeMismatch) {
+			return respond.Error400("cursor does not match the requested filters or limit")
+		}
 		return respond.Error400("cursor references unknown item")
 	}
 

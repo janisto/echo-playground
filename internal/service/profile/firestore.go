@@ -2,6 +2,7 @@ package profile
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -14,6 +15,10 @@ import (
 )
 
 const profilesCollection = "profiles"
+
+func profileDocumentID(userID string) string {
+	return "uid_" + base64.RawURLEncoding.EncodeToString([]byte(userID))
+}
 
 func categorizeError(err error) string {
 	switch {
@@ -91,7 +96,7 @@ func NewFirestoreStore(client *firestore.Client) *FirestoreStore {
 
 // Create atomically creates a profile if it does not already exist.
 func (s *FirestoreStore) Create(ctx context.Context, userID string, params CreateParams) (*Profile, error) {
-	docRef := s.client.Collection(profilesCollection).Doc(userID)
+	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
 	now := time.Now().UTC()
 	fp := newFirestoreProfile(params, now)
 	_, err := docRef.Create(ctx, fp)
@@ -116,7 +121,7 @@ func (s *FirestoreStore) Create(ctx context.Context, userID string, params Creat
 
 // Get retrieves a profile by user ID.
 func (s *FirestoreStore) Get(ctx context.Context, userID string) (*Profile, error) {
-	docRef := s.client.Collection(profilesCollection).Doc(userID)
+	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
 	doc, err := docRef.Get(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -135,7 +140,7 @@ func (s *FirestoreStore) Get(ctx context.Context, userID string) (*Profile, erro
 
 // Update updates a profile using a transaction for atomicity.
 func (s *FirestoreStore) Update(ctx context.Context, userID string, params UpdateParams) (*Profile, error) {
-	docRef := s.client.Collection(profilesCollection).Doc(userID)
+	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
 
 	var result *Profile
 
@@ -214,7 +219,7 @@ func profileUpdates(params UpdateParams, updatedAt time.Time) []firestore.Update
 
 // Delete atomically removes an existing profile.
 func (s *FirestoreStore) Delete(ctx context.Context, userID string) error {
-	docRef := s.client.Collection(profilesCollection).Doc(userID)
+	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
 	_, err := docRef.Delete(ctx, firestore.Exists)
 	if err != nil {
 		switch status.Code(err) {

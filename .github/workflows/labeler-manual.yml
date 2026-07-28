@@ -39,7 +39,7 @@ jobs:
           retries: 3
           script: |
             const maxCountRaw = process.env.INPUT_MAX_COUNT || "200";
-            const maxCount = Math.max(0, Number.parseInt(maxCountRaw, 10) || 0);
+            const maxCount = Math.min(256, Math.max(1, Number.parseInt(maxCountRaw, 10) || 200));
 
             const scope = (process.env.INPUT_SCOPE || "closed").toLowerCase();
             const state = scope === "all" ? "all" : "closed";
@@ -48,13 +48,16 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               state,
-              per_page: 100
+              per_page: 100,
+              headers: {
+                "X-GitHub-Api-Version": "2026-03-10"
+              }
             });
 
             const prNumbersAll = allPRs.map(pr => pr.number).sort((a, b) => a - b);
-            const prNumbers = maxCount > 0 ? prNumbersAll.slice(0, maxCount) : prNumbersAll;
+            const prNumbers = prNumbersAll.slice(0, maxCount);
 
-            core.info(`Collected ${prNumbers.length} ${state} PRs (max ${maxCount || 'all'}): ${prNumbers.slice(0,20).join(", ")}...`);
+            core.info(`Collected ${prNumbers.length} ${state} PRs (max ${maxCount}): ${prNumbers.slice(0,20).join(", ")}...`);
 
             core.setOutput("pr_numbers", JSON.stringify(prNumbers));
             core.setOutput("pr_count", String(prNumbers.length));
@@ -79,7 +82,7 @@ jobs:
         pr: ${{ fromJson(needs.collect-prs.outputs.pr_numbers) }}
 
     steps:
-      - uses: actions/labeler@v6.2.0
+      - uses: actions/labeler@v7.0.0
         with:
           pr-number: ${{ matrix.pr }}
           configuration-path: .github/labeler.yml

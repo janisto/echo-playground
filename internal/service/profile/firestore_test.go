@@ -3,6 +3,7 @@ package profile
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -17,7 +18,7 @@ func newTestStore(t *testing.T) (*FirestoreStore, func()) {
 	t.Helper()
 	testutil.SkipIfEmulatorUnavailable(t)
 	testutil.SetupEmulator(t)
-	testutil.ClearEmulators(t)
+	testutil.ClearFirestore(t)
 
 	ctx := t.Context()
 	client, err := firestore.NewClient(ctx, testutil.ProjectID)
@@ -78,6 +79,38 @@ func TestFirestoreStore_CreateAndGet(t *testing.T) {
 	}
 }
 
+func TestFirestoreStore_TreatsUserIDAsOpaque(t *testing.T) {
+	store, cleanup := newTestStore(t)
+	defer cleanup()
+
+	const userID = "firebase/user:with/slash"
+	created, err := store.Create(t.Context(), userID, CreateParams{Firstname: "Ada"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.ID != userID {
+		t.Fatalf("created ID = %q, want %q", created.ID, userID)
+	}
+	got, err := store.Get(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got.ID != userID {
+		t.Fatalf("stored ID = %q, want %q", got.ID, userID)
+	}
+}
+
+func TestProfileDocumentID(t *testing.T) {
+	const userID = "firebase/user:with/slash"
+	got := profileDocumentID(userID)
+	if strings.Contains(got, "/") || got == userID {
+		t.Fatalf("profileDocumentID(%q) = %q, want an opaque Firestore document ID", userID, got)
+	}
+	if got != profileDocumentID(userID) || got == profileDocumentID(userID+"x") {
+		t.Fatal("profile document ID mapping must be deterministic and distinct")
+	}
+}
+
 func TestFirestoreStore_CreateDuplicate(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
@@ -125,7 +158,7 @@ func TestFirestoreStore_Update(t *testing.T) {
 	if _, err := store.Create(ctx, "user-upd", params); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	docRef := store.client.Collection(profilesCollection).Doc("user-upd")
+	docRef := store.client.Collection(profilesCollection).Doc(profileDocumentID("user-upd"))
 	if _, err := docRef.Set(ctx, map[string]any{"future_field": "preserve-me"}, firestore.MergeAll); err != nil {
 		t.Fatalf("seed unknown field: %v", err)
 	}
@@ -279,6 +312,9 @@ func TestFirestoreStore_ConcurrentDelete(t *testing.T) {
 }
 
 func TestClassifyDependencyError(t *testing.T) {
+	if err := classifyDependencyError(nil); err != nil {
+		t.Fatalf("expected nil to remain nil, got %v", err)
+	}
 	for _, err := range []error{
 		context.DeadlineExceeded,
 		status.Error(codes.Aborted, "aborted"),

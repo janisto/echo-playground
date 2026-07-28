@@ -180,11 +180,8 @@ func TestParseAcceptEmpty(t *testing.T) {
 
 func TestParseAcceptNoSlash(t *testing.T) {
 	ranges := parseAccept("text")
-	if len(ranges) != 1 {
-		t.Fatalf("expected 1 range, got %d", len(ranges))
-	}
-	if ranges[0].typ != "text" || ranges[0].subtype != "*" {
-		t.Fatalf("expected text/*, got %s/%s", ranges[0].typ, ranges[0].subtype)
+	if len(ranges) != 0 {
+		t.Fatalf("expected invalid range to be ignored, got %v", ranges)
 	}
 }
 
@@ -197,39 +194,57 @@ func TestParseAcceptEmptyPart(t *testing.T) {
 
 func TestParseAcceptInvalidQValue(t *testing.T) {
 	ranges := parseAccept("application/json;q=invalid")
-	if len(ranges) != 1 {
-		t.Fatalf("expected 1 range, got %d", len(ranges))
-	}
-	if ranges[0].q != 1.0 {
-		t.Fatalf("expected q=1.0 for invalid q value, got %f", ranges[0].q)
+	if len(ranges) != 0 {
+		t.Fatalf("expected invalid q range to be ignored, got %v", ranges)
 	}
 }
 
 func TestParseAcceptQValueOutOfRange(t *testing.T) {
 	ranges := parseAccept("application/json;q=2.0")
-	if len(ranges) != 1 {
-		t.Fatalf("expected 1 range, got %d", len(ranges))
-	}
-	if ranges[0].q != 1.0 {
-		t.Fatalf("expected q=1.0 for out-of-range q value, got %f", ranges[0].q)
+	if len(ranges) != 0 {
+		t.Fatalf("expected out-of-range q to be ignored, got %v", ranges)
 	}
 
 	ranges = parseAccept("application/json;q=-0.5")
-	if len(ranges) != 1 {
-		t.Fatalf("expected 1 range, got %d", len(ranges))
-	}
-	if ranges[0].q != 1.0 {
-		t.Fatalf("expected q=1.0 for negative q value, got %f", ranges[0].q)
+	if len(ranges) != 0 {
+		t.Fatalf("expected negative q to be ignored, got %v", ranges)
 	}
 }
 
 func TestParseAcceptMultipleQParams(t *testing.T) {
 	ranges := parseAccept("application/json;q=0.5;q=0.9")
-	if len(ranges) != 1 {
-		t.Fatalf("expected 1 range, got %d", len(ranges))
+	if len(ranges) != 0 {
+		t.Fatalf("expected repeated q range to be ignored, got %v", ranges)
 	}
-	if ranges[0].q != 0.9 {
-		t.Fatalf("expected last q value (0.9), got %f", ranges[0].q)
+}
+
+func TestParseQualityGrammar(t *testing.T) {
+	tests := []struct {
+		value string
+		valid bool
+	}{
+		{value: "0", valid: true},
+		{value: "0.", valid: true},
+		{value: "0.123", valid: true},
+		{value: "1", valid: true},
+		{value: "1.000", valid: true},
+		{value: "0.0000"},
+		{value: "1.001"},
+		{value: "00"},
+		{value: ".5"},
+		{value: "0.a"},
+		{value: `"0.5"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			_, valid := parseQuality(tt.value)
+			if valid != tt.valid {
+				t.Fatalf("parseQuality(%q) valid = %t, want %t", tt.value, valid, tt.valid)
+			}
+		})
+	}
+	if ranges := parseAccept(`application/json;q="0.5"`); len(ranges) != 0 {
+		t.Fatalf("quoted qvalue must be rejected, got %v", ranges)
 	}
 }
 
@@ -256,6 +271,11 @@ func TestSelectSuccessFormat(t *testing.T) {
 		{"wildcard type with JSON subtype is invalid", "*/json", formatNotAcceptable},
 		{"both excluded", "application/json;q=0, application/cbor;q=0", formatNotAcceptable},
 		{"wildcard excluded", "*/*;q=0", formatNotAcceptable},
+		{"invalid quality is not accepted", "application/json;q=invalid", formatNotAcceptable},
+		{"media parameters do not match", "application/json;profile=example", formatNotAcceptable},
+		{"media parameter after quality does not match", "application/cbor;q=1;profile=example", formatNotAcceptable},
+		{"valueless parameter is invalid", "application/cbor;q=1;foo", formatNotAcceptable},
+		{"quoted commas stay within parameters", `application/json;profile="a,b", application/cbor`, formatCBOR},
 		{"CBOR excluded", "application/cbor;q=0, application/json", formatJSON},
 		{"JSON excluded", "application/json;q=0, application/cbor", formatCBOR},
 		{
@@ -474,6 +494,26 @@ func TestNegotiateRejectsUnsupportedAccept(t *testing.T) {
 	}
 	if got := rec.Header().Get("Content-Type"); got != mediaTypeProblemJSON {
 		t.Fatalf("expected JSON Problem Details fallback, got %q", got)
+	}
+}
+
+func TestNegotiateCombinesRepeatedAcceptFields(t *testing.T) {
+	e := echo.New()
+	e.GET("/test", func(c *echo.Context) error {
+		return Negotiate(c, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	req.Header.Add("Accept", "text/html")
+	req.Header.Add("Accept", "application/cbor")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != mediaTypeApplicationCBOR {
+		t.Fatalf("content type = %q, want %q", got, mediaTypeApplicationCBOR)
 	}
 }
 

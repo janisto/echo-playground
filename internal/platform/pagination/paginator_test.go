@@ -54,15 +54,15 @@ func FuzzPaginate(f *testing.F) {
 			limit = math.MaxInt
 		}
 		items := makeItems(count)
+		query := url.Values{"category": {"tools"}, "cursor": {"stale"}}
 		cursor := Cursor{}
 		start := 0
 		if count > 0 && cursorPosition >= 0 {
 			index := int(cursorPosition) % count
-			cursor = Cursor{Type: "item", Value: items[index].ID}
+			cursor = NewCursor("item", items[index].ID, limit, query)
 			start = index + 1
 		}
 
-		query := url.Values{"category": {"tools"}, "cursor": {"stale"}}
 		result, err := Paginate(items, cursor, limit, "item", getTestID, "/items", query)
 		if limit <= 0 {
 			if !errors.Is(err, ErrInvalidLimit) {
@@ -96,7 +96,7 @@ func FuzzPaginate(f *testing.F) {
 			if decodeErr != nil {
 				t.Fatalf("decode next cursor: %v", decodeErr)
 			}
-			if want := (Cursor{Type: "item", Value: items[end-1].ID}); next != want {
+			if want := NewCursor("item", items[end-1].ID, limit, query); next != want {
 				t.Fatalf("next cursor = %#v, want %#v", next, want)
 			}
 		}
@@ -114,7 +114,7 @@ func FuzzPaginate(f *testing.F) {
 			if start > limit {
 				wantValue = items[start-limit-1].ID
 			}
-			if want := (Cursor{Type: "item", Value: wantValue}); prev != want {
+			if want := NewCursor("item", wantValue, limit, query); prev != want {
 				t.Fatalf("previous cursor = %#v, want %#v", prev, want)
 			}
 		}
@@ -159,7 +159,7 @@ func TestPaginate_MaximumLimitAfterCursor(t *testing.T) {
 	items := makeItems(2)
 	result, err := Paginate(
 		items,
-		Cursor{Type: "item", Value: items[0].ID},
+		NewCursor("item", items[0].ID, math.MaxInt, nil),
 		math.MaxInt,
 		"item",
 		getTestID,
@@ -264,10 +264,32 @@ func TestPaginate_PreservesQueryParams(t *testing.T) {
 
 func TestPaginate_CursorNotFound(t *testing.T) {
 	items := makeItems(5)
-	cursor := Cursor{Type: "item", Value: "nonexistent"}
+	cursor := NewCursor("item", "nonexistent", 3, nil)
 	_, err := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
 	if !errors.Is(err, ErrCursorNotFound) {
 		t.Fatalf("expected ErrCursorNotFound, got %v", err)
+	}
+}
+
+func TestPaginate_RejectsCursorScopeChanges(t *testing.T) {
+	items := makeItems(5)
+	cursor := NewCursor("item", items[0].ID, 2, url.Values{"category": {"tools"}})
+
+	tests := []struct {
+		name  string
+		limit int
+		query url.Values
+	}{
+		{name: "limit", limit: 3, query: url.Values{"category": {"tools"}}},
+		{name: "filter", limit: 2, query: url.Values{"category": {"electronics"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Paginate(items, cursor, tt.limit, "item", getTestID, "/items", tt.query)
+			if !errors.Is(err, ErrCursorScopeMismatch) {
+				t.Fatalf("Paginate() error = %v, want %v", err, ErrCursorScopeMismatch)
+			}
+		})
 	}
 }
 

@@ -33,6 +33,7 @@ func run() error {
 	}
 	patchSecurityScheme(document)
 	patchProblemMediaTypes(document)
+	patchSchemas(document)
 
 	data, err = json.MarshalIndent(document, "", "    ")
 	if err != nil {
@@ -57,6 +58,52 @@ func run() error {
 		return fmt.Errorf("write YAML: %w", writeErr)
 	}
 	return nil
+}
+
+func patchSchemas(document map[string]any) {
+	schemas := object(object(document, "components"), "schemas")
+	for _, name := range []string{
+		"hello.CreateInput",
+		"profile.CreateInput",
+		"profile.UpdateInput",
+	} {
+		object(schemas, name)["additionalProperties"] = false
+	}
+	object(schemas, "profile.UpdateInput")["minProperties"] = 1
+
+	for name, required := range map[string][]string{
+		"hello.Data":                       {"message"},
+		"internal_http_v1_profile.Profile": {"id", "firstname", "lastname", "email", "phoneNumber", "marketing", "createdAt", "updatedAt"},
+		"items.Item":                       {"id", "name", "category", "price", "inStock", "createdAt", "description"},
+		"items.ListData":                   {"items", "total"},
+		"items.Money":                      {"amountMinor", "currency"},
+		"respond.ErrorDetail":              {"message"},
+		"respond.ProblemDetails":           {"type", "title", "status"},
+	} {
+		schema := object(schemas, name)
+		schema["additionalProperties"] = false
+		schema["required"] = required
+	}
+
+	setProperty(schemas, "profile.CreateInput", "email", "format", "email")
+	setProperty(schemas, "profile.UpdateInput", "email", "format", "email")
+	setProperty(schemas, "internal_http_v1_profile.Profile", "email", "format", "email")
+	for _, schema := range []string{"profile.CreateInput", "profile.UpdateInput", "internal_http_v1_profile.Profile"} {
+		setProperty(schemas, schema, "phoneNumber", "pattern", `^\+[1-9][0-9]{1,14}$`)
+	}
+	for _, schema := range []string{"internal_http_v1_profile.Profile", "items.Item"} {
+		for _, property := range []string{"createdAt", "updatedAt"} {
+			if _, exists := object(object(schemas, schema), "properties")[property]; exists {
+				setProperty(schemas, schema, property, "format", "date-time")
+			}
+		}
+	}
+	setProperty(schemas, "items.Money", "currency", "pattern", `^[A-Z]{3}$`)
+}
+
+func setProperty(schemas map[string]any, schemaName, propertyName, key string, value any) {
+	properties := object(object(schemas, schemaName), "properties")
+	object(properties, propertyName)[key] = value
 }
 
 func patchSecurityScheme(document map[string]any) {

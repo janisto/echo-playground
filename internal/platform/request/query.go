@@ -3,14 +3,20 @@ package request
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/labstack/echo/v5"
 )
 
 // RejectUnknownOrRepeatedQuery enforces a closed scalar query contract.
 func RejectUnknownOrRepeatedQuery(c *echo.Context, allowed ...string) error {
-	for name, values := range c.QueryParams() {
+	query, err := url.ParseQuery(c.Request().URL.RawQuery)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "malformed query string").Wrap(err)
+	}
+	for name, values := range query {
 		if !slices.Contains(allowed, name) {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("unknown query parameter %q", name))
 		}
@@ -18,6 +24,12 @@ func RejectUnknownOrRepeatedQuery(c *echo.Context, allowed ...string) error {
 			return echo.NewHTTPError(
 				http.StatusBadRequest,
 				fmt.Sprintf("query parameter %q must appear exactly once", name),
+			)
+		}
+		if !utf8.ValidString(values[0]) {
+			return echo.NewHTTPError(
+				http.StatusBadRequest,
+				fmt.Sprintf("query parameter %q must contain valid UTF-8", name),
 			)
 		}
 	}

@@ -1,6 +1,7 @@
 components:
   schemas:
     hello.CreateInput:
+      additionalProperties: false
       properties:
         name:
           example: World
@@ -11,18 +12,24 @@ components:
       - name
       type: object
     hello.Data:
+      additionalProperties: false
       properties:
         message:
           example: Hello, World!
           type: string
+      required:
+      - message
       type: object
     internal_http_v1_profile.Profile:
+      additionalProperties: false
       properties:
         createdAt:
           example: "2024-01-15T10:30:00.000Z"
+          format: date-time
           type: string
         email:
           example: john@example.com
+          format: email
           type: string
         firstname:
           example: John
@@ -38,18 +45,31 @@ components:
           type: boolean
         phoneNumber:
           example: "+358401234567"
+          pattern: ^\+[1-9][0-9]{1,14}$
           type: string
         updatedAt:
           example: "2024-01-15T10:30:00.000Z"
+          format: date-time
           type: string
+      required:
+      - id
+      - firstname
+      - lastname
+      - email
+      - phoneNumber
+      - marketing
+      - createdAt
+      - updatedAt
       type: object
     items.Item:
+      additionalProperties: false
       properties:
         category:
           example: electronics
           type: string
         createdAt:
           example: "2024-01-15T10:30:00.000Z"
+          format: date-time
           type: string
         description:
           example: A compact electronic widget for everyday use
@@ -65,8 +85,17 @@ components:
           type: string
         price:
           $ref: '#/components/schemas/items.Money'
+      required:
+      - id
+      - name
+      - category
+      - price
+      - inStock
+      - createdAt
+      - description
       type: object
     items.ListData:
+      additionalProperties: false
       properties:
         items:
           items:
@@ -76,20 +105,30 @@ components:
         total:
           example: 30
           type: integer
+      required:
+      - items
+      - total
       type: object
     items.Money:
+      additionalProperties: false
       properties:
         amountMinor:
           example: 2999
           type: integer
         currency:
           example: EUR
+          pattern: ^[A-Z]{3}$
           type: string
+      required:
+      - amountMinor
+      - currency
       type: object
     profile.CreateInput:
+      additionalProperties: false
       properties:
         email:
           example: john@example.com
+          format: email
           type: string
         firstname:
           example: John
@@ -106,6 +145,7 @@ components:
           type: boolean
         phoneNumber:
           example: "+358401234567"
+          pattern: ^\+[1-9][0-9]{1,14}$
           type: string
       required:
       - email
@@ -114,9 +154,12 @@ components:
       - phoneNumber
       type: object
     profile.UpdateInput:
+      additionalProperties: false
+      minProperties: 1
       properties:
         email:
           example: john@example.com
+          format: email
           type: string
         firstname:
           example: John
@@ -133,9 +176,11 @@ components:
           type: boolean
         phoneNumber:
           example: "+358401234567"
+          pattern: ^\+[1-9][0-9]{1,14}$
           type: string
       type: object
     respond.ErrorDetail:
+      additionalProperties: false
       properties:
         location:
           example: body.firstname
@@ -143,8 +188,11 @@ components:
         message:
           example: firstname is required
           type: string
+      required:
+      - message
       type: object
     respond.ProblemDetails:
+      additionalProperties: false
       properties:
         detail:
           example: resource not found
@@ -166,6 +214,10 @@ components:
         type:
           example: about:blank
           type: string
+      required:
+      - type
+      - title
+      - status
       type: object
   securitySchemes:
     BearerAuth:
@@ -369,6 +421,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              description: Bearer challenge
+              schema:
+                type: string
         "404":
           content:
             application/problem+cbor:
@@ -432,6 +489,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              description: Bearer challenge
+              schema:
+                type: string
         "404":
           content:
             application/problem+cbor:
@@ -513,6 +575,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              description: Bearer challenge
+              schema:
+                type: string
         "404":
           content:
             application/problem+cbor:
@@ -626,6 +693,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/respond.ProblemDetails'
           description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              description: Bearer challenge
+              schema:
+                type: string
         "406":
           content:
             application/problem+cbor:

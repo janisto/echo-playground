@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"crypto/sha512"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,6 +27,31 @@ func TestRegister_SwaggerUI(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "swagger-ui") {
 		t.Fatal("expected swagger-ui content in response")
+	}
+	for _, expected := range []string{
+		"https://unpkg.com/swagger-ui-dist@5.32.11/swagger-ui.css",
+		"https://unpkg.com/swagger-ui-dist@5.32.11/swagger-ui-bundle.js",
+		`crossorigin="anonymous"`,
+	} {
+		if !strings.Contains(rec.Body.String(), expected) {
+			t.Fatalf("Swagger UI HTML lacks %q", expected)
+		}
+	}
+	assertIntegrity(t, rec.Body.String(), "sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT")
+	assertIntegrity(t, rec.Body.String(), "sha384-vfl/klfTFrIz5urj0HnhcXLAbzPdRHezizfy+XgFB6GqcKkhlk0lS3bIbyB39NLA")
+}
+
+func assertIntegrity(t *testing.T, document, value string) {
+	t.Helper()
+	if !strings.Contains(document, `integrity="`+value+`"`) {
+		t.Fatalf("Swagger UI HTML lacks integrity %q", value)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(value, "sha384-"))
+	if err != nil {
+		t.Fatalf("decode integrity %q: %v", value, err)
+	}
+	if len(decoded) != sha512.Size384 {
+		t.Fatalf("integrity %q decodes to %d bytes, want %d", value, len(decoded), sha512.Size384)
 	}
 }
 

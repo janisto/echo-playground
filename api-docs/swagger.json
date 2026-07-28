@@ -2,6 +2,7 @@
     "components": {
         "schemas": {
             "hello.CreateInput": {
+                "additionalProperties": false,
                 "properties": {
                     "name": {
                         "example": "World",
@@ -16,22 +17,29 @@
                 "type": "object"
             },
             "hello.Data": {
+                "additionalProperties": false,
                 "properties": {
                     "message": {
                         "example": "Hello, World!",
                         "type": "string"
                     }
                 },
+                "required": [
+                    "message"
+                ],
                 "type": "object"
             },
             "internal_http_v1_profile.Profile": {
+                "additionalProperties": false,
                 "properties": {
                     "createdAt": {
                         "example": "2024-01-15T10:30:00.000Z",
+                        "format": "date-time",
                         "type": "string"
                     },
                     "email": {
                         "example": "john@example.com",
+                        "format": "email",
                         "type": "string"
                     },
                     "firstname": {
@@ -52,16 +60,29 @@
                     },
                     "phoneNumber": {
                         "example": "+358401234567",
+                        "pattern": "^\\+[1-9][0-9]{1,14}$",
                         "type": "string"
                     },
                     "updatedAt": {
                         "example": "2024-01-15T10:30:00.000Z",
+                        "format": "date-time",
                         "type": "string"
                     }
                 },
+                "required": [
+                    "id",
+                    "firstname",
+                    "lastname",
+                    "email",
+                    "phoneNumber",
+                    "marketing",
+                    "createdAt",
+                    "updatedAt"
+                ],
                 "type": "object"
             },
             "items.Item": {
+                "additionalProperties": false,
                 "properties": {
                     "category": {
                         "example": "electronics",
@@ -69,6 +90,7 @@
                     },
                     "createdAt": {
                         "example": "2024-01-15T10:30:00.000Z",
+                        "format": "date-time",
                         "type": "string"
                     },
                     "description": {
@@ -91,9 +113,19 @@
                         "$ref": "#/components/schemas/items.Money"
                     }
                 },
+                "required": [
+                    "id",
+                    "name",
+                    "category",
+                    "price",
+                    "inStock",
+                    "createdAt",
+                    "description"
+                ],
                 "type": "object"
             },
             "items.ListData": {
+                "additionalProperties": false,
                 "properties": {
                     "items": {
                         "items": {
@@ -107,9 +139,14 @@
                         "type": "integer"
                     }
                 },
+                "required": [
+                    "items",
+                    "total"
+                ],
                 "type": "object"
             },
             "items.Money": {
+                "additionalProperties": false,
                 "properties": {
                     "amountMinor": {
                         "example": 2999,
@@ -117,15 +154,22 @@
                     },
                     "currency": {
                         "example": "EUR",
+                        "pattern": "^[A-Z]{3}$",
                         "type": "string"
                     }
                 },
+                "required": [
+                    "amountMinor",
+                    "currency"
+                ],
                 "type": "object"
             },
             "profile.CreateInput": {
+                "additionalProperties": false,
                 "properties": {
                     "email": {
                         "example": "john@example.com",
+                        "format": "email",
                         "type": "string"
                     },
                     "firstname": {
@@ -146,6 +190,7 @@
                     },
                     "phoneNumber": {
                         "example": "+358401234567",
+                        "pattern": "^\\+[1-9][0-9]{1,14}$",
                         "type": "string"
                     }
                 },
@@ -158,9 +203,12 @@
                 "type": "object"
             },
             "profile.UpdateInput": {
+                "additionalProperties": false,
+                "minProperties": 1,
                 "properties": {
                     "email": {
                         "example": "john@example.com",
+                        "format": "email",
                         "type": "string"
                     },
                     "firstname": {
@@ -181,12 +229,14 @@
                     },
                     "phoneNumber": {
                         "example": "+358401234567",
+                        "pattern": "^\\+[1-9][0-9]{1,14}$",
                         "type": "string"
                     }
                 },
                 "type": "object"
             },
             "respond.ErrorDetail": {
+                "additionalProperties": false,
                 "properties": {
                     "location": {
                         "example": "body.firstname",
@@ -197,9 +247,13 @@
                         "type": "string"
                     }
                 },
+                "required": [
+                    "message"
+                ],
                 "type": "object"
             },
             "respond.ProblemDetails": {
+                "additionalProperties": false,
                 "properties": {
                     "detail": {
                         "example": "resource not found",
@@ -229,6 +283,11 @@
                         "type": "string"
                     }
                 },
+                "required": [
+                    "type",
+                    "title",
+                    "status"
+                ],
                 "type": "object"
             }
         },
@@ -544,7 +603,15 @@
                                 }
                             }
                         },
-                        "description": "Unauthorized"
+                        "description": "Unauthorized",
+                        "headers": {
+                            "WWW-Authenticate": {
+                                "description": "Bearer challenge",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
                     },
                     "404": {
                         "content": {
@@ -649,7 +716,15 @@
                                 }
                             }
                         },
-                        "description": "Unauthorized"
+                        "description": "Unauthorized",
+                        "headers": {
+                            "WWW-Authenticate": {
+                                "description": "Bearer challenge",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
                     },
                     "404": {
                         "content": {
@@ -782,7 +857,15 @@
                                 }
                             }
                         },
-                        "description": "Unauthorized"
+                        "description": "Unauthorized",
+                        "headers": {
+                            "WWW-Authenticate": {
+                                "description": "Bearer challenge",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
                     },
                     "404": {
                         "content": {
@@ -968,7 +1051,15 @@
                                 }
                             }
                         },
-                        "description": "Unauthorized"
+                        "description": "Unauthorized",
+                        "headers": {
+                            "WWW-Authenticate": {
+                                "description": "Bearer challenge",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
                     },
                     "406": {
                         "content": {

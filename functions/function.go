@@ -2,11 +2,14 @@
 package hello
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"time"
 	"unicode/utf8"
 
@@ -37,32 +40,53 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		http.Error(w, "invalid query string", http.StatusBadRequest)
+		return
+	}
+	for name, values := range query {
+		if name != "name" || len(values) != 1 || !utf8.ValidString(values[0]) {
+			http.Error(w, "invalid query string", http.StatusBadRequest)
+			return
+		}
+	}
 
 	var req *Request
 	if r.Method == http.MethodPost {
-		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		contentTypes := r.Header.Values("Content-Type")
+		if len(contentTypes) != 1 {
+			http.Error(w, "content type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		mediaType, _, err := mime.ParseMediaType(contentTypes[0])
 		if err != nil || mediaType != "application/json" {
 			http.Error(w, "content type must be application/json", http.StatusUnsupportedMediaType)
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		dec := json.NewDecoder(r.Body)
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&req); err != nil {
-			var maxBytesErr *http.MaxBytesError
-			if errors.As(err, &maxBytesErr) {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-				return
-			}
-			http.Error(w, "invalid JSON request body", http.StatusBadRequest)
-			return
-		}
-		if req == nil {
-			http.Error(w, "request body must contain one JSON object", http.StatusBadRequest)
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			writeDecodeError(w, err)
 			return
 		}
 		if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			writeDecodeError(w, err)
+			return
+		}
+		raw = bytes.TrimSpace(raw)
+		if len(raw) == 0 || raw[0] != '{' || !utf8.Valid(raw) {
 			http.Error(w, "request body must contain one JSON object", http.StatusBadRequest)
+			return
+		}
+		if err := validateRequestJSON(raw); err != nil {
+			http.Error(w, "invalid JSON request body", http.StatusBadRequest)
+			return
+		}
+		req = &Request{}
+		if err := json.Unmarshal(raw, req); err != nil {
+			http.Error(w, "invalid JSON request body", http.StatusBadRequest)
 			return
 		}
 	}
@@ -72,7 +96,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 		name = req.Name
 	}
 	if name == "" {
-		name = r.URL.Query().Get("name")
+		name = query.Get("name")
 	}
 	if name == "" {
 		name = "World"
@@ -91,4 +115,46 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		return
 	}
+}
+
+func writeDecodeError(w http.ResponseWriter, err error) {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	http.Error(w, "invalid JSON request body", http.StatusBadRequest)
+}
+
+func validateRequestJSON(raw []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return errors.New("request body is not a JSON object")
+	}
+
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		token, err = decoder.Token()
+		if err != nil {
+			return fmt.Errorf("read JSON object name: %w", err)
+		}
+		name, ok := token.(string)
+		if !ok || name != "name" {
+			return errors.New("unknown JSON field")
+		}
+		if _, exists := seen[name]; exists {
+			return errors.New("duplicate JSON field")
+		}
+		seen[name] = struct{}{}
+
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return fmt.Errorf("read JSON field value: %w", err)
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return fmt.Errorf("close JSON object: %w", err)
+	}
+	return nil
 }

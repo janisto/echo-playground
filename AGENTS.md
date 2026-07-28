@@ -29,6 +29,12 @@ Instructions for coding agents working in this repository.
 - Mark breaking changes with `!` and explain them in a `BREAKING CHANGE:` footer.
 - Before committing, run `just qa` and `git diff --check`.
 
+## GitHub automation
+
+- Reference GitHub Actions by explicit full release tags such as
+  `owner/action@v1.2.3`, not full commit SHAs or floating major-version tags.
+  Dependabot updates those release tags.
+
 ## Mandatory skills
 
 - Use `.agents/skills/adversarial-testing/SKILL.md` for every task that plans, creates, modifies, reviews, debugs, or evaluates tests. Apply it alongside any more specific framework or infrastructure testing skill.
@@ -52,7 +58,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo 5.3](https://git
 
 ### Tech & Tooling
 
-- Language/runtime: Go 1.26+
+- Language/runtime: Go 1.26.5+
 - Frameworks/libs: Echo v5.3+, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
 - Logging: Zap via github.com/janisto/echo-observability/v2
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
@@ -70,7 +76,7 @@ Key recipes:
 - `just build` - Build both Go modules
 - `just run` - Run the server
 - `just test` - Test both Go modules
-- `just coverage` - Run tests and generate coverage report
+- `just coverage` - Run both modules and generate separate coverage reports
 - `just lint` - Lint both Go modules
 - `just fmt` - Format both Go modules
 - `just fix` - Run lint fixes for both Go modules
@@ -87,7 +93,7 @@ Key recipes:
 - `just update` - Update root dependencies, root Go tools, and the function module
 - `just functions-update` - Update only the function module
 - `just install` - Download module dependencies (alias for download)
-- `just fresh` - Recreate the root module from clean state
+- `just fresh` - Clean local artifacts, download dependencies, and build both modules
 - `just emulators` - Start Firebase emulators (Auth + Firestore)
 - `just test-integration-ci` - Require emulators and generate separate integration coverage
 - `just functions-smoke` / `just container-smoke` - Probe the registered function and final image
@@ -110,7 +116,7 @@ emulator hosts. Tests use hardcoded emulator addresses via `internal/testutil` a
 
 ### Requirements
 
-- Go 1.26+
+- Go 1.26.5+
 - Firebase CLI (for emulators): `npm install -g firebase-tools`
 
 ### Install Dependencies
@@ -254,7 +260,7 @@ Current task-specific guidance:
 
 Repository automation under `.github/` independently checks both Go modules, required Firebase emulators,
 vulnerabilities, generated OpenAPI drift, the final container, and root and function lint. Use exact release tags for
-every GitHub Action, for example `uses: actions/checkout@v7.0.0` and `uses: actions/setup-go@v6.5.0`, so the GitHub
+every GitHub Action, for example `uses: actions/checkout@v7.0.1` and `uses: actions/setup-go@v7.0.0`, so the GitHub
 Actions updater in `.github/dependabot.yml` proposes direct, readable version updates in the same form. This repository
 accepts mutable upstream release tags in exchange for that consistent convention; do not replace them with commit SHAs.
 Keep `ci` and `lint` as the stable ruleset-required aggregate job names. Each aggregate must use
@@ -270,7 +276,7 @@ Every Go setup step intentionally uses this baseline configuration:
 
 ```yaml
 - name: Set up Go
-  uses: actions/setup-go@v6.5.0
+  uses: actions/setup-go@v7.0.0
   with:
     go-version: '1.26.x'
     check-latest: true

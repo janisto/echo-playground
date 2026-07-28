@@ -28,6 +28,7 @@ functions-run port="8080":
 [group('build')]
 clean:
     rm -f coverage.out coverage.html coverage-summary.txt \
+        functions/coverage.out functions/coverage.html functions/coverage-summary.txt \
         integration-coverage.out integration-coverage.html integration-coverage-summary.txt \
         firebase-debug.log firestore-debug.log ui-debug.log
 
@@ -110,6 +111,7 @@ fuzz-functions target='FuzzHelloHandler' duration='10s' *args:
 [group('test')]
 fuzz-all duration='10s':
     just fuzz FuzzDecodeJSON {{ duration }} ./internal/platform/request
+    just fuzz FuzzRejectUnknownOrRepeatedQuery {{ duration }} ./internal/platform/request
     just fuzz FuzzDecodeCursor {{ duration }} ./internal/platform/pagination
     just fuzz FuzzPaginate {{ duration }} ./internal/platform/pagination
     just fuzz FuzzSelectFormat {{ duration }} ./internal/platform/respond
@@ -156,16 +158,27 @@ functions-smoke port="18081":
     done
     exit 1
 
-# Run tests with coverage
+# Run both modules with separate coverage profiles.
 [group('test')]
 test-coverage *args:
+    just test-coverage-app {{ args }}
+    just test-coverage-functions {{ args }}
+
+[group('test')]
+test-coverage-app *args:
     go test -v -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./... {{ args }}
 
-# Generate coverage report
+[group('test')]
+test-coverage-functions *args:
+    cd functions && GOWORK=off go test -v -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./... {{ args }}
+
+# Generate coverage reports for both modules.
 [group('test')]
 coverage: test-coverage
     go tool cover -func=coverage.out | tee coverage-summary.txt
     go tool cover -html=coverage.out -o coverage.html
+    cd functions && GOWORK=off go tool cover -func=coverage.out | tee coverage-summary.txt
+    cd functions && GOWORK=off go tool cover -html=coverage.out -o coverage.html
 
 [group('qa')]
 lint: lint-app lint-functions
@@ -230,7 +243,18 @@ vuln-functions:
 
 [group('qa')]
 workflow-check:
-    go tool actionlint
+    #!/usr/bin/env bash
+    set -euo pipefail
+    actionlint
+    invalid=0
+    while IFS= read -r use; do
+      ref="${use##*@}"
+      if [[ ! "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        printf 'GitHub Action does not use a full release tag: %s\n' "$use"
+        invalid=1
+      fi
+    done < <(rg --no-filename --only-matching 'uses:[[:space:]]+[^[:space:]#]+' .github/workflows)
+    exit "$invalid"
 
 [group('qa')]
 workflow-security-check:
