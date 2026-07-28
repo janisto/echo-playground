@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/labstack/echo/v5"
 )
@@ -37,6 +38,12 @@ func TestRejectUnknownOrRepeatedQuery(t *testing.T) {
 			rawQuery:    "limit=5;category=tools",
 			wantMessage: "malformed query string",
 		},
+		{
+			name:        "invalid UTF-8 value",
+			target:      "/items",
+			rawQuery:    "category=%FF",
+			wantMessage: `query parameter "category" must contain valid UTF-8`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -67,6 +74,7 @@ func FuzzRejectUnknownOrRepeatedQuery(f *testing.F) {
 	f.Add("limit=5&limit=10")
 	f.Add("limit=%zz")
 	f.Add("limti=5")
+	f.Add("category=%FF")
 
 	f.Fuzz(func(t *testing.T, rawQuery string) {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items", nil)
@@ -79,6 +87,10 @@ func FuzzRejectUnknownOrRepeatedQuery(f *testing.F) {
 		if valid {
 			for name, entries := range values {
 				if name != "cursor" && name != "limit" && name != "category" || len(entries) != 1 {
+					valid = false
+					break
+				}
+				if !utf8.ValidString(entries[0]) {
 					valid = false
 					break
 				}

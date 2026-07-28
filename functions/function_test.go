@@ -106,6 +106,10 @@ func TestHelloHandler(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
+			name: "invalid UTF-8 query", method: http.MethodGet, target: "/?name=%FF",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:        "JSON",
 			method:      http.MethodPost,
 			target:      "/",

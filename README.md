@@ -66,6 +66,7 @@ repeated scalar parameters instead of choosing an arbitrary value.
 - Docker or Podman for the final-image checks
 - Google Cloud CLI only when deploying the function example
 - [Gremlins](https://github.com/go-gremlins/gremlins) only when running mutation tests
+- [actionlint](https://github.com/rhysd/actionlint) only when validating workflows locally (`brew install actionlint` on macOS)
 - [zizmor](https://docs.zizmor.sh/) only when auditing GitHub Actions locally
 
 The root service and `functions/` are independent Go modules. An optional ignored `go.work` is useful

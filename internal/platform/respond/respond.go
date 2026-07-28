@@ -94,7 +94,7 @@ func parseAccept(header string) []mediaRange {
 					}
 					mr.q = q
 					hasQ = true
-				} else if !hasQ {
+				} else {
 					mr.hasMediaParams = true
 				}
 			}

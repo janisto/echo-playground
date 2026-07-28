@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/labstack/echo/v5"
 )
@@ -23,6 +24,12 @@ func RejectUnknownOrRepeatedQuery(c *echo.Context, allowed ...string) error {
 			return echo.NewHTTPError(
 				http.StatusBadRequest,
 				fmt.Sprintf("query parameter %q must appear exactly once", name),
+			)
+		}
+		if !utf8.ValidString(values[0]) {
+			return echo.NewHTTPError(
+				http.StatusBadRequest,
+				fmt.Sprintf("query parameter %q must contain valid UTF-8", name),
 			)
 		}
 	}

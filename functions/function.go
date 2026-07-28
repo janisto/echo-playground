@@ -46,7 +46,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for name, values := range query {
-		if name != "name" || len(values) != 1 {
+		if name != "name" || len(values) != 1 || !utf8.ValidString(values[0]) {
 			http.Error(w, "invalid query string", http.StatusBadRequest)
 			return
 		}
