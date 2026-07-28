@@ -140,7 +140,7 @@ func TestListItems_InvalidCursor(t *testing.T) {
 func TestListItems_CursorTypeMismatch(t *testing.T) {
 	e := setupEcho()
 
-	cursor := pagination.Cursor{Type: "wrong", Value: "item-001"}.Encode()
+	cursor := pagination.NewCursor("wrong", "item-001", pagination.DefaultLimit, nil).Encode()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor="+cursor, nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -151,7 +151,7 @@ func TestListItems_CursorTypeMismatch(t *testing.T) {
 }
 
 func TestListItems_RejectsEmptyCursorType(t *testing.T) {
-	cursor := pagination.Cursor{Value: "item-001"}.Encode()
+	cursor := pagination.NewCursor("", "item-001", pagination.DefaultLimit, nil).Encode()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor="+cursor, nil)
 	rec := httptest.NewRecorder()
 	setupEcho().ServeHTTP(rec, req)
@@ -189,7 +189,7 @@ func TestListItems_RejectsUnknownQuery(t *testing.T) {
 func TestListItems_CursorUnknownItem(t *testing.T) {
 	e := setupEcho()
 
-	cursor := pagination.Cursor{Type: cursorType, Value: "nonexistent"}.Encode()
+	cursor := pagination.NewCursor(cursorType, "nonexistent", pagination.DefaultLimit, nil).Encode()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?cursor="+cursor, nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -238,17 +238,8 @@ func TestListItems_LimitZero(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	// limit=0 with omitempty should pass validation and use default limit
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-
-	var data ListData
-	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
-	}
-	if len(data.Items) != pagination.DefaultLimit {
-		t.Fatalf("expected %d items with default limit, got %d", pagination.DefaultLimit, len(data.Items))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -295,7 +286,7 @@ func TestListItems_PaginationSecondPage(t *testing.T) {
 
 	// Build cursor from last item on first page.
 	lastID := first.Items[len(first.Items)-1].ID
-	cursor := pagination.Cursor{Type: cursorType, Value: lastID}.Encode()
+	cursor := pagination.NewCursor(cursorType, lastID, 5, nil).Encode()
 
 	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items?limit=5&cursor="+cursor, nil)
 	rec = httptest.NewRecorder()
@@ -314,6 +305,22 @@ func TestListItems_PaginationSecondPage(t *testing.T) {
 	}
 	if second.Items[0].ID == first.Items[0].ID {
 		t.Fatal("second page should start after first page items")
+	}
+}
+
+func TestListItems_RejectsCursorScopeChanges(t *testing.T) {
+	cursor := pagination.NewCursor(cursorType, "item-002", 2, nil).Encode()
+	for _, target := range []string{
+		"/items?limit=3&cursor=" + cursor,
+		"/items?limit=2&category=tools&cursor=" + cursor,
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
+		rec := httptest.NewRecorder()
+		setupEcho().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("target %q: expected 400, got %d: %s", target, rec.Code, rec.Body.String())
+		}
 	}
 }
 

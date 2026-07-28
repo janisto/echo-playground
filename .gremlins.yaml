@@ -1,6 +1,8 @@
 unleash:
   output-statuses: lctv
   timeout-coefficient: 100
+  threshold-efficacy: 90
+  threshold-mcover: 75
   exclude-files:
     - ^functions/
     - ^internal/testutil/

@@ -113,6 +113,7 @@ and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origin
 |---|---|
 | `just check` | Format-check, lint, build, and test both modules |
 | `just build`, `just test`, `just lint` | Run the named check for both modules |
+| `just coverage` | Test both modules and generate separate coverage reports |
 | `just test-race`, `just vuln` | Race-test or vulnerability-scan both modules |
 | `just mutation` | Mutation-test both modules with Gremlins |
 | `just mutation-app`, `just mutation-functions` | Mutation-test one module |
@@ -167,6 +168,7 @@ Go's native fuzzing engine targets the input spaces where examples alone are lea
 | Target | Package | Invariant |
 |---|---|---|
 | `FuzzDecodeJSON` | `./internal/platform/request` | Content type, object shape, unknown fields, and trailing values follow the strict request contract |
+| `FuzzRejectUnknownOrRepeatedQuery` | `./internal/platform/request` | Malformed, unknown, and repeated scalar query parameters fail closed |
 | `FuzzDecodeCursor` | `./internal/platform/pagination` | Every encoded cursor round-trips; arbitrary accepted cursors remain stable |
 | `FuzzPaginate` | `./internal/platform/pagination` | Page bounds, item order, next/previous cursors, filters, and caller-owned query values stay consistent |
 | `FuzzSelectFormat` | `./internal/platform/respond` | Media-type selection is invariant to token casing and surrounding whitespace |
@@ -202,7 +204,8 @@ See the [Go fuzzing documentation](https://go.dev/doc/security/fuzz/) for the en
 
 The separate `functions/` module is intentionally a small standard-library HTTP example. It does not import Echo,
 the root application architecture, Firebase Admin, or the root observability stack.
-POST accepts exactly one known-field JSON object with `Content-Type: application/json`; GET accepts an optional `name` query parameter.
+POST accepts exactly one known-field JSON object with `Content-Type: application/json`; GET accepts one optional
+`name` query parameter. Unknown, repeated, or malformed query parameters are rejected.
 
 **Firebase CLI cannot deploy this Go module.** Its
 [supported function runtime type](https://github.com/firebase/firebase-tools/blob/main/src/deploy/functions/runtimes/supported/types.ts)
@@ -252,8 +255,8 @@ writes equivalent JSON and YAML. Semantic tests enforce the exact path, method, 
 media, response media, and required-header matrix. CI regenerates the artifacts and rejects any diff. The service embeds
 `api-docs/swagger.json`, so documentation does not depend on its runtime working directory.
 
-Swagger UI uses exact version 5.32.8 assets with SHA-384 integrity metadata. A docs-specific CSP permits only those pinned
-assets and the embedded same-origin initialization script.
+Swagger UI uses exact version 5.32.11 assets with SHA-384 integrity metadata. A docs-specific CSP permits scripts and
+styles from `unpkg.com`; SRI pins the selected external bytes, while the initialization script is embedded and same-origin.
 
 ## Project layout
 
@@ -295,21 +298,24 @@ release workflow rather than `latest`.
 
 ## CI
 
-GitHub Actions use least-privilege read tokens and exact release tags, such as `actions/checkout@v7.0.0` and
-`actions/setup-go@v6.5.0`, for consistent, readable Dependabot updates. This convention accepts mutable upstream tags
+GitHub Actions use least-privilege read tokens and exact release tags, such as `actions/checkout@v7.0.1` and
+`actions/setup-go@v7.0.0`, for consistent, readable Dependabot updates. This convention accepts mutable upstream tags
 instead of immutable commit pins. Required jobs cover:
 
-- root and function build/test/race checks;
+- root and function build/test/race/coverage checks plus bounded pull-request fuzzing;
 - Auth and Firestore emulator tests with fail-on-missing behavior and separate downloadable coverage;
 - both-module vulnerability scans;
 - OpenAPI regeneration and semantic validation;
 - final container probes for liveness, embedded docs, non-root execution, and honest OCI metadata;
 - both-module formatting, linting, module tidiness, Go modernization, and pinned actionlint and zizmor checks.
 
+A weekly and manually dispatchable workflow runs both mutation campaigns with required Firebase emulators. Gremlins
+enforces minimum efficacy and mutant-coverage thresholds without putting the longer campaign on every pull request.
+
 Branch protection requires the stable aggregate checks `ci` and `lint`. Each aggregate runs even when a dependency fails
 and succeeds only when every specialized job in its workflow succeeds; internal job names are not part of the ruleset contract.
 
-Dependabot tracks both Go modules, GitHub Actions, and Docker base images.
+Dependabot checks both Go modules, GitHub Actions, and Docker base images quarterly after a seven-day release cooldown.
 Repository automation also labels application, function, documentation, and tooling changes and enables squash auto-merge for
 Dependabot minor and patch updates, subject to repository branch protections and required checks.
 

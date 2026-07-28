@@ -11,6 +11,8 @@ var (
 	ErrCursorNotFound = errors.New("cursor not found")
 	// ErrInvalidLimit indicates that the requested page size is not positive.
 	ErrInvalidLimit = errors.New("pagination limit must be positive")
+	// ErrCursorScopeMismatch indicates that a cursor was issued for different filters or page size.
+	ErrCursorScopeMismatch = errors.New("cursor scope mismatch")
 )
 
 // DefaultLimit is the default page size for list endpoints.
@@ -49,6 +51,10 @@ func Paginate[T any](
 	if limit <= 0 {
 		return Result[T]{}, ErrInvalidLimit
 	}
+	expectedCursor := NewCursor(cursorType, cursor.Value, limit, query)
+	if cursor != (Cursor{}) && cursor.Scope != expectedCursor.Scope {
+		return Result[T]{}, ErrCursorScopeMismatch
+	}
 
 	total := len(items)
 
@@ -75,15 +81,15 @@ func Paginate[T any](
 	var nextCursor, prevCursor string
 
 	if endIdx < total {
-		nextCursor = Cursor{Type: cursorType, Value: getID(pageItems[len(pageItems)-1])}.Encode()
+		nextCursor = NewCursor(cursorType, getID(pageItems[len(pageItems)-1]), limit, query).Encode()
 	}
 
 	if startIdx > 0 {
 		if startIdx <= limit {
-			prevCursor = Cursor{Type: cursorType, Value: ""}.Encode()
+			prevCursor = NewCursor(cursorType, "", limit, query).Encode()
 		} else {
 			prevLastIdx := startIdx - 1
-			prevCursor = Cursor{Type: cursorType, Value: getID(items[prevLastIdx-limit])}.Encode()
+			prevCursor = NewCursor(cursorType, getID(items[prevLastIdx-limit]), limit, query).Encode()
 		}
 	}
 

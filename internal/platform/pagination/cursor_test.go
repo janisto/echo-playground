@@ -1,19 +1,20 @@
 package pagination
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
 )
 
 func TestCursor_EncodeDecode_Roundtrip(t *testing.T) {
-	original := Cursor{Type: "item", Value: "42"}
+	original := Cursor{Type: "item", Value: "42", Scope: "category=tools&limit=20"}
 	encoded := original.Encode()
 	decoded, err := DecodeCursor(encoded)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if decoded.Type != original.Type || decoded.Value != original.Value {
+	if decoded != original {
 		t.Fatalf("expected %+v, got %+v", original, decoded)
 	}
 }
@@ -66,14 +67,34 @@ func TestDecodeCursor_InvalidBase64(t *testing.T) {
 	}
 }
 
-func TestDecodeCursor_MissingColon(t *testing.T) {
-	// Encode "nocolon" without a colon separator.
+func TestDecodeCursor_RejectsLegacyPayload(t *testing.T) {
 	_, err := DecodeCursor("bm9jb2xvbg")
 	if err == nil {
 		t.Fatal("expected error for missing colon")
 	}
 	if !errors.Is(err, ErrInvalidCursor) {
 		t.Fatalf("expected ErrInvalidCursor, got %v", err)
+	}
+}
+
+func TestDecodeCursor_RejectsMalformedBinaryPayloads(t *testing.T) {
+	payloads := [][]byte{
+		{1},
+		{1, 0x80},
+		{1, 2, 'a'},
+		{2, 0, 0, 0},
+	}
+	valid, err := base64.RawURLEncoding.DecodeString(Cursor{}.Encode())
+	if err != nil {
+		t.Fatalf("decode valid cursor: %v", err)
+	}
+	payloads = append(payloads, append(valid, 0))
+
+	for _, payload := range payloads {
+		encoded := base64.RawURLEncoding.EncodeToString(payload)
+		if _, err := DecodeCursor(encoded); !errors.Is(err, ErrInvalidCursor) {
+			t.Fatalf("DecodeCursor(%q) error = %v, want %v", encoded, err, ErrInvalidCursor)
+		}
 	}
 }
 

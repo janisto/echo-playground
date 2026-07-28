@@ -83,13 +83,6 @@ func ClearFirestore(t *testing.T) {
 	doEmulatorRequest(t, req, http.StatusOK)
 }
 
-// ClearEmulators clears both Auth accounts and Firestore documents.
-func ClearEmulators(t *testing.T) {
-	t.Helper()
-	ClearAccounts(t)
-	ClearFirestore(t)
-}
-
 // SignUpResponse from the emulator.
 type SignUpResponse struct {
 	IDToken      string `json:"idToken"`

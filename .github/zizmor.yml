@@ -1,10 +1,10 @@
 rules:
   dependabot-cooldown:
     config:
-      # Repository policy intentionally uses a one-day release cooldown.
-      days: 1
+      # Match zizmor's recommended minimum release cooldown.
+      days: 7
   unpinned-uses:
     config:
-      # Repository policy requires full release tags.
+      # Repository policy requires explicit full release tags.
       policies:
         "*": ref-pin

@@ -98,6 +98,14 @@ func TestHelloHandler(t *testing.T) {
 		{name: "default", method: http.MethodGet, target: "/", wantStatus: http.StatusOK, want: "Hello, World!"},
 		{name: "query", method: http.MethodGet, target: "/?name=Ada", wantStatus: http.StatusOK, want: "Hello, Ada!"},
 		{
+			name: "repeated query", method: http.MethodGet, target: "/?name=Ada&name=Grace",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "unknown query", method: http.MethodGet, target: "/?other=Ada",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:        "JSON",
 			method:      http.MethodPost,
 			target:      "/",
@@ -115,10 +123,34 @@ func TestHelloHandler(t *testing.T) {
 			contentType: "application/json", wantStatus: http.StatusBadRequest,
 		},
 		{
+			name: "array", method: http.MethodPost, target: "/", body: `[]`,
+			contentType: "application/json", wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "empty body", method: http.MethodPost, target: "/",
+			contentType: "application/json", wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:        "unknown field",
 			method:      http.MethodPost,
 			target:      "/",
 			body:        `{"unknown":true}`,
+			contentType: "application/json",
+			wantStatus:  http.StatusBadRequest,
+		},
+		{
+			name:        "case variant field",
+			method:      http.MethodPost,
+			target:      "/",
+			body:        `{"Name":"Grace"}`,
+			contentType: "application/json",
+			wantStatus:  http.StatusBadRequest,
+		},
+		{
+			name:        "duplicate field",
+			method:      http.MethodPost,
+			target:      "/",
+			body:        `{"name":"Ada","name":"Grace"}`,
 			contentType: "application/json",
 			wantStatus:  http.StatusBadRequest,
 		},
@@ -148,6 +180,14 @@ func TestHelloHandler(t *testing.T) {
 			method:      http.MethodPost,
 			target:      "/",
 			body:        "{\"name\":\"" + strings.Repeat("a", 1<<20) + "\"}",
+			contentType: "application/json",
+			wantStatus:  http.StatusRequestEntityTooLarge,
+		},
+		{
+			name:        "oversized trailing data",
+			method:      http.MethodPost,
+			target:      "/",
+			body:        `{}` + strings.Repeat(" ", 1<<20),
 			contentType: "application/json",
 			wantStatus:  http.StatusRequestEntityTooLarge,
 		},
@@ -190,6 +230,56 @@ func TestHelloHandler(t *testing.T) {
 			}
 			if _, err := time.Parse(RFC3339Millis, response.Timestamp); err != nil {
 				t.Fatalf("invalid timestamp %q: %v", response.Timestamp, err)
+			}
+		})
+	}
+}
+
+func TestHelloHandlerRejectsMalformedQuery(t *testing.T) {
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	req.URL.RawQuery = "name=%zz"
+	rec := httptest.NewRecorder()
+
+	helloHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHelloHandlerRejectsInvalidUTF8AndRepeatedContentType(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       []byte
+		addHeader  bool
+		wantStatus int
+	}{
+		{
+			name:       "invalid UTF-8",
+			body:       []byte{'{', '"', 'n', 'a', 'm', 'e', '"', ':', '"', 0xff, '"', '}'},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "repeated content type",
+			body:       []byte(`{"name":"Ada"}`),
+			addHeader:  true,
+			wantStatus: http.StatusUnsupportedMediaType,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", bytes.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			if tt.addHeader {
+				req.Header.Add("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+
+			helloHandler(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tt.wantStatus, rec.Body.String())
 			}
 		})
 	}

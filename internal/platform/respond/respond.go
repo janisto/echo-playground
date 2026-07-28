@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -36,9 +37,10 @@ const (
 
 // mediaRange represents a parsed Accept header media range with quality value.
 type mediaRange struct {
-	typ     string
-	subtype string
-	q       float64
+	typ            string
+	subtype        string
+	q              float64
+	hasMediaParams bool
 }
 
 // parseAccept parses an Accept header value into media ranges per RFC 9110.
@@ -48,36 +50,104 @@ func parseAccept(header string) []mediaRange {
 	}
 
 	var ranges []mediaRange
-	for part := range strings.SplitSeq(header, ",") {
+	for _, part := range splitQuoted(header, ',') {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
 
 		mr := mediaRange{q: 1.0}
-		mediaType := part
-		if before, after, ok := strings.Cut(part, ";"); ok {
-			mediaType = strings.TrimSpace(before)
-			for param := range strings.SplitSeq(after, ";") {
-				param = strings.TrimSpace(param)
-				if strings.HasPrefix(strings.ToLower(param), "q=") {
-					if qval, err := strconv.ParseFloat(param[2:], 64); err == nil && qval >= 0 && qval <= 1 {
-						mr.q = qval
+		segments := splitQuoted(part, ';')
+		mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(segments[0]))
+		typ, subtype, hasSlash := strings.Cut(strings.ToLower(mediaType), "/")
+		if err != nil || !hasSlash || typ == "" || subtype == "" ||
+			(typ == "*" && subtype != "*") {
+			continue
+		}
+		mr.typ, mr.subtype = typ, subtype
+
+		hasQ := false
+		valid := true
+		for _, segment := range segments[1:] {
+			segment = strings.TrimSpace(segment)
+			name, rawValue, _ := strings.Cut(segment, "=")
+			if strings.EqualFold(strings.TrimSpace(name), "q") &&
+				strings.HasPrefix(strings.TrimSpace(rawValue), `"`) {
+				valid = false
+				break
+			}
+			_, params, err := mime.ParseMediaType("application/x-accept;" + segment)
+			if err != nil || len(params) != 1 {
+				valid = false
+				break
+			}
+			for name, value := range params {
+				if strings.EqualFold(name, "q") {
+					if hasQ {
+						valid = false
+						break
 					}
+					q, ok := parseQuality(value)
+					if !ok {
+						valid = false
+						break
+					}
+					mr.q = q
+					hasQ = true
+				} else if !hasQ {
+					mr.hasMediaParams = true
 				}
 			}
 		}
-
-		if before, after, ok := strings.Cut(mediaType, "/"); ok {
-			mr.typ = strings.ToLower(strings.TrimSpace(before))
-			mr.subtype = strings.ToLower(strings.TrimSpace(after))
-		} else {
-			mr.typ = strings.ToLower(strings.TrimSpace(mediaType))
-			mr.subtype = "*"
+		if valid {
+			ranges = append(ranges, mr)
 		}
-		ranges = append(ranges, mr)
 	}
 	return ranges
+}
+
+func splitQuoted(value string, separator byte) []string {
+	parts := make([]string, 0, 1)
+	start := 0
+	quoted := false
+	escaped := false
+	for i := range len(value) {
+		switch {
+		case escaped:
+			escaped = false
+		case value[i] == '\\' && quoted:
+			escaped = true
+		case value[i] == '"':
+			quoted = !quoted
+		case value[i] == separator && !quoted:
+			parts = append(parts, value[start:i])
+			start = i + 1
+		}
+	}
+	return append(parts, value[start:])
+}
+
+func parseQuality(value string) (float64, bool) {
+	whole, fraction, hasFraction := strings.Cut(value, ".")
+	if whole != "0" && whole != "1" {
+		return 0, false
+	}
+	if hasFraction {
+		if len(fraction) > 3 {
+			return 0, false
+		}
+		for _, digit := range fraction {
+			if digit < '0' || digit > '9' || whole == "1" && digit != '0' {
+				return 0, false
+			}
+		}
+	}
+	q, err := strconv.ParseFloat(value, 64)
+	return q, err == nil
+}
+
+func acceptHeader(header http.Header) string {
+	return strings.Join(header.Values("Accept"), ",")
 }
 
 func selectSuccessFormat(header string) responseFormat {
@@ -94,6 +164,9 @@ func selectProblemFormat(header string) responseFormat {
 func selectFormat(header string, jsonSubtypes, cborSubtypes []string) responseFormat {
 	ranges := parseAccept(header)
 	if len(ranges) == 0 {
+		if strings.TrimSpace(header) != "" {
+			return formatNotAcceptable
+		}
 		return formatJSON
 	}
 
@@ -130,6 +203,9 @@ func selectFormat(header string, jsonSubtypes, cborSubtypes []string) responseFo
 }
 
 func matchSpecificity(mr mediaRange, subtypes []string) int {
+	if mr.hasMediaParams {
+		return 0
+	}
 	if mr.typ == "*" && mr.subtype == "*" {
 		return 1
 	}
@@ -157,7 +233,7 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 
 	httpheader.AddVary(w.Header(), "Origin", "Accept")
 
-	format := selectProblemFormat(r.Header.Get("Accept"))
+	format := selectProblemFormat(acceptHeader(r.Header))
 	if format == formatNotAcceptable {
 		problem = newProblem(http.StatusNotAcceptable, problemDetailRepresentationUnavailable)
 		format = formatJSON
@@ -189,7 +265,7 @@ func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails
 // Negotiate writes a response using content negotiation (JSON or CBOR).
 func Negotiate(c *echo.Context, status int, data any) error {
 	httpheader.AddVary(c.Response().Header(), "Accept")
-	switch selectSuccessFormat(c.Request().Header.Get("Accept")) {
+	switch selectSuccessFormat(acceptHeader(c.Request().Header)) {
 	case formatCBOR:
 		b, err := cbor.Marshal(data)
 		if err != nil {

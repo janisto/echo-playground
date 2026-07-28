@@ -78,7 +78,7 @@ func TestFirebaseVerifier_Verify_InvalidToken(t *testing.T) {
 func TestFirebaseVerifier_Verify_RevokedToken(t *testing.T) {
 	testutil.SkipIfEmulatorUnavailable(t)
 	testutil.SetupEmulator(t)
-	testutil.ClearEmulators(t)
+	testutil.ClearAccounts(t)
 
 	client := newEmulatorAuthClient(t)
 	ctx := t.Context()
@@ -96,6 +96,23 @@ func TestFirebaseVerifier_Verify_RevokedToken(t *testing.T) {
 	}
 	if !errors.Is(verifyErr, ErrTokenRevoked) && !errors.Is(verifyErr, ErrInvalidToken) {
 		t.Fatalf("expected ErrTokenRevoked or ErrInvalidToken, got %v", verifyErr)
+	}
+}
+
+func TestFirebaseVerifier_Verify_DeletedUser(t *testing.T) {
+	testutil.SkipIfEmulatorUnavailable(t)
+	testutil.SetupEmulator(t)
+	testutil.ClearAccounts(t)
+
+	client := newEmulatorAuthClient(t)
+	result := testutil.CreateTestUser(t, "deleted@example.com", "password123")
+	if err := client.DeleteUser(t.Context(), result.LocalID); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+
+	_, err := NewFirebaseVerifier(client).Verify(t.Context(), result.IDToken)
+	if !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("Verify() error = %v, want %v", err, ErrInvalidToken)
 	}
 }
 

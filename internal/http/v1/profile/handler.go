@@ -44,6 +44,7 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 //	@Failure		500		{object}	respond.ProblemDetails
 //	@Failure		503		{object}	respond.ProblemDetails
 //	@Header			201		{string}	Location	"URI of the created profile"
+//	@Header			401		{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
 //	@Router			/profile [post]
 func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -91,6 +92,7 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Failure		406	{object}	respond.ProblemDetails
 //	@Failure		500	{object}	respond.ProblemDetails
 //	@Failure		503	{object}	respond.ProblemDetails
+//	@Header			401	{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
 //	@Router			/profile [get]
 func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -128,6 +130,7 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Failure		422		{object}	respond.ProblemDetails
 //	@Failure		500		{object}	respond.ProblemDetails
 //	@Failure		503		{object}	respond.ProblemDetails
+//	@Header			401		{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
 //	@Router			/profile [patch]
 func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
@@ -177,6 +180,7 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //	@Failure		406	{object}	respond.ProblemDetails
 //	@Failure		500	{object}	respond.ProblemDetails
 //	@Failure		503	{object}	respond.ProblemDetails
+//	@Header			401	{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
 //	@Router			/profile [delete]
 func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {

@@ -79,6 +79,7 @@ func TestGeneratedOpenAPIContract(t *testing.T) {
 	}
 	assertExactOperations(t, paths, expected)
 	assertProblemMediaTypes(t, paths)
+	assertSchemas(t, components)
 }
 
 type operationContract struct {
@@ -118,6 +119,73 @@ func assertExactOperations(t *testing.T, paths map[string]any, expected map[stri
 			assertSecurity(t, method, pathName, operation, contract.secured)
 			assertRequestBody(t, method, pathName, operation, contract.requestBody)
 			assertSuccessResponse(t, method, pathName, responses, contract)
+			if contract.secured {
+				unauthorized := requireObject(t, responses["401"])
+				headers := requireObject(t, unauthorized["headers"])
+				if _, exists := headers["WWW-Authenticate"]; !exists {
+					t.Fatalf("%s %s 401 lacks WWW-Authenticate header", method, pathName)
+				}
+			}
+		}
+	}
+}
+
+func assertSchemas(t *testing.T, components map[string]any) {
+	t.Helper()
+	schemas := requireObject(t, components["schemas"])
+	for _, name := range []string{"hello.CreateInput", "profile.CreateInput", "profile.UpdateInput"} {
+		if requireObject(t, schemas[name])["additionalProperties"] != false {
+			t.Fatalf("%s must reject additional properties", name)
+		}
+	}
+	if requireObject(t, schemas["profile.UpdateInput"])["minProperties"] != float64(1) {
+		t.Fatal("profile.UpdateInput must require at least one property")
+	}
+
+	required := map[string][]string{
+		"hello.Data": {"message"},
+		"internal_http_v1_profile.Profile": {
+			"id",
+			"firstname",
+			"lastname",
+			"email",
+			"phoneNumber",
+			"marketing",
+			"createdAt",
+			"updatedAt",
+		},
+		"items.Item":     {"id", "name", "category", "price", "inStock", "createdAt", "description"},
+		"items.ListData": {"items", "total"},
+		"items.Money":    {"amountMinor", "currency"},
+	}
+	for name, fields := range required {
+		schema := requireObject(t, schemas[name])
+		if schema["additionalProperties"] != false {
+			t.Fatalf("%s must be closed", name)
+		}
+		got, ok := schema["required"].([]any)
+		if !ok {
+			t.Fatalf("%s required = %#v", name, schema["required"])
+		}
+		gotFields := make([]string, len(got))
+		for i, value := range got {
+			gotFields[i], _ = value.(string)
+		}
+		slices.Sort(gotFields)
+		want := slices.Clone(fields)
+		slices.Sort(want)
+		if !reflect.DeepEqual(gotFields, want) {
+			t.Fatalf("%s required = %v, want %v", name, gotFields, want)
+		}
+	}
+
+	profileProperties := requireObject(t, requireObject(t, schemas["internal_http_v1_profile.Profile"])["properties"])
+	if requireObject(t, profileProperties["email"])["format"] != "email" {
+		t.Fatal("profile email must use the email format")
+	}
+	for _, property := range []string{"createdAt", "updatedAt"} {
+		if requireObject(t, profileProperties[property])["format"] != "date-time" {
+			t.Fatalf("profile %s must use the date-time format", property)
 		}
 	}
 }
