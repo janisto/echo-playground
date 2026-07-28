@@ -309,13 +309,10 @@ instead of immutable commit pins. Required jobs cover:
 - final container probes for liveness, embedded docs, non-root execution, and honest OCI metadata;
 - both-module formatting, linting, module tidiness, Go modernization, and pinned actionlint and zizmor checks.
 
-A weekly and manually dispatchable workflow runs both mutation campaigns with required Firebase emulators. Gremlins
-enforces minimum efficacy and mutant-coverage thresholds without putting the longer campaign on every pull request.
-
 Branch protection requires the stable aggregate checks `ci` and `lint`. Each aggregate runs even when a dependency fails
 and succeeds only when every specialized job in its workflow succeeds; internal job names are not part of the ruleset contract.
 
-Dependabot checks both Go modules, GitHub Actions, and Docker base images quarterly after a seven-day release cooldown.
+Dependabot checks both Go modules, GitHub Actions, and Docker base images quarterly after a one-day release cooldown.
 Repository automation also labels application, function, documentation, and tooling changes and enables squash auto-merge for
 Dependabot minor and patch updates, subject to repository branch protections and required checks.
 

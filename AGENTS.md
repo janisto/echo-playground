@@ -269,7 +269,7 @@ cannot make the required check disappear or pass. Dependabot covers both Go modu
 `.agents/**/*.md` and `.github/**/*.md` as documentation.
 
 Run `just workflow-security-check` when changing GitHub Actions. Keep `.github/zizmor.yml` aligned with the repository's
-exact-tag policy and seven-day Dependabot cooldown. Suppress a finding only at the narrowest affected workflow step and
+exact-tag policy and one-day Dependabot cooldown. Suppress a finding only at the narrowest affected workflow step and
 document why the flagged behavior is intentional.
 
 Every Go setup step intentionally uses this baseline configuration:
