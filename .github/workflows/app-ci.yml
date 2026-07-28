@@ -64,8 +64,11 @@ jobs:
         run: |
           go tool cover -func=coverage.out > coverage-summary.txt
           go tool cover -html=coverage.out -o coverage.html
-          go tool cover -func=functions/coverage.out > functions/coverage-summary.txt
-          go tool cover -html=functions/coverage.out -o functions/coverage.html
+          (
+            cd functions
+            GOWORK=off go tool cover -func=coverage.out > coverage-summary.txt
+            GOWORK=off go tool cover -html=coverage.out -o coverage.html
+          )
 
       - name: Publish coverage summary
         run: |

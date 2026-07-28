@@ -177,8 +177,8 @@ test-coverage-functions *args:
 coverage: test-coverage
     go tool cover -func=coverage.out | tee coverage-summary.txt
     go tool cover -html=coverage.out -o coverage.html
-    go tool cover -func=functions/coverage.out | tee functions/coverage-summary.txt
-    go tool cover -html=functions/coverage.out -o functions/coverage.html
+    cd functions && GOWORK=off go tool cover -func=coverage.out | tee coverage-summary.txt
+    cd functions && GOWORK=off go tool cover -html=coverage.out -o coverage.html
 
 [group('qa')]
 lint: lint-app lint-functions
@@ -245,7 +245,7 @@ vuln-functions:
 workflow-check:
     #!/usr/bin/env bash
     set -euo pipefail
-    go tool actionlint
+    actionlint
     invalid=0
     while IFS= read -r use; do
       ref="${use##*@}"

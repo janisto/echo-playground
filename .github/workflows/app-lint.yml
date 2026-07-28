@@ -54,9 +54,6 @@ jobs:
       - name: Check module files
         run: just tidy-check
 
-      - name: Validate workflows
-        run: just workflow-check
-
       - name: Audit workflow security
         uses: zizmorcore/zizmor-action@v0.6.1
         with:

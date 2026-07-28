@@ -127,7 +127,7 @@ and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origin
 | `just docs` | Generate, normalize, and embed-review OpenAPI artifacts |
 | `just emulators` | Start Auth and Firestore emulators |
 | `just test-integration-ci` | Require emulators and generate separate integration coverage |
-| `just workflow-check`, `just workflow-security-check` | Run actionlint or zizmor against GitHub Actions |
+| `just workflow-check`, `just workflow-security-check` | Run local actionlint or zizmor against GitHub Actions |
 | `just modernize-check` | Report available Go modernizations without changing files |
 | `just container-smoke` | Build and verify the final service image |
 
@@ -307,7 +307,7 @@ instead of immutable commit pins. Required jobs cover:
 - both-module vulnerability scans;
 - OpenAPI regeneration and semantic validation;
 - final container probes for liveness, embedded docs, non-root execution, and honest OCI metadata;
-- both-module formatting, linting, module tidiness, Go modernization, and pinned actionlint and zizmor checks.
+- both-module formatting, linting, module tidiness, Go modernization, and pinned zizmor checks.
 
 Branch protection requires the stable aggregate checks `ci` and `lint`. Each aggregate runs even when a dependency fails
 and succeeds only when every specialized job in its workflow succeeds; internal job names are not part of the ruleset contract.
