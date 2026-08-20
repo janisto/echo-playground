@@ -54,6 +54,40 @@ func TestLoadConfigValues(t *testing.T) {
 	}
 }
 
+func TestParseCORSOriginsAcceptsCanonicalOrigins(t *testing.T) {
+	origins, err := parseCORSOrigins(
+		" https://app.example, http://localhost:3000,https://[2001:db8::1],https://0x7g,https://app.example ",
+	)
+	if err != nil {
+		t.Fatalf("parse CORS origins: %v", err)
+	}
+	want := []string{"https://app.example", "http://localhost:3000", "https://[2001:db8::1]", "https://0x7g"}
+	if strings.Join(origins, ",") != strings.Join(want, ",") {
+		t.Fatalf("origins = %#v, want %#v", origins, want)
+	}
+}
+
+func TestParseCORSOriginsRejectsNoncanonicalOrigins(t *testing.T) {
+	for _, origin := range []string{
+		"HTTPS://app.example",
+		"https://APP.example",
+		"https://app.example:443",
+		"http://app.example:80",
+		"https://app.example:08443",
+		"https://faß.example",
+		"https://127.1",
+		"https://0x7f.1",
+		"https://0x7f",
+		"https://[2001:0db8:0:0:0:0:0:1]",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			if _, err := parseCORSOrigins(origin); err == nil {
+				t.Fatalf("parseCORSOrigins(%q) unexpectedly succeeded", origin)
+			}
+		})
+	}
+}
+
 func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 	tests := []struct {
 		name   string

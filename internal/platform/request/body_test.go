@@ -119,6 +119,12 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 			wantStatus:  422,
 		},
 		{
+			name:        "unknown JSON member with large number",
+			contentType: []string{"application/json"},
+			body:        []byte(`{"other":1e1000}`),
+			wantStatus:  422,
+		},
+		{
 			name:        "wrong JSON type",
 			contentType: []string{"application/json"},
 			body:        []byte(`{"name":1}`),

@@ -110,6 +110,42 @@ func TestNormalizerRejectsNativeRegistrationDrift(t *testing.T) {
 				"#/components/schemas/hello.CreateInput",
 			)
 		}},
+		{name: "parameter requiredness", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			parameters := arrayValue(t, nativeOperation(t, document, "/v1/github/owners/{owner}", "get")["parameters"], "parameters")
+			objectValue(t, parameters[1], "owner parameter")["required"] = false
+		}},
+		{name: "parameter schema type", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			parameters := arrayValue(t, nativeOperation(t, document, "/v1/items", "get")["parameters"], "parameters")
+			mapValue(t, objectValue(t, parameters[1], "limit parameter"), "schema")["type"] = "number"
+		}},
+		{name: "parameter schema bound", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			parameters := arrayValue(t, nativeOperation(t, document, "/v1/items", "get")["parameters"], "parameters")
+			mapValue(t, objectValue(t, parameters[2], "cursor parameter"), "schema")["maxLength"] = 2049
+		}},
+		{name: "parameter schema default", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			parameters := arrayValue(t, nativeOperation(t, document, "/v1/items", "get")["parameters"], "parameters")
+			mapValue(t, objectValue(t, parameters[1], "limit parameter"), "schema")["default"] = 21
+		}},
+		{name: "parameter schema enum", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			parameters := arrayValue(t, nativeOperation(t, document, "/v1/items", "get")["parameters"], "parameters")
+			mapValue(t, objectValue(t, parameters[3], "category parameter"), "schema")["enum"] = []any{"electronics"}
+		}},
+		{name: "parameter schema pattern", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			parameters := arrayValue(t, nativeOperation(t, document, "/v1/items", "get")["parameters"], "parameters")
+			mapValue(t, objectValue(t, parameters[2], "cursor parameter"), "schema")["pattern"] = `^wrong$`
+		}},
+		{name: "duplicate parameter", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			operation := nativeOperation(t, document, "/v1/items", "get")
+			parameters := arrayValue(t, operation["parameters"], "parameters")
+			operation["parameters"] = append(parameters, parameters[0])
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			document := nativeRegistrationFixture()
@@ -207,6 +243,64 @@ func TestOperationsDescribeExactMediaFailuresAndHeaders(t *testing.T) {
 	assertStatusSet(t, githubGet, "200", "400", "404", "406", "422", "429", "500", "502", "504")
 	if githubGet["requestBody"] != nil {
 		t.Fatal("GitHub GET advertises a request body")
+	}
+}
+
+func TestPortableParameterSchemas(t *testing.T) {
+	document := generatedDocument(t)
+	parameters := mapValue(t, mapValue(t, document, "components"), "parameters")
+	want := map[string]map[string]any{
+		"XRequestID": {
+			"name": "X-Request-ID", "in": "header", "required": false,
+			"schema": map[string]any{
+				"type": "string", "minLength": float64(1), "maxLength": float64(128),
+				"pattern": `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`,
+			},
+		},
+		"Owner": {
+			"name": "owner", "in": "path", "required": true,
+			"schema": map[string]any{
+				"type": "string", "minLength": float64(1), "maxLength": float64(39),
+				"pattern": `^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,37}[A-Za-z0-9])?$`,
+			},
+		},
+		"Repository": {
+			"name": "repo", "in": "path", "required": true,
+			"schema": map[string]any{
+				"type": "string", "minLength": float64(1), "maxLength": float64(100),
+				"pattern": `^(?=.*[A-Za-z0-9_-])[A-Za-z0-9._-]+$`,
+			},
+		},
+		"Limit": {
+			"name": "limit", "in": "query", "required": false,
+			"schema": map[string]any{
+				"type": "integer", "minimum": float64(1), "maximum": float64(100), "default": float64(20),
+			},
+		},
+		"Cursor": {
+			"name": "cursor", "in": "query", "required": false,
+			"schema": map[string]any{
+				"type": "string", "minLength": float64(1), "maxLength": float64(2048), "pattern": `^[!-~]+$`,
+			},
+		},
+		"Category": {
+			"name": "category", "in": "query", "required": false,
+			"schema": map[string]any{
+				"type": "string",
+				"enum": []any{"electronics", "tools", "accessories", "robotics", "power", "components"},
+			},
+		},
+	}
+	if len(parameters) != len(want) {
+		t.Fatalf("parameter component count = %d, want %d", len(parameters), len(want))
+	}
+	for name, expectation := range want {
+		parameter := mapValue(t, parameters, name)
+		if parameter["name"] != expectation["name"] || parameter["in"] != expectation["in"] ||
+			parameter["required"] != expectation["required"] ||
+			!reflect.DeepEqual(mapValue(t, parameter, "schema"), expectation["schema"]) {
+			t.Fatalf("parameter %s = %#v, want semantic definition %#v", name, parameter, expectation)
+		}
 	}
 }
 
@@ -319,7 +413,7 @@ func nativeRegistrationFixture() map[string]any {
 				reference := mustString(mustObject(parameterValue)["$ref"])
 				name := strings.TrimPrefix(reference, "#/components/parameters/")
 				component := mustObject(components[name])
-				parameters = append(parameters, map[string]any{"name": component["name"], "in": component["in"]})
+				parameters = append(parameters, nativeParameterFixture(component))
 			}
 			responses := make(map[string]any)
 			for status := range mustObject(expected["responses"]) {
@@ -352,6 +446,25 @@ func nativeRegistrationFixture() map[string]any {
 		},
 		"paths": paths,
 	}
+}
+
+func nativeParameterFixture(component map[string]any) map[string]any {
+	parameter := map[string]any{
+		"description": "native registration",
+		"name":        component["name"],
+		"in":          component["in"],
+	}
+	if component["required"] == true {
+		parameter["required"] = true
+	}
+	schema := make(map[string]any)
+	for key, value := range mustObject(component["schema"]) {
+		if key != "pattern" {
+			schema[key] = value
+		}
+	}
+	parameter["schema"] = schema
+	return parameter
 }
 
 func nativeRequestBodyFixture(reference string) map[string]any {

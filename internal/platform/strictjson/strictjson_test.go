@@ -6,6 +6,7 @@ func TestValidateAcceptsOneStrictJSONValue(t *testing.T) {
 	for _, document := range [][]byte{
 		[]byte(`null`),
 		[]byte(`{"name":"Ada","nested":{"items":[true,1,null]}}`),
+		[]byte(`{"futureNumber":1e1000}`),
 		[]byte(`{"value":"\uD800\uDC00"}`),
 		[]byte(`{"value":"\uDBFF\uDFFF"}`),
 		[]byte(`{"value":"\uD7FF\uE000"}`),

@@ -58,7 +58,7 @@ Echo Playground is a minimal REST API skeleton built with [Echo 5.3](https://git
 
 ### Tech & Tooling
 
-- Language/runtime: Go 1.26.5+
+- Language/runtime: Go 1.26.7+
 - Frameworks/libs: Echo v5.3+, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
 - Logging: Zap via github.com/janisto/echo-observability/v2
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
@@ -118,7 +118,7 @@ emulator hosts. Tests use hardcoded emulator addresses via `internal/testutil` a
 
 ### Requirements
 
-- Go 1.26.5+
+- Go 1.26.7+
 - Firebase CLI (for emulators): `npm install -g firebase-tools`
 
 ### Install Dependencies

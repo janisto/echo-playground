@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 	"strings"
@@ -175,7 +176,7 @@ func validateNativeOperation(location string, generated, expected map[string]any
 		return fmt.Errorf("%s parameters is not an array", location)
 	}
 	expectedParameters, ok := expected["parameters"].([]any)
-	if !ok || !sameParameterIdentities(generatedParameters, expectedParameters) {
+	if !ok || !sameParameterDefinitions(generatedParameters, expectedParameters) {
 		return fmt.Errorf("%s native parameters do not match the normalized contract", location)
 	}
 	if err := validateNativeSecurity(location, generated, expected); err != nil {
@@ -287,8 +288,11 @@ func validateNativeSecurity(location string, generated, expected map[string]any)
 	return nil
 }
 
-func sameParameterIdentities(generated, expected []any) bool {
-	want := make(map[string]struct{}, len(expected))
+func sameParameterDefinitions(generated, expected []any) bool {
+	if len(generated) != len(expected) {
+		return false
+	}
+	want := make([]map[string]any, 0, len(expected))
 	components := parameterComponents()
 	for _, value := range expected {
 		referenceObject, ok := value.(map[string]any)
@@ -304,27 +308,81 @@ func sameParameterIdentities(generated, expected []any) bool {
 		if !ok {
 			return false
 		}
-		location, locationOK := parameter["in"].(string)
-		parameterName, nameOK := parameter["name"].(string)
-		if !locationOK || !nameOK {
-			return false
-		}
-		want[location+":"+parameterName] = struct{}{}
+		want = append(want, parameter)
 	}
-	got := make(map[string]struct{}, len(generated))
+	matched := make([]bool, len(want))
 	for _, value := range generated {
 		parameter, ok := value.(map[string]any)
 		if !ok {
 			return false
 		}
-		name, nameOK := parameter["name"].(string)
-		location, locationOK := parameter["in"].(string)
-		if !nameOK || !locationOK {
+		found := false
+		for index, expectedParameter := range want {
+			if !matched[index] && sameNativeParameterDefinition(parameter, expectedParameter) {
+				matched[index] = true
+				found = true
+				break
+			}
+		}
+		if !found {
 			return false
 		}
-		got[location+":"+name] = struct{}{}
 	}
-	return sameKeys(got, want)
+	return true
+}
+
+func sameNativeParameterDefinition(generated, expected map[string]any) bool {
+	got, ok := nativeParameterSemantics(generated)
+	if !ok {
+		return false
+	}
+	want, ok := nativeParameterSemantics(expected)
+	if !ok {
+		return false
+	}
+	gotSchema, gotSchemaOK := got["schema"].(map[string]any)
+	wantSchema, wantSchemaOK := want["schema"].(map[string]any)
+	if !gotSchemaOK || !wantSchemaOK {
+		return false
+	}
+	// Swag does not emit pattern for primitive @Param annotations. If a future
+	// generator emits it, the native value must match the normalized contract.
+	if _, present := gotSchema["pattern"]; !present {
+		delete(wantSchema, "pattern")
+	}
+	gotData, gotErr := json.Marshal(got)
+	wantData, wantErr := json.Marshal(want)
+	return gotErr == nil && wantErr == nil && string(gotData) == string(wantData)
+}
+
+func nativeParameterSemantics(parameter map[string]any) (map[string]any, bool) {
+	for key := range parameter {
+		switch key {
+		case "description", "in", "name", "required", "schema":
+		default:
+			return nil, false
+		}
+	}
+	name, nameOK := parameter["name"].(string)
+	location, locationOK := parameter["in"].(string)
+	schema, schemaOK := parameter["schema"].(map[string]any)
+	if !nameOK || !locationOK || !schemaOK {
+		return nil, false
+	}
+	required := false
+	if value, present := parameter["required"]; present {
+		var requiredOK bool
+		required, requiredOK = value.(bool)
+		if !requiredOK {
+			return nil, false
+		}
+	}
+	return map[string]any{
+		"in":       location,
+		"name":     name,
+		"required": required,
+		"schema":   maps.Clone(schema),
+	}, true
 }
 
 func sameKeys[Left, Right any](left map[string]Left, right map[string]Right) bool {

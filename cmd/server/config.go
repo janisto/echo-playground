@@ -114,8 +114,8 @@ func parseCORSOrigins(value string) ([]string, error) {
 			parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
 			return nil, errors.New("CORS_ALLOWED_ORIGINS must contain comma-separated absolute HTTP(S) origins")
 		}
-		if origin == "*" {
-			return nil, errors.New("CORS_ALLOWED_ORIGINS must not contain a wildcard")
+		if !isCanonicalCORSOrigin(origin, parsed) {
+			return nil, errors.New("CORS_ALLOWED_ORIGINS must use canonical browser origin serialization")
 		}
 		if _, duplicate := seen[origin]; duplicate {
 			continue
@@ -124,6 +124,75 @@ func parseCORSOrigins(value string) ([]string, error) {
 		origins = append(origins, origin)
 	}
 	return origins, nil
+}
+
+func isCanonicalCORSOrigin(origin string, parsed *url.URL) bool {
+	hostname := parsed.Hostname()
+	if hostname == "" || strings.Contains(hostname, "%") {
+		return false
+	}
+	var canonicalHostname string
+	if ip := net.ParseIP(hostname); ip != nil {
+		canonicalHostname = ip.String()
+	} else {
+		for index := range len(hostname) {
+			if hostname[index] > 0x7f {
+				return false
+			}
+		}
+		if hostEndsInNumber(hostname) {
+			return false
+		}
+		canonicalHostname = strings.ToLower(hostname)
+	}
+
+	canonicalHost := canonicalHostname
+	if strings.Contains(canonicalHostname, ":") {
+		canonicalHost = "[" + canonicalHostname + "]"
+	}
+	if port := parsed.Port(); port != "" {
+		portNumber, err := strconv.Atoi(port)
+		if err != nil || portNumber < 1 || portNumber > 65535 || strconv.Itoa(portNumber) != port {
+			return false
+		}
+		if parsed.Scheme == "https" && portNumber == 443 || parsed.Scheme == "http" && portNumber == 80 {
+			port = ""
+		}
+		if port != "" {
+			canonicalHost = net.JoinHostPort(canonicalHostname, port)
+		}
+	}
+	return origin == parsed.Scheme+"://"+canonicalHost
+}
+
+func hostEndsInNumber(hostname string) bool {
+	trimmed := strings.TrimSuffix(hostname, ".")
+	label := trimmed
+	if index := strings.LastIndexByte(trimmed, '.'); index >= 0 {
+		label = trimmed[index+1:]
+	}
+	if label == "" {
+		return false
+	}
+	digits := true
+	for index := range len(label) {
+		if label[index] < '0' || label[index] > '9' {
+			digits = false
+			break
+		}
+	}
+	if digits {
+		return true
+	}
+	if len(label) <= 2 || label[0] != '0' || label[1] != 'x' && label[1] != 'X' {
+		return false
+	}
+	for index := 2; index < len(label); index++ {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", rune(label[index])) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateFirebaseConfig(environment, mode, projectID, authEmulator, firestoreEmulator string) error {

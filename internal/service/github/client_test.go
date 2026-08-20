@@ -36,7 +36,7 @@ func TestClientOwnerUsesFixedAnonymousRequestAndProjectsClosedModel(t *testing.T
 		if len(r.Header) != 4 || r.Header.Get("Authorization") != "" || r.Header.Get("X-Request-ID") != "" {
 			t.Errorf("outbound header allowlist violated: %#v", r.Header)
 		}
-		writeJSON(w, ownerFixture(`"private_email":"secret@example.test"`))
+		writeJSON(w, ownerFixture(`"private_email":"secret@example.test","future_counter":1e1000`))
 	}))
 	defer server.Close()
 	client := testClient(t, server)

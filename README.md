@@ -2,7 +2,7 @@
 
 [![Application CI](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-ci.yml?branch=main&label=application%20CI&logo=githubactions&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-ci.yml)
 [![Code quality](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-lint.yml?branch=main&label=code%20quality&logo=go&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-lint.yml)
-[![Go 1.26.5](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Go 1.26.7](https://img.shields.io/badge/Go-1.26.7-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![MIT license](https://img.shields.io/github/license/janisto/echo-playground)](LICENSE)
 
 A compact, high-quality REST API example built with [Echo 5.3](https://github.com/labstack/echo/tree/v5) and Go 1.26.
@@ -69,7 +69,7 @@ repeated scalar parameters instead of choosing an arbitrary value.
 
 ## Requirements
 
-- Go 1.26.5+
+- Go 1.26.7+
 - [Just](https://github.com/casey/just)
 - [golangci-lint](https://golangci-lint.run/) v2
 - [Firebase CLI](https://firebase.google.com/docs/cli) for Auth and Firestore emulators
@@ -116,8 +116,9 @@ deployed misconfiguration cannot accept unsigned emulator tokens or silently fal
 | `CORS_ALLOWED_ORIGINS` | empty | Comma-separated absolute HTTP(S) origins; empty disables CORS |
 | `GOOGLE_APPLICATION_CREDENTIALS` | ADC | Optional service-account file |
 
-CORS is disabled unless `CORS_ALLOWED_ORIGINS` contains an explicit allowlist. Wildcards, user information, paths,
-queries, and fragments are rejected. Enabled CORS permits and exposes `X-Request-ID` and permits the W3C
+CORS is disabled unless `CORS_ALLOWED_ORIGINS` contains an explicit allowlist. Origins must use browser-serialized
+form: lowercase schemes and hostnames, canonical IP spelling, and no explicit default port. Wildcards, user information,
+paths, queries, and fragments are rejected. Enabled CORS permits and exposes `X-Request-ID` and permits the W3C
 `Traceparent` and `Tracestate` request fields; browser credentials remain disabled.
 
 ## Development commands

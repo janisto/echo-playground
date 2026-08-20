@@ -24,6 +24,7 @@ func Validate(document []byte) error {
 		return errors.New("JSON contains a lone surrogate")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(document))
+	decoder.UseNumber()
 	if err := validateValue(decoder); err != nil {
 		return err
 	}
