@@ -55,7 +55,9 @@ jobs:
         run: just functions-smoke
 
       - name: Fuzz curated input boundaries
-        run: just fuzz-all 1s
+        # Use a deterministic budget: very short wall-clock fuzz deadlines can
+        # race worker shutdown on loaded hosted runners.
+        run: just fuzz-all 100000x
 
       - name: Race detector
         run: just test-race
