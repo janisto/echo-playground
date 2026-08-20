@@ -10,20 +10,75 @@ import (
 )
 
 func TestRunRejectsUnsafeInvocationBeforeFirestoreInitialization(t *testing.T) {
+	t.Setenv("FIRESTORE_EMULATOR_HOST", "")
 	for _, test := range []struct {
 		name string
 		args []string
 		want string
 	}{
 		{name: "missing project", want: "--project is required"},
-		{name: "positional argument", args: []string{"--project", "demo-project", "extra"}, want: "positional arguments"},
-		{name: "missing apply confirmation", args: []string{"--project", "production", "--apply"}, want: "--confirm-project"},
-		{name: "mismatched apply confirmation", args: []string{"--project", "production", "--apply", "--confirm-project", "other"}, want: "--confirm-project"},
+		{name: "missing mode", args: []string{"--project", "production"}, want: "--mode"},
+		{name: "invalid mode", args: []string{"--project", "production", "--mode", "offline"}, want: "--mode"},
+		{
+			name: "positional argument",
+			args: []string{"--project", "demo-project", "--mode", "emulator", "extra"},
+			want: "positional arguments",
+		},
+		{
+			name: "missing apply confirmation",
+			args: []string{"--project", "production", "--mode", "live", "--apply"},
+			want: "--confirm-project",
+		},
+		{
+			name: "mismatched apply confirmation",
+			args: []string{
+				"--project", "production", "--mode", "live", "--apply", "--confirm-project", "other",
+			},
+			want: "--confirm-project",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := run(t.Context(), test.args)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("run error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestRunRejectsAmbientEmulatorForLiveTarget(t *testing.T) {
+	t.Setenv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:7130")
+	err := run(t.Context(), []string{"--project", "production", "--mode", "live"})
+	if err == nil || !strings.Contains(err.Error(), "FIRESTORE_EMULATOR_HOST") {
+		t.Fatalf("run error = %v, want ambient emulator rejection", err)
+	}
+}
+
+func TestValidateMigrationTarget(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		mode    string
+		project string
+		host    string
+		wantErr bool
+	}{
+		{name: "live", mode: "live", project: "production"},
+		{name: "emulator", mode: "emulator", project: "demo-project", host: "127.0.0.1:7130"},
+		{name: "missing mode", project: "production", wantErr: true},
+		{name: "live demo project", mode: "live", project: "demo-project", wantErr: true},
+		{name: "live emulator host", mode: "live", project: "production", host: "127.0.0.1:7130", wantErr: true},
+		{name: "emulator live project", mode: "emulator", project: "production", host: "127.0.0.1:7130", wantErr: true},
+		{name: "emulator missing host", mode: "emulator", project: "demo-project", wantErr: true},
+		{name: "emulator host whitespace", mode: "emulator", project: "demo-project", host: " 127.0.0.1:7130", wantErr: true},
+		{name: "emulator URL", mode: "emulator", project: "demo-project", host: "http://127.0.0.1:7130", wantErr: true},
+		{name: "emulator empty hostname", mode: "emulator", project: "demo-project", host: ":7130", wantErr: true},
+		{name: "emulator zero port", mode: "emulator", project: "demo-project", host: "127.0.0.1:0", wantErr: true},
+		{name: "emulator oversized port", mode: "emulator", project: "demo-project", host: "127.0.0.1:65536", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateMigrationTarget(test.mode, test.project, test.host)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("validateMigrationTarget() error = %v, wantErr %v", err, test.wantErr)
 			}
 		})
 	}

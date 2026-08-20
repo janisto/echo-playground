@@ -302,8 +302,8 @@ func TestGitHubControlledFailuresAreSafe(t *testing.T) {
 		rec := httptest.NewRecorder()
 		githubEcho(service).ServeHTTP(rec, req)
 		assertProblem(t, rec, test.status, test.code)
-		if rec.Header().Get("Retry-After") != test.retryAfter || rec.Header().Get("X-RateLimit-Reset") != test.reset {
-			t.Fatalf("quota headers = %q/%q", rec.Header().Get("Retry-After"), rec.Header().Get("X-RateLimit-Reset"))
+		if rec.Header().Get("Retry-After") != test.retryAfter || rec.Header().Get(rateLimitResetHeader) != test.reset {
+			t.Fatalf("quota headers = %q/%q", rec.Header().Get("Retry-After"), rec.Header().Get(rateLimitResetHeader))
 		}
 		if strings.Contains(rec.Body.String(), "provider") {
 			t.Fatalf("public problem leaked internal text: %s", rec.Body.String())

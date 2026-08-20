@@ -22,6 +22,7 @@ const (
 	listOwnerRepositoriesOperation = "listGitHubOwnerRepositories"
 	listActivityOperation          = "listGitHubRepositoryActivity"
 	listTagsOperation              = "listGitHubRepositoryTags"
+	rateLimitResetHeader           = "X-Ratelimit-Reset"
 )
 
 func Register(group *echo.Group, service githubsvc.Service) {
@@ -352,7 +353,7 @@ func mapServiceError(c *echo.Context, operation string, err error) error {
 	case errors.As(err, &rateLimit):
 		c.Response().Header().Set("Retry-After", rateLimit.RetryAfter)
 		if rateLimit.Reset != "" {
-			c.Response().Header().Set("X-RateLimit-Reset", rateLimit.Reset)
+			c.Response().Header().Set(rateLimitResetHeader, rateLimit.Reset)
 		}
 		return respond.GitHubRateLimit()
 	case errors.Is(err, githubsvc.ErrTimeout):

@@ -126,6 +126,9 @@ components:
       minLength: 3
       pattern: ^(?=.{1,64}@)(?!\.)(?![^@]*\.\.)(?![^@]*\.@)[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$
       type: string
+    ContactEmailInput:
+      pattern: ^[\u0009-\u000D\u0020]*(?=[^\u0009-\u000D\u0020]{3,254}[\u0009-\u000D\u0020]*$)(?=[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]{1,64}@)(?!\.)(?![^@]*\.\.)(?![^@]*\.@)[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+[\u0009-\u000D\u0020]*$
+      type: string
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -1606,6 +1609,9 @@ components:
     PhoneNumber:
       pattern: ^\+[1-9][0-9]{6,14}$
       type: string
+    PhoneNumberInput:
+      pattern: ^[\u0009-\u000D\u0020]*\+[1-9][0-9]{6,14}[\u0009-\u000D\u0020]*$
+      type: string
     Problem_dependency_unavailable:
       additionalProperties: false
       properties:
@@ -2123,7 +2129,7 @@ components:
       additionalProperties: false
       properties:
         contactEmail:
-          $ref: '#/components/schemas/ContactEmail'
+          $ref: '#/components/schemas/ContactEmailInput'
         firstName:
           $ref: '#/components/schemas/BoundedName'
         lastName:
@@ -2132,7 +2138,7 @@ components:
           default: false
           type: boolean
         phoneNumber:
-          $ref: '#/components/schemas/PhoneNumber'
+          $ref: '#/components/schemas/PhoneNumberInput'
         termsAccepted:
           const: true
           type: boolean
@@ -2148,7 +2154,7 @@ components:
       minProperties: 1
       properties:
         contactEmail:
-          $ref: '#/components/schemas/ContactEmail'
+          $ref: '#/components/schemas/ContactEmailInput'
         firstName:
           $ref: '#/components/schemas/BoundedName'
         lastName:
@@ -2156,7 +2162,7 @@ components:
         marketingOptIn:
           type: boolean
         phoneNumber:
-          $ref: '#/components/schemas/PhoneNumber'
+          $ref: '#/components/schemas/PhoneNumberInput'
       type: object
     SafeInteger:
       maximum: 9007199254740991

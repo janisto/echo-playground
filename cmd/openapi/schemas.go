@@ -25,7 +25,15 @@ func portableSchemas() map[string]any {
 			"maxLength": 254,
 			"pattern":   `^(?=.{1,64}@)(?!\.)(?![^@]*\.\.)(?![^@]*\.@)[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$`,
 		},
+		"ContactEmailInput": map[string]any{
+			"type":    "string",
+			"pattern": `^[\u0009-\u000D\u0020]*(?=[^\u0009-\u000D\u0020]{3,254}[\u0009-\u000D\u0020]*$)(?=[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]{1,64}@)(?!\.)(?![^@]*\.\.)(?![^@]*\.@)[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+[\u0009-\u000D\u0020]*$`,
+		},
 		"PhoneNumber": map[string]any{"type": "string", "pattern": `^\+[1-9][0-9]{6,14}$`},
+		"PhoneNumberInput": map[string]any{
+			"type":    "string",
+			"pattern": `^[\u0009-\u000D\u0020]*\+[1-9][0-9]{6,14}[\u0009-\u000D\u0020]*$`,
+		},
 		"ErrorSource": errorSourceSchema(),
 		"ErrorDetail": closedObject(
 			map[string]any{
@@ -127,8 +135,8 @@ func profileCreateSchema() map[string]any {
 	return closedObject(map[string]any{
 		"firstName":      ref("schemas", "BoundedName"),
 		"lastName":       ref("schemas", "BoundedName"),
-		"contactEmail":   ref("schemas", "ContactEmail"),
-		"phoneNumber":    ref("schemas", "PhoneNumber"),
+		"contactEmail":   ref("schemas", "ContactEmailInput"),
+		"phoneNumber":    ref("schemas", "PhoneNumberInput"),
 		"marketingOptIn": map[string]any{"type": "boolean", "default": false},
 		"termsAccepted":  map[string]any{"type": "boolean", "const": true},
 	}, "firstName", "lastName", "contactEmail", "phoneNumber", "termsAccepted")
@@ -138,8 +146,8 @@ func profileUpdateSchema() map[string]any {
 	schema := closedObject(map[string]any{
 		"firstName":      ref("schemas", "BoundedName"),
 		"lastName":       ref("schemas", "BoundedName"),
-		"contactEmail":   ref("schemas", "ContactEmail"),
-		"phoneNumber":    ref("schemas", "PhoneNumber"),
+		"contactEmail":   ref("schemas", "ContactEmailInput"),
+		"phoneNumber":    ref("schemas", "PhoneNumberInput"),
 		"marketingOptIn": map[string]any{"type": "boolean"},
 	})
 	schema["minProperties"] = 1

@@ -9,13 +9,22 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 
 	"cloud.google.com/go/firestore"
 
 	"github.com/janisto/echo-playground/internal/platform/strictjson"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
+)
+
+const (
+	migrationModeEmulator = "emulator"
+	migrationModeLive     = "live"
 )
 
 func main() {
@@ -28,6 +37,7 @@ func main() {
 func run(ctx context.Context, arguments []string) (runErr error) {
 	flags := flag.NewFlagSet("profile-migrate", flag.ContinueOnError)
 	project := flags.String("project", "", "exact Firebase project ID")
+	mode := flags.String("mode", "", "explicit Firestore target mode: live or emulator")
 	manifestPath := flags.String("manifest", "", "versioned terms-evidence manifest")
 	apply := flags.Bool("apply", false, "apply authorized replacements instead of auditing")
 	confirmation := flags.String("confirm-project", "", "must exactly equal --project when --apply is used")
@@ -36,6 +46,9 @@ func run(ctx context.Context, arguments []string) (runErr error) {
 	}
 	if flags.NArg() != 0 || *project == "" {
 		return errors.New("--project is required and positional arguments are not accepted")
+	}
+	if err := validateMigrationTarget(*mode, *project, os.Getenv("FIRESTORE_EMULATOR_HOST")); err != nil {
+		return err
 	}
 	if *apply && (*confirmation == "" || *confirmation != *project) {
 		return errors.New("--apply requires --confirm-project to exactly equal --project")
@@ -58,6 +71,50 @@ func run(ctx context.Context, arguments []string) (runErr error) {
 	}
 	printResults(results)
 	return err
+}
+
+func validateMigrationTarget(mode, project, firestoreEmulatorHost string) error {
+	switch mode {
+	case migrationModeLive:
+		if strings.HasPrefix(project, "demo-") {
+			return errors.New("--mode live rejects demo-* project IDs")
+		}
+		if firestoreEmulatorHost != "" {
+			return errors.New("--mode live requires FIRESTORE_EMULATOR_HOST to be unset")
+		}
+	case migrationModeEmulator:
+		if !strings.HasPrefix(project, "demo-") {
+			return errors.New("--mode emulator requires a demo-* project ID")
+		}
+		if firestoreEmulatorHost == "" {
+			return errors.New("--mode emulator requires FIRESTORE_EMULATOR_HOST")
+		}
+		if strings.TrimSpace(firestoreEmulatorHost) != firestoreEmulatorHost {
+			return errors.New("FIRESTORE_EMULATOR_HOST must not contain leading or trailing whitespace")
+		}
+		if err := validateFirestoreEmulatorHost(firestoreEmulatorHost); err != nil {
+			return err
+		}
+	default:
+		return errors.New("--mode must be live or emulator")
+	}
+	return nil
+}
+
+func validateFirestoreEmulatorHost(value string) error {
+	host, port, err := net.SplitHostPort(value)
+	if err != nil || strings.TrimSpace(host) == "" {
+		return errors.New("FIRESTORE_EMULATOR_HOST must use host:port without a URL scheme")
+	}
+	endpoint, err := url.Parse("http://" + value)
+	if err != nil || endpoint.Host != value || endpoint.Hostname() != host || endpoint.Port() != port {
+		return errors.New("FIRESTORE_EMULATOR_HOST must contain a valid host and port")
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
+		return errors.New("FIRESTORE_EMULATOR_HOST port must be an integer from 1 to 65535")
+	}
+	return nil
 }
 
 func readManifest(path string) (profilesvc.MigrationManifest, error) {

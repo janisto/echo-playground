@@ -248,6 +248,10 @@ The accepted profile schema is a breaking persisted-data cutover. Runtime reads 
 shape; they do not invent `termsAccepted` or silently rewrite records. `cmd/profile-migrate` is an audit-first, one-time
 tool for operators who have separately established terms-acceptance evidence for each legacy document.
 
+The mandatory `--mode` flag makes the target explicit. `--mode live` rejects `demo-*` project IDs and any ambient
+`FIRESTORE_EMULATOR_HOST`; `--mode emulator` requires both a `demo-*` project ID and a strict `host:port`
+`FIRESTORE_EMULATOR_HOST`. This prevents an operator shell from silently redirecting an audit or apply run.
+
 1. Create and verify a Firestore export or equivalent rollback snapshot, record its immutable reference, and pause
    profile mutations for the apply window.
 2. Copy `docs/profile-migration-manifest.example.json` outside version control and replace each placeholder with the
@@ -257,6 +261,7 @@ tool for operators who have separately established terms-acceptance evidence for
    ```bash
    go run ./cmd/profile-migrate \
      --project EXACT_PROJECT_ID \
+     --mode live \
      --manifest /secure/path/profile-migration-manifest.json
    ```
 
@@ -265,6 +270,7 @@ tool for operators who have separately established terms-acceptance evidence for
    ```bash
    go run ./cmd/profile-migrate \
      --project EXACT_PROJECT_ID \
+     --mode live \
      --manifest /secure/path/profile-migration-manifest.json \
      --apply \
      --confirm-project EXACT_PROJECT_ID

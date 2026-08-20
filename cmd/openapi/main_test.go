@@ -26,6 +26,12 @@ var portableInventory = map[string]string{
 	"get /v1/github/repos/{owner}/{repo}/tags":      "listGitHubRepositoryTags",
 }
 
+var nativeRequestSchemaByOperation = map[string]string{
+	"createHello":   "#/components/schemas/hello.CreateInput",
+	"createProfile": "#/components/schemas/profile.CreateInput",
+	"updateProfile": "#/components/schemas/profile.UpdateInput",
+}
+
 func TestGeneratedDocumentMatchesNormalizer(t *testing.T) {
 	generated := generatedDocument(t)
 	want, err := normalizeDocument(nativeRegistrationFixture())
@@ -46,28 +52,72 @@ func TestGeneratedDocumentMatchesNormalizer(t *testing.T) {
 }
 
 func TestNormalizerRejectsNativeRegistrationDrift(t *testing.T) {
-	for _, mutate := range []func(*testing.T, map[string]any){
-		func(t *testing.T, document map[string]any) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*testing.T, map[string]any)
+	}{
+		{name: "operation ID", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
-			operation := mapValue(t, mapValue(t, mapValue(t, document, "paths"), "/health"), "get")
+			operation := nativeOperation(t, document, "/health", "get")
 			operation["operationId"] = "driftedHealth"
-		},
-		func(t *testing.T, document map[string]any) {
+		}},
+		{name: "response status", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
-			operation := mapValue(t, mapValue(t, mapValue(t, document, "paths"), "/v1/hello"), "post")
-			delete(mapValue(t, operation, "responses"), "413")
-		},
-		func(t *testing.T, document map[string]any) {
+			delete(mapValue(t, nativeOperation(t, document, "/v1/hello", "post"), "responses"), "413")
+		}},
+		{name: "missing protected security", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
-			operation := mapValue(t, mapValue(t, mapValue(t, document, "paths"), "/v1/profile"), "get")
-			delete(operation, "security")
-		},
+			delete(nativeOperation(t, document, "/v1/profile", "get"), "security")
+		}},
+		{name: "additional protected security scheme", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			security := arrayValue(t, nativeOperation(t, document, "/v1/profile", "get")["security"], "security")
+			objectValue(t, security[0], "security requirement")["ApiKey"] = []any{}
+		}},
+		{name: "nonempty bearer scope", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			security := arrayValue(t, nativeOperation(t, document, "/v1/profile", "get")["security"], "security")
+			objectValue(t, security[0], "security requirement")["BearerAuth"] = []any{"profile:read"}
+		}},
+		{name: "public security requirement", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			nativeOperation(t, document, "/health", "get")["security"] = []any{map[string]any{"BearerAuth": []any{}}}
+		}},
+		{name: "optional request body", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			mapValue(t, nativeOperation(t, document, "/v1/hello", "post"), "requestBody")["required"] = false
+		}},
+		{name: "missing request media", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			body := mapValue(t, nativeOperation(t, document, "/v1/hello", "post"), "requestBody")
+			delete(mapValue(t, body, "content"), "application/cbor")
+		}},
+		{name: "additional request media", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			body := mapValue(t, nativeOperation(t, document, "/v1/hello", "post"), "requestBody")
+			mapValue(t, body, "content")["text/plain"] = map[string]any{"schema": map[string]any{"type": "string"}}
+		}},
+		{name: "wrong request DTO", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			body := mapValue(t, nativeOperation(t, document, "/v1/profile", "post"), "requestBody")
+			jsonMedia := mapValue(t, mapValue(t, body, "content"), "application/json")
+			variants := arrayValue(t, mapValue(t, jsonMedia, "schema")["oneOf"], "request schema variants")
+			objectValue(t, variants[1], "request DTO")["$ref"] = "#/components/schemas/profile.UpdateInput"
+		}},
+		{name: "body on bodyless operation", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			nativeOperation(t, document, "/health", "get")["requestBody"] = nativeRequestBodyFixture(
+				"#/components/schemas/hello.CreateInput",
+			)
+		}},
 	} {
-		document := nativeRegistrationFixture()
-		mutate(t, document)
-		if _, err := normalizeDocument(document); err == nil {
-			t.Fatal("normalizeDocument accepted native registration drift")
-		}
+		t.Run(test.name, func(t *testing.T) {
+			document := nativeRegistrationFixture()
+			test.mutate(t, document)
+			if _, err := normalizeDocument(document); err == nil {
+				t.Fatal("normalizeDocument accepted native registration drift")
+			}
+		})
 	}
 }
 
@@ -93,8 +143,16 @@ func TestPortableOperationInventoryAndSecurity(t *testing.T) {
 			seenIDs[wantID] = struct{}{}
 			security := arrayValue(t, operation["security"], key+" security")
 			if path == "/v1/profile" {
-				if len(security) != 1 || objectValue(t, security[0], key+" security requirement")["BearerAuth"] == nil {
+				if len(security) != 1 {
 					t.Fatalf("%s must require only BearerAuth: %#v", key, security)
+				}
+				requirement := objectValue(t, security[0], key+" security requirement")
+				if len(requirement) != 1 {
+					t.Fatalf("%s must have one security scheme: %#v", key, requirement)
+				}
+				scopes := arrayValue(t, requirement["BearerAuth"], key+" BearerAuth scopes")
+				if len(scopes) != 0 {
+					t.Fatalf("%s BearerAuth scopes = %#v", key, scopes)
 				}
 			} else if len(security) != 0 {
 				t.Fatalf("public operation %s has security %#v", key, security)
@@ -168,8 +226,36 @@ func TestPortableSchemasAndReferences(t *testing.T) {
 	if mapValue(t, mapValue(t, profileCreate, "properties"), "termsAccepted")["const"] != true {
 		t.Fatal("ProfileCreate does not require literal terms acceptance")
 	}
-	if mapValue(t, schemas, "ProfileUpdate")["minProperties"] != float64(1) {
+	profileUpdate := mapValue(t, schemas, "ProfileUpdate")
+	if profileUpdate["minProperties"] != float64(1) {
 		t.Fatal("ProfileUpdate does not require one field")
+	}
+	for name, schema := range map[string]map[string]any{
+		"ProfileCreate": profileCreate,
+		"ProfileUpdate": profileUpdate,
+	} {
+		properties := mapValue(t, schema, "properties")
+		if mapValue(t, properties, "contactEmail")["$ref"] != "#/components/schemas/ContactEmailInput" ||
+			mapValue(t, properties, "phoneNumber")["$ref"] != "#/components/schemas/PhoneNumberInput" {
+			t.Fatalf("%s does not model pre-normalization contact input", name)
+		}
+	}
+	profileProperties := mapValue(t, mapValue(t, schemas, "Profile"), "properties")
+	if mapValue(t, profileProperties, "contactEmail")["$ref"] != "#/components/schemas/ContactEmail" ||
+		mapValue(t, profileProperties, "phoneNumber")["$ref"] != "#/components/schemas/PhoneNumber" {
+		t.Fatal("Profile response does not use canonical contact schemas")
+	}
+	emailInput := mapValue(t, schemas, "ContactEmailInput")
+	emailPattern, ok := emailInput["pattern"].(string)
+	if !ok || emailInput["maxLength"] != nil ||
+		!strings.HasPrefix(emailPattern, `^[\u0009-\u000D\u0020]*`) ||
+		!strings.Contains(emailPattern, `{3,254}`) ||
+		!strings.HasSuffix(emailPattern, `[\u0009-\u000D\u0020]*$`) {
+		t.Fatalf("ContactEmailInput does not admit exact surrounding ASCII whitespace: %#v", emailInput)
+	}
+	phoneInput := mapValue(t, schemas, "PhoneNumberInput")
+	if phoneInput["pattern"] != `^[\u0009-\u000D\u0020]*\+[1-9][0-9]{6,14}[\u0009-\u000D\u0020]*$` {
+		t.Fatalf("PhoneNumberInput pattern = %#v", phoneInput["pattern"])
 	}
 	itemSchema := mapValue(t, schemas, "Item")
 	itemIDs := arrayValue(t, mapValue(t, mapValue(t, itemSchema, "properties"), "id")["enum"], "Item id enum")
@@ -245,8 +331,14 @@ func nativeRegistrationFixture() map[string]any {
 				"responses":   responses,
 				"security":    expected["security"],
 			}
-			if _, present := expected["requestBody"]; present {
-				operation["requestBody"] = map[string]any{"required": true}
+			operationID := mustString(expected["operationId"])
+			if reference, present := nativeRequestSchemaByOperation[operationID]; present {
+				if _, expectedBody := expected["requestBody"]; !expectedBody {
+					panic("native request-body fixture disagrees with normalized operation " + operationID)
+				}
+				operation["requestBody"] = nativeRequestBodyFixture(reference)
+			} else if _, expectedBody := expected["requestBody"]; expectedBody {
+				panic("missing native request-body fixture for " + operationID)
 			}
 			operations[method] = operation
 		}
@@ -260,6 +352,24 @@ func nativeRegistrationFixture() map[string]any {
 		},
 		"paths": paths,
 	}
+}
+
+func nativeRequestBodyFixture(reference string) map[string]any {
+	return map[string]any{
+		"required": true,
+		"content": map[string]any{
+			"application/json": map[string]any{"schema": map[string]any{"oneOf": []any{
+				map[string]any{"type": "object"},
+				map[string]any{"$ref": reference},
+			}}},
+			"application/cbor": map[string]any{"schema": map[string]any{"type": "string"}},
+		},
+	}
+}
+
+func nativeOperation(t *testing.T, document map[string]any, path, method string) map[string]any {
+	t.Helper()
+	return mapValue(t, mapValue(t, mapValue(t, document, "paths"), path), method)
 }
 
 func walkReferences(t *testing.T, root, value any) {

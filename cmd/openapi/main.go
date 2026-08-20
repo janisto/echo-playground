@@ -18,6 +18,12 @@ const (
 	defaultYAMLPath  = "api-docs/swagger.yaml"
 )
 
+var nativeRequestBodyReferences = map[string]string{
+	"createHello":   "#/components/schemas/hello.CreateInput",
+	"createProfile": "#/components/schemas/profile.CreateInput",
+	"updateProfile": "#/components/schemas/profile.UpdateInput",
+}
+
 func main() {
 	inputPath := flag.String("input", defaultInputPath, "Swag-generated OpenAPI JSON input")
 	jsonPath := flag.String("json", defaultJSONPath, "normalized OpenAPI JSON output")
@@ -161,10 +167,8 @@ func validateNativeOperation(location string, generated, expected map[string]any
 			mapKeys(expectedResponses),
 		)
 	}
-	_, generatedBody := generated["requestBody"]
-	_, expectedBody := expected["requestBody"]
-	if generatedBody != expectedBody {
-		return fmt.Errorf("%s request-body presence is %v, want %v", location, generatedBody, expectedBody)
+	if err := validateNativeRequestBody(location, generated, expected); err != nil {
+		return err
 	}
 	generatedParameters, ok := generated["parameters"].([]any)
 	if !ok {
@@ -174,18 +178,111 @@ func validateNativeOperation(location string, generated, expected map[string]any
 	if !ok || !sameParameterIdentities(generatedParameters, expectedParameters) {
 		return fmt.Errorf("%s native parameters do not match the normalized contract", location)
 	}
-	protected := strings.Contains(location, "/v1/profile")
-	security, hasSecurity := generated["security"].([]any)
-	if protected {
-		if !hasSecurity || len(security) != 1 {
-			return fmt.Errorf("%s does not require exactly one native security scheme", location)
+	if err := validateNativeSecurity(location, generated, expected); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateNativeRequestBody(location string, generated, expected map[string]any) error {
+	generatedBodyValue, generatedBodyPresent := generated["requestBody"]
+	_, expectedBodyPresent := expected["requestBody"]
+	if generatedBodyPresent != expectedBodyPresent {
+		return fmt.Errorf(
+			"%s request-body presence is %v, want %v",
+			location,
+			generatedBodyPresent,
+			expectedBodyPresent,
+		)
+	}
+	if !expectedBodyPresent {
+		return nil
+	}
+	operationID, ok := expected["operationId"].(string)
+	if !ok {
+		return fmt.Errorf("%s normalized operationId is not a string", location)
+	}
+	expectedReference, ok := nativeRequestBodyReferences[operationID]
+	if !ok {
+		return fmt.Errorf("%s has no native request-body schema registration", location)
+	}
+	generatedBody, ok := generatedBodyValue.(map[string]any)
+	if !ok {
+		return fmt.Errorf("%s native request body is not an object", location)
+	}
+	required, ok := generatedBody["required"].(bool)
+	if !ok || !required {
+		return fmt.Errorf("%s native request body is not required", location)
+	}
+	content, ok := generatedBody["content"].(map[string]any)
+	if !ok || !sameKeys(content, map[string]struct{}{
+		"application/json": {},
+		"application/cbor": {},
+	}) {
+		return fmt.Errorf(
+			"%s native request media are %v, want application/json and application/cbor",
+			location,
+			mapKeys(content),
+		)
+	}
+	jsonMedia, ok := content["application/json"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("%s native JSON request media is not an object", location)
+	}
+	jsonSchema, ok := jsonMedia["schema"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("%s native JSON request schema is not an object", location)
+	}
+	variants, ok := jsonSchema["oneOf"].([]any)
+	if !ok || len(variants) != 2 {
+		return fmt.Errorf("%s native JSON request schema does not have the expected two registrations", location)
+	}
+	baseVariant, ok := variants[0].(map[string]any)
+	if !ok || len(baseVariant) != 1 || baseVariant["type"] != "object" {
+		return fmt.Errorf("%s native JSON request schema lacks the generator object registration", location)
+	}
+	dtoVariant, ok := variants[1].(map[string]any)
+	if !ok || dtoVariant["$ref"] != expectedReference {
+		return fmt.Errorf("%s native JSON request schema does not reference %s", location, expectedReference)
+	}
+	cborMedia, ok := content["application/cbor"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("%s native CBOR request media is not an object", location)
+	}
+	cborSchema, ok := cborMedia["schema"].(map[string]any)
+	if !ok || len(cborSchema) != 1 || cborSchema["type"] != "string" {
+		return fmt.Errorf("%s native CBOR request schema does not match the generator registration", location)
+	}
+	return nil
+}
+
+func validateNativeSecurity(location string, generated, expected map[string]any) error {
+	expectedSecurity, ok := expected["security"].([]any)
+	if !ok {
+		return fmt.Errorf("%s normalized security is not an array", location)
+	}
+	generatedSecurityValue, generatedSecurityPresent := generated["security"]
+	if len(expectedSecurity) == 0 {
+		if !generatedSecurityPresent {
+			return nil
 		}
-		requirement, ok := security[0].(map[string]any)
-		if !ok || requirement["BearerAuth"] == nil {
-			return fmt.Errorf("%s does not require BearerAuth", location)
+		generatedSecurity, securityOK := generatedSecurityValue.([]any)
+		if !securityOK || len(generatedSecurity) != 0 {
+			return fmt.Errorf("%s is not natively public", location)
 		}
-	} else if hasSecurity && len(security) != 0 {
-		return fmt.Errorf("%s is not natively public", location)
+		return nil
+	}
+	generatedSecurity, securityOK := generatedSecurityValue.([]any)
+	if !generatedSecurityPresent || !securityOK || len(generatedSecurity) != 1 {
+		return fmt.Errorf("%s does not require exactly one native security requirement", location)
+	}
+	requirement, ok := generatedSecurity[0].(map[string]any)
+	if !ok || len(requirement) != 1 {
+		return fmt.Errorf("%s native security requirement is not exactly BearerAuth", location)
+	}
+	scopes, ok := requirement["BearerAuth"].([]any)
+	if !ok || len(scopes) != 0 {
+		return fmt.Errorf("%s native BearerAuth scopes are not empty", location)
 	}
 	return nil
 }
