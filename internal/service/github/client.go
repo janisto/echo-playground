@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/janisto/echo-playground/internal/platform/httpheader"
 	"github.com/janisto/echo-playground/internal/platform/pagination"
 	"github.com/janisto/echo-playground/internal/platform/strictjson"
 )
@@ -360,10 +361,10 @@ func applyActivityCursor(query url.Values, scope pagination.Scope, cursor *pagin
 
 func redirectTarget(current *url.URL, header http.Header, spec providerSpec) (*url.URL, error) {
 	locations := header.Values("Location")
-	if len(locations) != 1 || strings.TrimSpace(locations[0]) == "" {
+	if len(locations) != 1 || trimOWS(locations[0]) == "" {
 		return nil, ErrUpstream
 	}
-	reference, err := url.Parse(strings.TrimSpace(locations[0]))
+	reference, err := url.Parse(trimOWS(locations[0]))
 	if err != nil {
 		return nil, ErrUpstream
 	}
@@ -401,7 +402,7 @@ func validProviderTarget(target *url.URL, spec providerSpec) bool {
 func readSuccess(response *http.Response) ([]byte, error) {
 	defer func() { _ = response.Body.Close() }()
 	contentTypes := response.Header.Values("Content-Type")
-	if len(contentTypes) != 1 || strings.Contains(contentTypes[0], ",") {
+	if len(contentTypes) != 1 || httpheader.HasNonHTTPWhitespace(contentTypes[0]) {
 		return nil, ErrUpstream
 	}
 	mediaType, _, err := mime.ParseMediaType(contentTypes[0])
@@ -427,7 +428,7 @@ func closeResponse(response *http.Response) {
 
 func identityEncoded(header http.Header) bool {
 	values := header.Values("Content-Encoding")
-	return len(values) == 0 || len(values) == 1 && strings.EqualFold(strings.TrimSpace(values[0]), "identity")
+	return len(values) == 0 || len(values) == 1 && strings.EqualFold(trimOWS(values[0]), "identity")
 }
 
 func canonicalHeaderInteger(header http.Header, name string) (uint64, bool) {
@@ -435,7 +436,7 @@ func canonicalHeaderInteger(header http.Header, name string) (uint64, bool) {
 	if len(values) != 1 {
 		return 0, false
 	}
-	value := strings.TrimSpace(values[0])
+	value := trimOWS(values[0])
 	if !canonicalSafeDecimal(value) {
 		return 0, false
 	}

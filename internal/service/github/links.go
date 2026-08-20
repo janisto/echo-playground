@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/janisto/echo-playground/internal/platform/httpheader"
 	"github.com/janisto/echo-playground/internal/platform/pagination"
 )
 
@@ -37,7 +38,11 @@ func parseNavigation(header http.Header, spec providerSpec, emptyPage bool) (nav
 	var result navigation
 	seen := map[string]bool{"next": false, "prev": false}
 	for _, field := range header.Values("Link") {
-		for _, rawValue := range splitLinkValues(field) {
+		values, err := splitLinkValues(field)
+		if err != nil {
+			return navigation{}, err
+		}
+		for _, rawValue := range values {
 			target, relations, anchored, err := parseLinkValue(rawValue)
 			if err != nil {
 				return navigation{}, ErrUpstream
@@ -75,7 +80,10 @@ func parseNavigation(header http.Header, spec providerSpec, emptyPage bool) (nav
 	return result, nil
 }
 
-func splitLinkValues(value string) []string {
+func splitLinkValues(value string) ([]string, error) {
+	if httpheader.HasNonHTTPWhitespace(value) {
+		return nil, ErrUpstream
+	}
 	parts := make([]string, 0, 2)
 	start, quoted, escaped, inTarget := 0, false, false, false
 	for index := range len(value) {
@@ -87,18 +95,31 @@ func splitLinkValues(value string) []string {
 		case value[index] == '"':
 			quoted = !quoted
 		case value[index] == '<' && !quoted:
+			if inTarget {
+				return nil, ErrUpstream
+			}
 			inTarget = true
 		case value[index] == '>' && !quoted:
+			if !inTarget {
+				return nil, ErrUpstream
+			}
 			inTarget = false
 		case value[index] == ',' && !quoted && !inTarget:
-			parts = append(parts, strings.TrimSpace(value[start:index]))
+			parts = append(parts, trimOWS(value[start:index]))
 			start = index + 1
 		}
 	}
-	return append(parts, strings.TrimSpace(value[start:]))
+	if quoted || escaped || inTarget {
+		return nil, ErrUpstream
+	}
+	return append(parts, trimOWS(value[start:])), nil
 }
 
 func parseLinkValue(raw string) (string, []string, bool, error) {
+	raw = trimOWS(raw)
+	if httpheader.HasNonHTTPWhitespace(raw) {
+		return "", nil, false, ErrUpstream
+	}
 	if raw == "" || raw[0] != '<' {
 		return "", nil, false, ErrUpstream
 	}
@@ -107,41 +128,56 @@ func parseLinkValue(raw string) (string, []string, bool, error) {
 		return "", nil, false, ErrUpstream
 	}
 	target := raw[1:closeIndex]
-	remainder := strings.TrimSpace(raw[closeIndex+1:])
-	if remainder == "" || remainder[0] != ';' {
+	remainder := trimOWS(raw[closeIndex+1:])
+	if remainder == "" {
+		return target, nil, false, nil
+	}
+	if remainder[0] != ';' {
 		return "", nil, false, ErrUpstream
 	}
-	parameters := splitLinkParameters(remainder[1:])
+	parameters, err := splitLinkParameters(remainder[1:])
+	if err != nil {
+		return "", nil, false, err
+	}
 	var relations []string
 	anchored := false
 	seenParameters := make(map[string]struct{})
 	for _, rawParameter := range parameters {
-		name, rawValue, ok := strings.Cut(strings.TrimSpace(rawParameter), "=")
-		name = strings.ToLower(strings.TrimSpace(name))
-		if !ok || name == "" {
+		name, rawValue, hasValue := strings.Cut(trimOWS(rawParameter), "=")
+		name = trimOWS(name)
+		if !validLinkToken(name) {
 			return "", nil, false, ErrUpstream
 		}
+		name = strings.ToLower(name)
 		if _, duplicate := seenParameters[name]; duplicate {
 			return "", nil, false, ErrUpstream
 		}
 		seenParameters[name] = struct{}{}
-		value, err := parseLinkParameterValue(strings.TrimSpace(rawValue))
-		if err != nil {
-			return "", nil, false, ErrUpstream
+		value := ""
+		if hasValue {
+			value, err = parseLinkParameterValue(trimOWS(rawValue))
+			if err != nil {
+				return "", nil, false, ErrUpstream
+			}
 		}
 		switch name {
 		case "anchor":
 			anchored = true
 		case "rel":
-			for relation := range strings.FieldsSeq(strings.ToLower(value)) {
-				relations = append(relations, relation)
+			if !hasValue {
+				return "", nil, false, ErrUpstream
 			}
+			parsedRelations, relationErr := parseRelationTypes(value)
+			if relationErr != nil {
+				return "", nil, false, relationErr
+			}
+			relations = append(relations, parsedRelations...)
 		}
 	}
 	return target, relations, anchored, nil
 }
 
-func splitLinkParameters(value string) []string {
+func splitLinkParameters(value string) ([]string, error) {
 	parts := make([]string, 0, 3)
 	start, quoted, escaped := 0, false, false
 	for index := range len(value) {
@@ -157,7 +193,10 @@ func splitLinkParameters(value string) []string {
 			start = index + 1
 		}
 	}
-	return append(parts, value[start:])
+	if quoted || escaped {
+		return nil, ErrUpstream
+	}
+	return append(parts, value[start:]), nil
 }
 
 func parseLinkParameterValue(value string) (string, error) {
@@ -165,7 +204,7 @@ func parseLinkParameterValue(value string) (string, error) {
 		return "", ErrUpstream
 	}
 	if value[0] != '"' {
-		if strings.ContainsAny(value, " \t,;") {
+		if !validLinkToken(value) {
 			return "", ErrUpstream
 		}
 		return value, nil
@@ -178,6 +217,9 @@ func parseLinkParameterValue(value string) (string, error) {
 	for index := 1; index < len(value)-1; index++ {
 		character := value[index]
 		if escaped {
+			if !validQuotedPairByte(character) {
+				return "", ErrUpstream
+			}
 			decoded.WriteByte(character)
 			escaped = false
 			continue
@@ -186,7 +228,7 @@ func parseLinkParameterValue(value string) (string, error) {
 			escaped = true
 			continue
 		}
-		if character == '"' || character < 0x20 || character == 0x7f {
+		if character == '"' || !validQuotedTextByte(character) {
 			return "", ErrUpstream
 		}
 		decoded.WriteByte(character)
@@ -195,6 +237,122 @@ func parseLinkParameterValue(value string) (string, error) {
 		return "", ErrUpstream
 	}
 	return decoded.String(), nil
+}
+
+func parseRelationTypes(value string) ([]string, error) {
+	if value == "" || value[0] == ' ' || value[len(value)-1] == ' ' {
+		return nil, ErrUpstream
+	}
+	relations := make([]string, 0, 2)
+	for rawRelation := range strings.SplitSeq(value, " ") {
+		if rawRelation == "" {
+			continue
+		}
+		relation, ok := normalizeRelationType(rawRelation)
+		if !ok {
+			return nil, ErrUpstream
+		}
+		relations = append(relations, relation)
+	}
+	if len(relations) == 0 {
+		return nil, ErrUpstream
+	}
+	return relations, nil
+}
+
+func normalizeRelationType(value string) (string, bool) {
+	if validRegisteredRelation(value) {
+		return strings.ToLower(value), true
+	}
+	if !printableASCII(value, len(value)) {
+		return "", false
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", false
+	}
+	if !parsed.IsAbs() || !validURICharacters(value) {
+		return "", false
+	}
+	return value, true
+}
+
+func validURICharacters(value string) bool {
+	_, remainder, hasScheme := strings.Cut(value, ":")
+	if !hasScheme {
+		return false
+	}
+	if _, err := url.PathUnescape(value); err != nil {
+		return false
+	}
+	remainder, inAuthority := strings.CutPrefix(remainder, "//")
+	fragmentSeen := false
+	for index := range len(remainder) {
+		character := remainder[index]
+		if inAuthority && strings.ContainsRune("/?#", rune(character)) {
+			inAuthority = false
+		}
+		switch {
+		case character == '#':
+			if fragmentSeen {
+				return false
+			}
+			fragmentSeen = true
+		case character == '[' || character == ']':
+			if !inAuthority {
+				return false
+			}
+		case asciiLetter(character) || character >= '0' && character <= '9' ||
+			strings.ContainsRune("%-._~!$&'()*+,;=:/?@", rune(character)):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validRegisteredRelation(value string) bool {
+	if value == "" || !asciiLetter(value[0]) {
+		return false
+	}
+	for index := 1; index < len(value); index++ {
+		character := value[index]
+		if !asciiLetter(character) && (character < '0' || character > '9') && character != '.' && character != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func validLinkToken(value string) bool {
+	if value == "" {
+		return false
+	}
+	for index := range len(value) {
+		character := value[index]
+		if !asciiLetter(character) && (character < '0' || character > '9') &&
+			!strings.ContainsRune("!#$%&'*+-.^_`|~", rune(character)) {
+			return false
+		}
+	}
+	return true
+}
+
+func asciiLetter(value byte) bool {
+	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
+}
+
+func validQuotedTextByte(value byte) bool {
+	return value == '\t' || value == ' ' || value == '!' || value >= '#' && value <= '[' ||
+		value >= ']' && value <= '~' || value >= 0x80
+}
+
+func validQuotedPairByte(value byte) bool {
+	return value == '\t' || value == ' ' || value >= '!' && value <= '~' || value >= 0x80
+}
+
+func trimOWS(value string) string {
+	return strings.Trim(value, " \t")
 }
 
 func validateLinkTarget(target, relation string, spec providerSpec) (string, error) {

@@ -40,6 +40,10 @@ func TestSuccessNegotiationSpecificityQualityAndTieBreaking(t *testing.T) {
 		{"application/json; charset=utf-8", formatJSON, "application/json; charset=utf-8"},
 		{"application/json; charset=iso-8859-1, application/cbor", formatCBOR, "application/cbor"},
 		{"broken, application/cbor", formatCBOR, "application/cbor"},
+		{"\u00a0application/json, application/cbor", formatCBOR, "application/cbor"},
+		{"application/json\u2003, application/cbor", formatCBOR, "application/cbor"},
+		{"application/json;q=1; note=\"a\u00a0b\"", formatJSON, "application/json"},
+		{"\u00a0application/json", formatNotAcceptable, ""},
 		{"application/problem+json", formatNotAcceptable, ""},
 		{"application/json;q=0, application/cbor;q=0", formatNotAcceptable, ""},
 	}

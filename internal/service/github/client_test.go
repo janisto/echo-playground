@@ -174,7 +174,11 @@ func TestClientRejectsUnsafeOrNonAdvancingProviderLinks(t *testing.T) {
 			var origin string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Link", strings.ReplaceAll(template, "ORIGIN", "<"+origin))
-				writeJSON(w, `[]`)
+				body := `[` + repositorySummaryFixture("repo") + `]`
+				if name == "empty page has next" {
+					body = `[]`
+				}
+				writeJSON(w, body)
 			}))
 			defer server.Close()
 			origin = server.URL
@@ -195,6 +199,72 @@ func TestClientIgnoresAnchoredProviderLinkValue(t *testing.T) {
 	page, err := testClient(t, server).ListOwnerRepositories(t.Context(), "acme", 1, nil)
 	if err != nil || page.NextCursor != "" || page.PrevCursor != "" {
 		t.Fatalf("anchored navigation = %#v, %v", page, err)
+	}
+}
+
+func TestClientIgnoresRFCValidProviderLinksWithoutRelevantRelations(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(
+			"Link",
+			`<https://ignored.invalid/no-parameters>, <https://ignored.invalid/flags>; preload; rel=last`,
+		)
+		writeJSON(w, `[`+repositorySummaryFixture("repo")+`]`)
+	}))
+	defer server.Close()
+	page, err := testClient(t, server).ListOwnerRepositories(t.Context(), "acme", 1, nil)
+	if err != nil || page.NextCursor != "" || page.PrevCursor != "" || len(page.Entries) != 1 {
+		t.Fatalf("irrelevant links = %#v, %v", page, err)
+	}
+}
+
+func TestClientAcceptsRFCLinkWhitespaceAndSpaceSeparatedRelations(t *testing.T) {
+	var origin string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(
+			"Link",
+			"<"+origin+`/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>`+
+				"\t;\trel\t=\t\"last  NEXT\"",
+		)
+		writeJSON(w, `[`+repositorySummaryFixture("repo")+`]`)
+	}))
+	defer server.Close()
+	origin = server.URL
+	page, err := testClient(t, server).ListOwnerRepositories(t.Context(), "acme", 1, nil)
+	if err != nil || page.NextCursor == "" || page.PrevCursor != "" {
+		t.Fatalf("OWS navigation = %#v, %v", page, err)
+	}
+}
+
+func TestClientRejectsMalformedRelevantProviderLinkSyntax(t *testing.T) {
+	tests := map[string]string{
+		"invalid parameter name":       `ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; bad name=value; rel=next`,
+		"tab relation separator":       "ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel=\"next\tprev\"",
+		"Unicode relation separator":   "ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel=\"next\u00a0prev\"",
+		"invalid registered relation":  `ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel="next invalid_relation"`,
+		"trailing parameter delimiter": `ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel=next;`,
+		"unterminated relation":        `ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel="next`,
+		"valueless relation":           `ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel`,
+		"invalid unquoted relation":    `ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel=next@`,
+		"non-HTTP leading whitespace":  "\u00a0<ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; rel=next",
+	}
+	for name, template := range tests {
+		t.Run(name, func(t *testing.T) {
+			var origin string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Link", strings.ReplaceAll(template, "ORIGIN", origin))
+				writeJSON(w, `[`+repositorySummaryFixture("repo")+`]`)
+			}))
+			defer server.Close()
+			origin = server.URL
+			if _, err := testClient(t, server).ListOwnerRepositories(
+				t.Context(),
+				"acme",
+				1,
+				nil,
+			); !errors.Is(err, ErrUpstream) {
+				t.Fatalf("error = %v, want ErrUpstream", err)
+			}
+		})
 	}
 }
 
@@ -289,6 +359,81 @@ func TestClientManualRedirectPolicy(t *testing.T) {
 	defer loop.Close()
 	if _, err := testClient(t, loop).GetOwner(t.Context(), "acme"); !errors.Is(err, ErrUpstream) {
 		t.Fatalf("loop error = %v", err)
+	}
+
+	nonHTTPWhitespace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "\u00a0/user/1\u00a0")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer nonHTTPWhitespace.Close()
+	if _, err := testClient(t, nonHTTPWhitespace).GetOwner(t.Context(), "acme"); !errors.Is(err, ErrUpstream) {
+		t.Fatalf("non-HTTP Location whitespace error = %v", err)
+	}
+}
+
+func TestRedirectTargetRequiresOneNonemptyLocation(t *testing.T) {
+	origin, err := url.Parse("https://api.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := origin.ResolveReference(&url.URL{Path: "/users/acme"})
+	spec := providerSpec{
+		origin:        origin,
+		namedPath:     "/users/acme",
+		numericPrefix: "/user/",
+		query:         make(url.Values),
+	}
+	for _, test := range []struct {
+		name   string
+		header http.Header
+		want   string
+	}{
+		{name: "missing"},
+		{name: "empty", header: http.Header{"Location": {""}}},
+		{name: "ASCII whitespace only", header: http.Header{"Location": {" \t "}}},
+		{name: "repeated", header: http.Header{"Location": {"/user/1", "/user/2"}}},
+		{name: "relative", header: http.Header{"Location": {"/user/1"}}, want: "https://api.example.test/user/1"},
+		{
+			name:   "ASCII optional whitespace",
+			header: http.Header{"Location": {" \t/user/1\t "}},
+			want:   "https://api.example.test/user/1",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, targetErr := redirectTarget(current, test.header, spec)
+			if test.want == "" {
+				if !errors.Is(targetErr, ErrUpstream) || got != nil {
+					t.Fatalf("redirectTarget() = %v, %v; want nil, ErrUpstream", got, targetErr)
+				}
+				return
+			}
+			if targetErr != nil || got.String() != test.want {
+				t.Fatalf("redirectTarget() = %v, %v; want %q, nil", got, targetErr, test.want)
+			}
+		})
+	}
+}
+
+func TestIdentityEncodedRequiresZeroOrOneIdentityCoding(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		header http.Header
+		want   bool
+	}{
+		{name: "absent", want: true},
+		{name: "identity", header: http.Header{"Content-Encoding": {"identity"}}, want: true},
+		{name: "case insensitive", header: http.Header{"Content-Encoding": {"IDENTITY"}}, want: true},
+		{name: "ASCII optional whitespace", header: http.Header{"Content-Encoding": {" \tidentity\t "}}, want: true},
+		{name: "empty", header: http.Header{"Content-Encoding": {""}}},
+		{name: "other", header: http.Header{"Content-Encoding": {"gzip"}}},
+		{name: "repeated", header: http.Header{"Content-Encoding": {"identity", "identity"}}},
+		{name: "non-HTTP whitespace", header: http.Header{"Content-Encoding": {"\u00a0identity\u00a0"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := identityEncoded(test.header); got != test.want {
+				t.Fatalf("identityEncoded(%#v) = %t, want %t", test.header, got, test.want)
+			}
+		})
 	}
 }
 
@@ -423,6 +568,12 @@ func TestClientStatusEncodingMediaAndSchemaFailures(t *testing.T) {
 			want:    ErrUpstream,
 		},
 		{
+			name:    "non-HTTP whitespace around identity",
+			status:  404,
+			headers: http.Header{"Content-Encoding": {"\u00a0identity\u00a0"}},
+			want:    ErrUpstream,
+		},
+		{
 			name:    "wrong media",
 			status:  200,
 			headers: http.Header{"Content-Type": {"text/plain"}},
@@ -435,6 +586,32 @@ func TestClientStatusEncodingMediaAndSchemaFailures(t *testing.T) {
 			headers: http.Header{"Content-Type": {"application/json", "application/json"}},
 			body:    ownerFixture(""),
 			want:    ErrUpstream,
+		},
+		{
+			name:    "comma-combined media",
+			status:  200,
+			headers: http.Header{"Content-Type": {"application/json, application/json"}},
+			body:    ownerFixture(""),
+			want:    ErrUpstream,
+		},
+		{
+			name:    "non-HTTP whitespace around media",
+			status:  200,
+			headers: http.Header{"Content-Type": {"\u00a0application/json\u00a0"}},
+			body:    ownerFixture(""),
+			want:    ErrUpstream,
+		},
+		{
+			name:    "quoted non-HTTP whitespace remains content",
+			status:  200,
+			headers: http.Header{"Content-Type": {"application/json; note=\"a\u00a0b\""}},
+			body:    ownerFixture(""),
+		},
+		{
+			name:    "quoted comma remains parameter content",
+			status:  200,
+			headers: http.Header{"Content-Type": {`application/json; note="a,b"`}},
+			body:    ownerFixture(""),
 		},
 		{name: "duplicate JSON member", status: 200, headers: jsonHeader(), body: `{"id":1,"id":2}`, want: ErrUpstream},
 		{name: "invalid projection", status: 200, headers: jsonHeader(), body: `{"id":1}`, want: ErrUpstream},
@@ -504,6 +681,13 @@ func TestClientQuotaHeaderCombinations(t *testing.T) {
 		},
 		{name: "comma retry", header: http.Header{"Retry-After": {"1, 2"}}, retryAfter: "60"},
 		{name: "repeated retry", header: http.Header{"Retry-After": {"1", "2"}}, retryAfter: "60"},
+		{name: "ASCII optional whitespace retry", header: http.Header{"Retry-After": {" \t7\t "}}, retryAfter: "7"},
+		{name: "non-HTTP whitespace retry", header: http.Header{"Retry-After": {"\u00a07\u00a0"}}, retryAfter: "60"},
+		{
+			name:       "non-HTTP whitespace reset",
+			header:     http.Header{"X-Ratelimit-Reset": {"\u00a0103\u00a0"}},
+			retryAfter: "60",
+		},
 		{name: "reset at now", header: http.Header{"X-Ratelimit-Reset": {"100"}}, retryAfter: "60"},
 	}
 	client := transportClient(func(*http.Request) (*http.Response, error) { return nil, errors.New("unused") })

@@ -13,6 +13,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/labstack/echo/v5"
 
+	"github.com/janisto/echo-playground/internal/platform/httpheader"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	"github.com/janisto/echo-playground/internal/platform/strictjson"
 	"github.com/janisto/echo-playground/internal/platform/validate"
@@ -122,31 +123,62 @@ func requestMediaType(header http.Header) (requestFormat, error) {
 	if len(values) == 0 {
 		return requestFormatMissing, nil
 	}
-	if len(values) != 1 || strings.Contains(values[0], ",") {
+	if len(values) != 1 || httpheader.HasNonHTTPWhitespace(values[0]) {
 		return 0, respond.UnsupportedMediaType()
 	}
 	mediaType, parameters, err := mime.ParseMediaType(values[0])
 	if err != nil {
 		return 0, respond.UnsupportedMediaType()
 	}
+	parameterNames := mediaTypeParameterNames(values[0])
 	switch strings.ToLower(mediaType) {
 	case respond.MediaTypeJSON:
-		if len(parameters) == 0 {
+		if len(parameters) == 0 && len(parameterNames) == 0 {
 			return requestFormatJSON, nil
 		}
 		charset, ok := parameters["charset"]
-		if len(parameters) != 1 || !ok || !strings.EqualFold(charset, "utf-8") {
+		if len(parameters) != 1 || len(parameterNames) != 1 || parameterNames[0] != "charset" || !ok ||
+			!strings.EqualFold(charset, "utf-8") {
 			return 0, respond.UnsupportedMediaType()
 		}
 		return requestFormatJSON, nil
 	case respond.MediaTypeCBOR:
-		if len(parameters) != 0 {
+		if len(parameters) != 0 || len(parameterNames) != 0 {
 			return 0, respond.UnsupportedMediaType()
 		}
 		return requestFormatCBOR, nil
 	default:
 		return 0, respond.UnsupportedMediaType()
 	}
+}
+
+func mediaTypeParameterNames(value string) []string {
+	segments := make([]string, 0, 2)
+	start, quoted, escaped := 0, false, false
+	for index := range len(value) {
+		switch {
+		case escaped:
+			escaped = false
+		case quoted && value[index] == '\\':
+			escaped = true
+		case value[index] == '"':
+			quoted = !quoted
+		case value[index] == ';' && !quoted:
+			segments = append(segments, value[start:index])
+			start = index + 1
+		}
+	}
+	segments = append(segments, value[start:])
+	parameters := make([]string, 0, len(segments))
+	for _, segment := range segments[1:] {
+		segment = strings.Trim(segment, " \t")
+		if segment == "" {
+			continue
+		}
+		name, _, _ := strings.Cut(segment, "=")
+		parameters = append(parameters, strings.ToLower(strings.Trim(name, " \t")))
+	}
+	return parameters
 }
 
 func requestContentEncoding(header http.Header) error {

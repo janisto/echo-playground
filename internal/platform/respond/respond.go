@@ -128,6 +128,9 @@ func parseAccept(header string) []mediaRange {
 	}
 	ranges := make([]mediaRange, 0, 4)
 	for _, rawRange := range splitQuoted(header, ',') {
+		if httpheader.HasNonHTTPWhitespace(rawRange) {
+			continue
+		}
 		segments := splitQuoted(strings.TrimSpace(rawRange), ';')
 		if len(segments) == 0 {
 			continue

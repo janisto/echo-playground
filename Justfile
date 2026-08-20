@@ -121,6 +121,7 @@ fuzz-all duration='10s':
     just fuzz FuzzPaginate {{ duration }} ./internal/platform/pagination
     just fuzz FuzzSelectFormat {{ duration }} ./internal/platform/respond
     just fuzz FuzzSelectFormatQuality {{ duration }} ./internal/platform/respond
+    just fuzz FuzzProviderLinkParsing {{ duration }} ./internal/service/github
     just fuzz FuzzTimeUnmarshalCBOR {{ duration }} ./internal/platform/timeutil
     just fuzz FuzzTimeCBORRoundTrip {{ duration }} ./internal/platform/timeutil
     just fuzz-functions FuzzHelloHandler {{ duration }}

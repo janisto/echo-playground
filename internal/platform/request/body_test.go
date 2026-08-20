@@ -37,6 +37,12 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 			body:        []byte(`{"name":"Ada"}`),
 			wantName:    "Ada",
 		},
+		{
+			name:        "JSON quoted charset",
+			contentType: []string{`application/json; charset="utf-8"`},
+			body:        []byte(`{"name":"Ada"}`),
+			wantName:    "Ada",
+		},
 		{name: "CBOR", contentType: []string{"application/cbor"}, body: cborBody, wantName: "Ada"},
 		{
 			name:        "identity",
@@ -62,9 +68,39 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 			wantStatus:  415,
 		},
 		{
+			name:        "Unicode whitespace before media",
+			contentType: []string{"\u00a0application/json"},
+			body:        []byte(`{"name":"Ada"}`),
+			wantStatus:  415,
+		},
+		{
+			name:        "Unicode whitespace before parameter",
+			contentType: []string{"application/json\u2003;charset=utf-8"},
+			body:        []byte(`{"name":"Ada"}`),
+			wantStatus:  415,
+		},
+		{
 			name:        "unsupported parameter",
 			contentType: []string{"application/json; profile=x"},
 			body:        []byte(`{}`),
+			wantStatus:  415,
+		},
+		{
+			name:        "duplicate identical charset",
+			contentType: []string{"application/json; charset=utf-8; charset=utf-8"},
+			body:        []byte(`{"name":"Ada"}`),
+			wantStatus:  415,
+		},
+		{
+			name:        "duplicate case-variant charset",
+			contentType: []string{"application/json; charset=utf-8; Charset=UTF-8"},
+			body:        []byte(`{"name":"Ada"}`),
+			wantStatus:  415,
+		},
+		{
+			name:        "extended charset parameter",
+			contentType: []string{"application/json; charset*=UTF-8''utf-8"},
+			body:        []byte(`{"name":"Ada"}`),
 			wantStatus:  415,
 		},
 		{
@@ -192,6 +228,33 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 			}
 			if status := echo.StatusCode(err); status != test.wantStatus {
 				t.Fatalf("status = %d, want %d, err=%v", status, test.wantStatus, err)
+			}
+		})
+	}
+}
+
+func TestMediaTypeParameterNamesRespectsQuotedDelimiters(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		want  []string
+	}{
+		{name: "no parameters", value: "application/json"},
+		{
+			name:  "case and quoted semicolon",
+			value: `application/json; Charset="utf-8;still"; profile=x`,
+			want:  []string{"charset", "profile"},
+		},
+		{
+			name:  "escaped quote before semicolon",
+			value: `application/json; note="a\";b"; charset=utf-8`,
+			want:  []string{"note", "charset"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := mediaTypeParameterNames(test.value)
+			if strings.Join(got, ",") != strings.Join(test.want, ",") {
+				t.Fatalf("mediaTypeParameterNames(%q) = %#v, want %#v", test.value, got, test.want)
 			}
 		})
 	}
