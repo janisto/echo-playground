@@ -110,6 +110,53 @@ func TestParseLinkParameterValueExactGrammar(t *testing.T) {
 	}
 }
 
+func TestParseLinkValueHonorsParameterMultiplicity(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		value         string
+		wantRelations []string
+		wantAnchored  bool
+	}{
+		{
+			name:          "multiple hreflang attributes",
+			value:         `<https://example.test/items?page=2>; hreflang=en; hreflang=fi; rel=next`,
+			wantRelations: []string{"next"},
+		},
+		{
+			name:          "later relation occurrence ignored",
+			value:         `<https://example.test/items?page=2>; rel=NEXT; rel=prev`,
+			wantRelations: []string{"next"},
+		},
+		{
+			name:  "repeated valueless extension",
+			value: `<https://example.test/items?page=2>; preload; preload`,
+		},
+		{
+			name:          "repeated anchor keeps link anchored",
+			value:         `<https://example.test/items?page=2>; anchor="/one"; anchor="/two"; rel=next`,
+			wantRelations: []string{"next"},
+			wantAnchored:  true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			target, relations, anchored, err := parseLinkValue(test.value)
+			if err != nil || target != "https://example.test/items?page=2" ||
+				!reflect.DeepEqual(relations, test.wantRelations) || anchored != test.wantAnchored {
+				t.Fatalf(
+					"parseLinkValue(%q) = %q, %#v, %t, %v; want target, %#v, %t, nil",
+					test.value,
+					target,
+					relations,
+					anchored,
+					err,
+					test.wantRelations,
+					test.wantAnchored,
+				)
+			}
+		})
+	}
+}
+
 func TestParseRelationTypesExactGrammar(t *testing.T) {
 	for _, test := range []struct {
 		value string

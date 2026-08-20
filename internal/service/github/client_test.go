@@ -235,6 +235,24 @@ func TestClientAcceptsRFCLinkWhitespaceAndSpaceSeparatedRelations(t *testing.T) 
 	}
 }
 
+func TestClientAcceptsMultipleProviderHreflangAttributes(t *testing.T) {
+	var origin string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(
+			"Link",
+			"<"+origin+`/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>`+
+				`; hreflang=en; hreflang=fi; rel=next`,
+		)
+		writeJSON(w, `[`+repositorySummaryFixture("repo")+`]`)
+	}))
+	defer server.Close()
+	origin = server.URL
+	page, err := testClient(t, server).ListOwnerRepositories(t.Context(), "acme", 1, nil)
+	if err != nil || page.NextCursor == "" || page.PrevCursor != "" {
+		t.Fatalf("multiple hreflang navigation = %#v, %v", page, err)
+	}
+}
+
 func TestClientRejectsMalformedRelevantProviderLinkSyntax(t *testing.T) {
 	tests := map[string]string{
 		"invalid parameter name":       `ORIGIN/users/acme/repos?direction=asc&per_page=1&sort=full_name&type=owner&page=2>; bad name=value; rel=next`,

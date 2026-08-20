@@ -141,7 +141,7 @@ func parseLinkValue(raw string) (string, []string, bool, error) {
 	}
 	var relations []string
 	anchored := false
-	seenParameters := make(map[string]struct{})
+	seenRelation := false
 	for _, rawParameter := range parameters {
 		name, rawValue, hasValue := strings.Cut(trimOWS(rawParameter), "=")
 		name = trimOWS(name)
@@ -149,10 +149,9 @@ func parseLinkValue(raw string) (string, []string, bool, error) {
 			return "", nil, false, ErrUpstream
 		}
 		name = strings.ToLower(name)
-		if _, duplicate := seenParameters[name]; duplicate {
-			return "", nil, false, ErrUpstream
+		if name == "rel" && seenRelation {
+			continue
 		}
-		seenParameters[name] = struct{}{}
 		value := ""
 		if hasValue {
 			value, err = parseLinkParameterValue(trimOWS(rawValue))
@@ -164,6 +163,7 @@ func parseLinkValue(raw string) (string, []string, bool, error) {
 		case "anchor":
 			anchored = true
 		case "rel":
+			seenRelation = true
 			if !hasValue {
 				return "", nil, false, ErrUpstream
 			}
