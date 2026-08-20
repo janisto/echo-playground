@@ -186,7 +186,8 @@ func requestContentEncoding(header http.Header) error {
 	if len(values) == 0 {
 		return nil
 	}
-	if len(values) != 1 || strings.Contains(values[0], ",") || !strings.EqualFold(values[0], "identity") {
+	if len(values) != 1 || strings.Contains(values[0], ",") ||
+		!strings.EqualFold(strings.Trim(values[0], " \t"), "identity") {
 		return respond.UnsupportedMediaType()
 	}
 	return nil

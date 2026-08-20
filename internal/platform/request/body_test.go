@@ -51,6 +51,13 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 			body:        []byte(`{"name":"Ada"}`),
 			wantName:    "Ada",
 		},
+		{
+			name:        "identity with ASCII optional whitespace",
+			contentType: []string{"application/json"},
+			encoding:    []string{" \tidentity\t "},
+			body:        []byte(`{"name":"Ada"}`),
+			wantName:    "Ada",
+		},
 		{name: "empty supported", contentType: []string{"application/json"}, wantStatus: 400},
 		{name: "empty missing", wantStatus: 400},
 		{name: "empty unsupported", contentType: []string{"text/plain"}, wantStatus: 415},
@@ -114,6 +121,13 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 			contentType: []string{"application/json"},
 			encoding:    []string{"gzip"},
 			body:        []byte(`{}`),
+			wantStatus:  415,
+		},
+		{
+			name:        "identity with non-HTTP whitespace",
+			contentType: []string{"application/json"},
+			encoding:    []string{"\u00a0identity\u00a0"},
+			body:        []byte(`{"name":"Ada"}`),
 			wantStatus:  415,
 		},
 		{
