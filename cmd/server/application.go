@@ -20,8 +20,10 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/auth"
 	"github.com/janisto/echo-playground/internal/platform/firebase"
 	appmiddleware "github.com/janisto/echo-playground/internal/platform/middleware"
+	"github.com/janisto/echo-playground/internal/platform/request"
 	"github.com/janisto/echo-playground/internal/platform/respond"
 	"github.com/janisto/echo-playground/internal/platform/validate"
+	githubsvc "github.com/janisto/echo-playground/internal/service/github"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 )
 
@@ -29,6 +31,7 @@ type applicationClients struct {
 	*firebase.Clients
 	verifier auth.Verifier
 	profiles profilesvc.Service
+	github   githubsvc.Service
 }
 
 const observabilityTraceContextLevel = obs.TraceContextLevel1
@@ -39,6 +42,7 @@ func newFirebaseClients(ctx context.Context, cfg config, logger *zap.Logger) (*a
 		return &applicationClients{
 			verifier: unavailableVerifier{},
 			profiles: unavailableProfileStore{},
+			github:   githubsvc.NewClient(),
 		}, nil
 	}
 	if cfg.FirebaseMode == firebaseModeEmulator {
@@ -52,6 +56,7 @@ func newFirebaseClients(ctx context.Context, cfg config, logger *zap.Logger) (*a
 		Clients:  clients,
 		verifier: auth.NewFirebaseVerifier(clients.Auth),
 		profiles: profilesvc.NewFirestoreStore(clients.Firestore),
+		github:   githubsvc.NewClient(),
 	}, nil
 }
 
@@ -89,8 +94,10 @@ func (unavailableProfileStore) Delete(context.Context, string) error {
 func newEcho(cfg config, logger *zap.Logger, clients *applicationClients) *echo.Echo {
 	e := echo.NewWithConfig(echo.Config{
 		Router: echo.NewRouter(echo.RouterConfig{
-			AllowOverwritingRoute: false,
-			AutoHandleHEAD:        true,
+			AllowOverwritingRoute:   false,
+			AutoHandleHEAD:          true,
+			MethodNotAllowedHandler: appmiddleware.MethodNotAllowed,
+			OptionsMethodHandler:    appmiddleware.Options,
 		}),
 		HTTPErrorHandler:             respond.NewHTTPErrorHandler(),
 		IPExtractor:                  echo.ExtractIPDirect(),
@@ -103,6 +110,7 @@ func newEcho(cfg config, logger *zap.Logger, clients *applicationClients) *echo.
 			Logger:            logger,
 			Preset:            obs.PresetGCP,
 			TraceContextLevel: observabilityTraceContextLevel,
+			ValidateRequestID: validatePortableRequestID,
 		}),
 		respond.Recoverer(logger),
 		obs.AccessLogger(obs.AccessLoggerConfig{
@@ -114,21 +122,43 @@ func newEcho(cfg config, logger *zap.Logger, clients *applicationClients) *echo.
 			Timeout: cfg.RequestTimeout,
 			ErrorHandler: func(_ *echo.Context, err error) error {
 				if errors.Is(err, context.DeadlineExceeded) {
-					return respond.Error503("request deadline exceeded")
+					return respond.DependencyUnavailable()
 				}
 				return err
 			},
 		}),
 		appmiddleware.Security(),
 		appmiddleware.Vary(),
-		appmiddleware.CORS(),
-		middleware.BodyLimit(1<<20),
+		appmiddleware.CORS(cfg.CORSOrigins),
+		request.BodyLimitMiddleware(),
 	)
 
-	e.GET("/health", health.Handler)
+	e.GET("/health", health.Handler, respond.SuccessNegotiation(false))
 	docs.Register(e, apidocs.OpenAPIJSON)
-	routes.Register(e.Group("/v1"), clients.verifier, clients.profiles)
+	githubService := clients.github
+	if githubService == nil {
+		githubService = githubsvc.NewClient()
+	}
+	routes.Register(e.Group("/v1"), clients.verifier, clients.profiles, githubService)
 	return e
+}
+
+func validatePortableRequestID(value string) bool {
+	if len(value) < 1 || len(value) > 128 || !isASCIIAlphaNumeric(value[0]) {
+		return false
+	}
+	for index := 1; index < len(value); index++ {
+		character := value[index]
+		if !isASCIIAlphaNumeric(character) && character != '.' && character != '_' &&
+			character != ':' && character != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func isASCIIAlphaNumeric(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9'
 }
 
 func newServer(cfg config, handler *echo.Echo, logger *zap.Logger) (*http.Server, error) {

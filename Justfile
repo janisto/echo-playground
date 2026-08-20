@@ -42,14 +42,19 @@ run:
 run-port port=PORT:
     PORT={{ port }} go run ./cmd/server
 
-# Generate OpenAPI 3.1 spec
+# Generate OpenAPI 3.1.2 spec
 alias docs := gen-openapi
 [group('build')]
 gen-openapi:
-    go tool swag init --quiet --v3.1 --parseInternal --outputTypes json,yaml -g cmd/server/main.go -o api-docs >/dev/null
-    go run ./cmd/openapi
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp="$(mktemp -d)"
+    cleanup() { rm -rf "$tmp"; }
+    trap cleanup EXIT
+    go tool swag init --quiet --v3.1 --parseInternal --outputTypes json -g cmd/server/main.go -o "$tmp/raw"
+    go run ./cmd/openapi -input "$tmp/raw/swagger.json" -json api-docs/swagger.json -yaml api-docs/swagger.yaml
 
-# Format swag annotations
+# Format native Swag annotations.
 [group('build')]
 fmt-openapi:
     go tool swag fmt
@@ -157,6 +162,49 @@ functions-smoke port="18081":
       sleep 0.2
     done
     exit 1
+
+# Probe the accepted surface through an already-running local HTTP server.
+# Set github_live=true only for an explicit, non-gating anonymous GitHub smoke.
+[group('test')]
+contract-smoke base_url="http://127.0.0.1:8080" github_live="false":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp="$(mktemp -d)"
+    cleanup() { rm -rf "$tmp"; }
+    trap cleanup EXIT
+    probe() {
+      name="$1"; method="$2"; path="$3"; expected="$4"; body="${5:-}"; content_type="${6:-}"
+      headers="$tmp/$name.headers"; response="$tmp/$name.body"
+      args=(--silent --show-error --dump-header "$headers" --output "$response" -X "$method" -H "X-Request-ID: smoke-$name")
+      if [[ -n "$content_type" ]]; then args+=(-H "Content-Type: $content_type"); fi
+      if [[ -n "$body" ]]; then args+=(--data-binary "$body"); fi
+      curl "${args[@]}" "{{ base_url }}$path"
+      status="$(awk 'NR == 1 { print $2 }' "$headers")"
+      test "$status" = "$expected"
+      count="$(awk -v want="smoke-$name" 'BEGIN { IGNORECASE=1 } { sub(/\r$/, ""); if (tolower($1) == "x-request-id:" && $2 == want) count++ } END { print count + 0 }' "$headers")"
+      test "$count" = 1
+    }
+    probe health GET /health 200
+    probe hello-get GET /v1/hello 200
+    probe hello-post POST /v1/hello 200 '{"name":"Smoke"}' application/json
+    probe items GET '/v1/items?limit=1' 200
+    probe profile-auth GET /v1/profile 401
+    probe github-owner-local GET '/v1/github/owners/acme?unknown=1' 400
+    probe github-repos-local GET '/v1/github/owners/acme/repos?limit=0' 422
+    probe github-repository-local GET '/v1/github/repos/acme/...' 422
+    probe github-activity-local GET '/v1/github/repos/acme/repo/activity?limit=0' 422
+    probe github-languages-local GET '/v1/github/repos/acme/repo/languages?unknown=1' 400
+    probe github-tags-local GET '/v1/github/repos/acme/repo/tags?limit=0' 422
+    probe openapi GET /openapi.json 200
+    grep -E '"openapi":[[:space:]]*"3\.1\.2"' "$tmp/openapi.body" >/dev/null
+    if [[ "{{ github_live }}" = true ]]; then
+      probe github-owner GET /v1/github/owners/octocat 200
+      probe github-repos GET '/v1/github/owners/octocat/repos?limit=1' 200
+      probe github-repository GET /v1/github/repos/octocat/Hello-World 200
+      probe github-activity GET '/v1/github/repos/octocat/Hello-World/activity?limit=1' 200
+      probe github-languages GET /v1/github/repos/octocat/Hello-World/languages 200
+      probe github-tags GET '/v1/github/repos/octocat/Hello-World/tags?limit=1' 200
+    fi
 
 # Run both modules with separate coverage profiles.
 [group('test')]
@@ -269,7 +317,20 @@ modernize-check:
 qa: tidy fix build test
 
 [group('qa')]
-check: fmt-check lint build test
+openapi-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp="$(mktemp -d)"
+    cleanup() { rm -rf "$tmp"; }
+    trap cleanup EXIT
+    go tool swag init --quiet --v3.1 --parseInternal --outputTypes json -g cmd/server/main.go -o "$tmp/raw"
+    go run ./cmd/openapi -input "$tmp/raw/swagger.json" -json "$tmp/swagger.json" -yaml "$tmp/swagger.yaml"
+    cmp api-docs/swagger.json "$tmp/swagger.json"
+    cmp api-docs/swagger.yaml "$tmp/swagger.yaml"
+    go test ./cmd/openapi ./api-docs ./internal/http/docs ./cmd/server
+
+[group('qa')]
+check: openapi-check fmt-check lint build test
 
 [group('qa')]
 functions-check: lint-functions build-functions test-functions
@@ -376,8 +437,8 @@ container-smoke image="echo-playground:smoke" name="echo-playground-smoke" host_
       sleep 0.25
     done
     curl --fail --silent "http://127.0.0.1:{{ host_port }}/api-docs" >/dev/null
-    curl --fail --silent "http://127.0.0.1:{{ host_port }}/api-docs/openapi.json" | \
-      grep -E '"openapi":[[:space:]]*"3\.1\.0"' >/dev/null
+    curl --fail --silent "http://127.0.0.1:{{ host_port }}/openapi.json" | \
+      grep -E '"openapi":[[:space:]]*"3\.1\.2"' >/dev/null
     "$runtime" logs {{ name }} 2>&1 | grep -F '"version":"ci-smoke"' >/dev/null
 
 [group('container')]

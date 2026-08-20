@@ -4,6 +4,7 @@ package fake
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/janisto/echo-playground/internal/platform/auth"
@@ -14,14 +15,19 @@ import (
 type MockVerifier struct {
 	User  *auth.FirebaseUser
 	Error error
+	calls atomic.Int32
 }
 
 func (m *MockVerifier) Verify(context.Context, string) (*auth.FirebaseUser, error) {
+	m.calls.Add(1)
 	if m.Error != nil {
 		return nil, m.Error
 	}
 	return m.User, nil
 }
+
+// CallCount returns the number of verification attempts.
+func (m *MockVerifier) CallCount() int32 { return m.calls.Load() }
 
 // TestUser returns a stable authenticated identity for tests.
 func TestUser() *auth.FirebaseUser {
@@ -32,11 +38,18 @@ func TestUser() *auth.FirebaseUser {
 type ProfileStore struct {
 	mu       sync.RWMutex
 	profiles map[string]*profilesvc.Profile
+	clock    func() time.Time
+	writes   int
 }
 
 // NewProfileStore creates an empty test profile store.
 func NewProfileStore() *ProfileStore {
-	return &ProfileStore{profiles: make(map[string]*profilesvc.Profile)}
+	return &ProfileStore{
+		profiles: make(map[string]*profilesvc.Profile),
+		clock: func() time.Time {
+			return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+		},
+	}
 }
 
 func (m *ProfileStore) Create(
@@ -49,12 +62,14 @@ func (m *ProfileStore) Create(
 	if _, exists := m.profiles[userID]; exists {
 		return nil, profilesvc.ErrAlreadyExists
 	}
-	now := time.Now().UTC()
+	now := m.clock().UTC().Truncate(time.Millisecond)
 	p := &profilesvc.Profile{
-		ID: userID, Firstname: params.Firstname, Lastname: params.Lastname, Email: params.Email,
-		PhoneNumber: params.PhoneNumber, Marketing: params.Marketing, CreatedAt: now, UpdatedAt: now,
+		ID: userID, FirstName: params.FirstName, LastName: params.LastName, ContactEmail: params.ContactEmail,
+		PhoneNumber: params.PhoneNumber, MarketingOptIn: params.MarketingOptIn, TermsAccepted: params.TermsAccepted,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	m.profiles[userID] = p
+	m.writes++
 	return cloneProfile(p), nil
 }
 
@@ -79,22 +94,30 @@ func (m *ProfileStore) Update(
 	if !ok {
 		return nil, profilesvc.ErrNotFound
 	}
-	if params.Firstname != nil {
-		p.Firstname = *params.Firstname
+	changed := false
+	if params.FirstName != nil && p.FirstName != *params.FirstName {
+		p.FirstName, changed = *params.FirstName, true
 	}
-	if params.Lastname != nil {
-		p.Lastname = *params.Lastname
+	if params.LastName != nil && p.LastName != *params.LastName {
+		p.LastName, changed = *params.LastName, true
 	}
-	if params.Email != nil {
-		p.Email = *params.Email
+	if params.ContactEmail != nil && p.ContactEmail != *params.ContactEmail {
+		p.ContactEmail, changed = *params.ContactEmail, true
 	}
-	if params.PhoneNumber != nil {
-		p.PhoneNumber = *params.PhoneNumber
+	if params.PhoneNumber != nil && p.PhoneNumber != *params.PhoneNumber {
+		p.PhoneNumber, changed = *params.PhoneNumber, true
 	}
-	if params.Marketing != nil {
-		p.Marketing = *params.Marketing
+	if params.MarketingOptIn != nil && p.MarketingOptIn != *params.MarketingOptIn {
+		p.MarketingOptIn, changed = *params.MarketingOptIn, true
 	}
-	p.UpdatedAt = time.Now().UTC()
+	if changed {
+		now := m.clock().UTC().Truncate(time.Millisecond)
+		if !now.After(p.UpdatedAt) {
+			now = p.UpdatedAt.Add(time.Millisecond)
+		}
+		p.UpdatedAt = now
+		m.writes++
+	}
 	return cloneProfile(p), nil
 }
 
@@ -105,7 +128,15 @@ func (m *ProfileStore) Delete(_ context.Context, userID string) error {
 		return profilesvc.ErrNotFound
 	}
 	delete(m.profiles, userID)
+	m.writes++
 	return nil
+}
+
+// WriteCount returns committed mutations for forbidden-side-effect assertions.
+func (m *ProfileStore) WriteCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.writes
 }
 
 func cloneProfile(p *profilesvc.Profile) *profilesvc.Profile {

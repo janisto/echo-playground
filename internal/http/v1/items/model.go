@@ -1,6 +1,7 @@
 package items
 
 import (
+	"slices"
 	"time"
 
 	"github.com/janisto/echo-playground/internal/platform/timeutil"
@@ -8,38 +9,38 @@ import (
 
 // Item represents a sample resource for pagination demonstration.
 type Item struct {
-	ID          string        `json:"id"          example:"item-001"`
-	Name        string        `json:"name"        example:"Alpha Widget"`
-	Category    string        `json:"category"    example:"electronics"`
-	Price       Money         `json:"price"`
-	InStock     bool          `json:"inStock"     example:"true"`
-	CreatedAt   timeutil.Time `json:"createdAt"   example:"2024-01-15T10:30:00.000Z"`
-	Description string        `json:"description" example:"A compact electronic widget for everyday use"`
+	ID          string        `json:"id"          cbor:"id"          example:"item-001"`
+	Name        string        `json:"name"        cbor:"name"        example:"Alpha Widget"`
+	Category    string        `json:"category"    cbor:"category"    example:"electronics"`
+	Price       Money         `json:"price"       cbor:"price"`
+	InStock     bool          `json:"inStock"     cbor:"inStock"     example:"true"`
+	CreatedAt   timeutil.Time `json:"createdAt"   cbor:"createdAt"   example:"2024-01-15T10:30:00.000Z"`
+	Description string        `json:"description" cbor:"description" example:"A compact electronic widget for everyday use"`
 }
 
 // Money represents an exact monetary amount in minor currency units.
 type Money struct {
-	AmountMinor int64  `json:"amountMinor" example:"2999"`
-	Currency    string `json:"currency"    example:"EUR"`
+	AmountMinor int64  `json:"amountMinor" cbor:"amountMinor" example:"2999"`
+	Currency    string `json:"currency"    cbor:"currency"    example:"USD"`
 }
 
-func euro(amountMinor int64) Money {
-	return Money{AmountMinor: amountMinor, Currency: "EUR"}
+func dollars(amountMinor int64) Money {
+	return Money{AmountMinor: amountMinor, Currency: "USD"}
 }
 
 // ListData is the response body containing paginated items.
 type ListData struct {
-	Items []Item `json:"items"`
-	Total int    `json:"total" example:"30"`
+	Items []Item `json:"items" cbor:"items"`
+	Total int    `json:"total" cbor:"total" example:"30"`
 }
 
-// mockItems provides sample data for pagination demonstration.
-var mockItems = []Item{
+// catalog is the accepted deterministic item collection.
+var catalog = []Item{
 	{
 		ID:          "item-001",
 		Name:        "Alpha Widget",
 		Category:    "electronics",
-		Price:       euro(2999),
+		Price:       dollars(2999),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)),
 		Description: "A versatile electronic widget for everyday use",
@@ -48,7 +49,7 @@ var mockItems = []Item{
 		ID:          "item-002",
 		Name:        "Beta Gadget",
 		Category:    "electronics",
-		Price:       euro(4999),
+		Price:       dollars(4999),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 16, 11, 0, 0, 0, time.UTC)),
 		Description: "Advanced gadget with smart features",
@@ -57,7 +58,7 @@ var mockItems = []Item{
 		ID:          "item-003",
 		Name:        "Gamma Tool",
 		Category:    "tools",
-		Price:       euro(1550),
+		Price:       dollars(1550),
 		InStock:     false,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 17, 9, 15, 0, 0, time.UTC)),
 		Description: "Precision tool for professional work",
@@ -66,7 +67,7 @@ var mockItems = []Item{
 		ID:          "item-004",
 		Name:        "Delta Component",
 		Category:    "electronics",
-		Price:       euro(899),
+		Price:       dollars(899),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 18, 14, 45, 0, 0, time.UTC)),
 		Description: "Essential component for electronics projects",
@@ -75,7 +76,7 @@ var mockItems = []Item{
 		ID:          "item-005",
 		Name:        "Epsilon Sensor",
 		Category:    "electronics",
-		Price:       euro(3499),
+		Price:       dollars(3499),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 19, 8, 0, 0, 0, time.UTC)),
 		Description: "High-precision environmental sensor",
@@ -84,7 +85,7 @@ var mockItems = []Item{
 		ID:          "item-006",
 		Name:        "Zeta Cable",
 		Category:    "accessories",
-		Price:       euro(1299),
+		Price:       dollars(1299),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 20, 16, 30, 0, 0, time.UTC)),
 		Description: "Premium quality data cable",
@@ -93,7 +94,7 @@ var mockItems = []Item{
 		ID:          "item-007",
 		Name:        "Eta Adapter",
 		Category:    "accessories",
-		Price:       euro(999),
+		Price:       dollars(999),
 		InStock:     false,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 21, 10, 0, 0, 0, time.UTC)),
 		Description: "Universal power adapter",
@@ -102,7 +103,7 @@ var mockItems = []Item{
 		ID:          "item-008",
 		Name:        "Theta Board",
 		Category:    "electronics",
-		Price:       euro(8999),
+		Price:       dollars(8999),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 22, 11, 30, 0, 0, time.UTC)),
 		Description: "Development board for prototyping",
@@ -111,7 +112,7 @@ var mockItems = []Item{
 		ID:          "item-009",
 		Name:        "Iota Switch",
 		Category:    "electronics",
-		Price:       euro(599),
+		Price:       dollars(599),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 23, 9, 45, 0, 0, time.UTC)),
 		Description: "Tactile push button switch",
@@ -120,7 +121,7 @@ var mockItems = []Item{
 		ID:          "item-010",
 		Name:        "Kappa Display",
 		Category:    "electronics",
-		Price:       euro(4599),
+		Price:       dollars(4599),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 24, 13, 0, 0, 0, time.UTC)),
 		Description: "OLED display module",
@@ -129,7 +130,7 @@ var mockItems = []Item{
 		ID:          "item-011",
 		Name:        "Lambda Motor",
 		Category:    "robotics",
-		Price:       euro(2499),
+		Price:       dollars(2499),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 25, 8, 30, 0, 0, time.UTC)),
 		Description: "DC motor for robotics projects",
@@ -138,7 +139,7 @@ var mockItems = []Item{
 		ID:          "item-012",
 		Name:        "Mu Servo",
 		Category:    "robotics",
-		Price:       euro(1899),
+		Price:       dollars(1899),
 		InStock:     false,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 26, 15, 0, 0, 0, time.UTC)),
 		Description: "High-torque servo motor",
@@ -147,7 +148,7 @@ var mockItems = []Item{
 		ID:          "item-013",
 		Name:        "Nu Battery",
 		Category:    "power",
-		Price:       euro(1499),
+		Price:       dollars(1499),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 27, 10, 15, 0, 0, time.UTC)),
 		Description: "Rechargeable lithium battery pack",
@@ -156,7 +157,7 @@ var mockItems = []Item{
 		ID:          "item-014",
 		Name:        "Xi Charger",
 		Category:    "power",
-		Price:       euro(2299),
+		Price:       dollars(2299),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 28, 11, 45, 0, 0, time.UTC)),
 		Description: "Smart battery charger",
@@ -165,7 +166,7 @@ var mockItems = []Item{
 		ID:          "item-015",
 		Name:        "Omicron Relay",
 		Category:    "electronics",
-		Price:       euro(799),
+		Price:       dollars(799),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 29, 9, 0, 0, 0, time.UTC)),
 		Description: "5V relay module",
@@ -174,7 +175,7 @@ var mockItems = []Item{
 		ID:          "item-016",
 		Name:        "Pi Controller",
 		Category:    "electronics",
-		Price:       euro(5599),
+		Price:       dollars(5599),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 1, 30, 14, 30, 0, 0, time.UTC)),
 		Description: "Microcontroller board",
@@ -183,7 +184,7 @@ var mockItems = []Item{
 		ID:          "item-017",
 		Name:        "Rho Resistor Kit",
 		Category:    "components",
-		Price:       euro(1199),
+		Price:       dollars(1199),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 1, 8, 0, 0, 0, time.UTC)),
 		Description: "Assorted resistor pack",
@@ -192,7 +193,7 @@ var mockItems = []Item{
 		ID:          "item-018",
 		Name:        "Sigma Capacitor Set",
 		Category:    "components",
-		Price:       euro(1399),
+		Price:       dollars(1399),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 2, 10, 30, 0, 0, time.UTC)),
 		Description: "Electrolytic capacitor assortment",
@@ -201,7 +202,7 @@ var mockItems = []Item{
 		ID:          "item-019",
 		Name:        "Tau LED Pack",
 		Category:    "components",
-		Price:       euro(699),
+		Price:       dollars(699),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 3, 11, 0, 0, 0, time.UTC)),
 		Description: "Multi-color LED assortment",
@@ -210,7 +211,7 @@ var mockItems = []Item{
 		ID:          "item-020",
 		Name:        "Upsilon Wire Set",
 		Category:    "accessories",
-		Price:       euro(899),
+		Price:       dollars(899),
 		InStock:     false,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 4, 9, 15, 0, 0, time.UTC)),
 		Description: "Jumper wire kit",
@@ -219,7 +220,7 @@ var mockItems = []Item{
 		ID:          "item-021",
 		Name:        "Phi Breadboard",
 		Category:    "tools",
-		Price:       euro(499),
+		Price:       dollars(499),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 5, 13, 45, 0, 0, time.UTC)),
 		Description: "Solderless breadboard",
@@ -228,7 +229,7 @@ var mockItems = []Item{
 		ID:          "item-022",
 		Name:        "Chi Soldering Iron",
 		Category:    "tools",
-		Price:       euro(3599),
+		Price:       dollars(3599),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 6, 10, 0, 0, 0, time.UTC)),
 		Description: "Temperature-controlled soldering station",
@@ -237,7 +238,7 @@ var mockItems = []Item{
 		ID:          "item-023",
 		Name:        "Psi Multimeter",
 		Category:    "tools",
-		Price:       euro(4299),
+		Price:       dollars(4299),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 7, 11, 30, 0, 0, time.UTC)),
 		Description: "Digital multimeter with auto-ranging",
@@ -246,7 +247,7 @@ var mockItems = []Item{
 		ID:          "item-024",
 		Name:        "Omega Oscilloscope",
 		Category:    "tools",
-		Price:       euro(29999),
+		Price:       dollars(29999),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 8, 14, 0, 0, 0, time.UTC)),
 		Description: "Portable digital oscilloscope",
@@ -255,7 +256,7 @@ var mockItems = []Item{
 		ID:          "item-025",
 		Name:        "Alpha Pro Widget",
 		Category:    "electronics",
-		Price:       euro(5999),
+		Price:       dollars(5999),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 9, 8, 30, 0, 0, time.UTC)),
 		Description: "Professional-grade widget with extended features",
@@ -264,7 +265,7 @@ var mockItems = []Item{
 		ID:          "item-026",
 		Name:        "Beta Max Gadget",
 		Category:    "electronics",
-		Price:       euro(7999),
+		Price:       dollars(7999),
 		InStock:     false,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 10, 9, 0, 0, 0, time.UTC)),
 		Description: "Maximum performance gadget",
@@ -273,7 +274,7 @@ var mockItems = []Item{
 		ID:          "item-027",
 		Name:        "Gamma Plus Tool",
 		Category:    "tools",
-		Price:       euro(2599),
+		Price:       dollars(2599),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 11, 10, 15, 0, 0, time.UTC)),
 		Description: "Enhanced precision tool",
@@ -282,7 +283,7 @@ var mockItems = []Item{
 		ID:          "item-028",
 		Name:        "Delta Ultra Component",
 		Category:    "electronics",
-		Price:       euro(1699),
+		Price:       dollars(1699),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 12, 11, 45, 0, 0, time.UTC)),
 		Description: "Ultra-reliable component",
@@ -291,7 +292,7 @@ var mockItems = []Item{
 		ID:          "item-029",
 		Name:        "Epsilon HD Sensor",
 		Category:    "electronics",
-		Price:       euro(5499),
+		Price:       dollars(5499),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 13, 13, 0, 0, 0, time.UTC)),
 		Description: "High-definition sensor array",
@@ -300,9 +301,15 @@ var mockItems = []Item{
 		ID:          "item-030",
 		Name:        "Zeta Premium Cable",
 		Category:    "accessories",
-		Price:       euro(1999),
+		Price:       dollars(1999),
 		InStock:     true,
 		CreatedAt:   timeutil.NewTime(time.Date(2024, 2, 14, 15, 30, 0, 0, time.UTC)),
 		Description: "Gold-plated premium cable",
 	},
+}
+
+// Catalog returns a copy of the accepted deterministic item collection.
+// The OpenAPI normalizer uses the same values to constrain the read-only response schema.
+func Catalog() []Item {
+	return slices.Clone(catalog)
 }

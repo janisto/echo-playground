@@ -150,7 +150,7 @@ func TestNewServer(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 	if server.Addr != cfg.Address || server.ReadTimeout != 5*time.Second ||
-		server.WriteTimeout != 10*time.Second || server.MaxHeaderBytes != 64<<10 {
+		server.WriteTimeout != 20*time.Second || server.MaxHeaderBytes != 64<<10 {
 		t.Fatalf("unexpected server: %#v", server)
 	}
 	server.ErrorLog.Print("accept failed")

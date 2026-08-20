@@ -5,6 +5,9 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v5"
+
+	"github.com/janisto/echo-playground/internal/platform/request"
+	"github.com/janisto/echo-playground/internal/platform/respond"
 )
 
 //go:embed swagger-ui.html
@@ -14,12 +17,15 @@ var swaggerUI []byte
 var swaggerInit []byte
 
 // Register wires documentation routes.
-// - GET /api-docs/openapi.json serves the generated OpenAPI 3.1 spec.
+// - GET /openapi.json serves the generated OpenAPI 3.1 spec.
 // - GET /api-docs serves an embedded Swagger UI page.
 func Register(e *echo.Echo, spec []byte) {
-	e.GET("/api-docs/openapi.json", func(c *echo.Context) error {
-		return c.Blob(http.StatusOK, "application/json; charset=UTF-8", spec)
-	})
+	e.GET("/openapi.json", func(c *echo.Context) error {
+		if err := request.RejectUnknownOrRepeatedQuery(c); err != nil {
+			return err
+		}
+		return respond.JSONDocument(c, http.StatusOK, spec)
+	}, respond.SuccessNegotiation(true))
 
 	e.GET("/api-docs", func(c *echo.Context) error {
 		return c.HTMLBlob(http.StatusOK, swaggerUI)

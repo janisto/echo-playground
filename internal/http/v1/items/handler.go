@@ -1,7 +1,6 @@
 package items
 
 import (
-	"errors"
 	"net/http"
 	"net/url"
 	"slices"
@@ -13,77 +12,72 @@ import (
 	"github.com/janisto/echo-playground/internal/platform/respond"
 )
 
-const cursorType = "item"
+const operationID = "listItems"
 
 // Register wires item routes into the provided group.
 func Register(g *echo.Group) {
-	g.GET("/items", listHandler)
+	g.GET("/items", listHandler, respond.SuccessNegotiation(false))
 }
 
-// listHandler godoc
+// listHandler returns the fixed item catalog with cursor pagination.
 //
-//	@Summary		List items
+//	@Summary		List the fixed item catalog
 //	@ID				listItems
-//	@Description	Returns a paginated list of items with optional category filtering
+//	@Description	Filters before pagination and rejects unknown or repeated query parameters.
 //	@Tags			items
 //	@Produce		json,application/cbor
-//	@Param			cursor		query		string	false	"Pagination cursor"		maxlength(2048)
-//	@Param			limit		query		int		false	"Items per page"		minimum(1)	maximum(100)
-//	@Param			category	query		string	false	"Filter by category"	Enums(electronics, tools, accessories, robotics, power, components)
-//	@Success		200			{object}	ListData
-//	@Failure		400			{object}	respond.ProblemDetails
-//	@Failure		406			{object}	respond.ProblemDetails
-//	@Failure		422			{object}	respond.ProblemDetails
-//	@Header			200			{string}	Link	"RFC 8288 pagination links"
-//	@Router			/items [get]
+//	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
+//	@Param			limit			query		int		false	"Page size"								default(20)		minimum(1)	maximum(100)
+//	@Param			cursor			query		string	false	"Opaque scoped cursor"					minlength(1)	maxlength(2048)
+//	@Param			category		query		string	false	"Exact category filter"					Enums(electronics,tools,accessories,robotics,power,components)
+//	@Success		200				{object}	ListData
+//	@Failure		400				{object}	respond.ProblemDetails
+//	@Failure		406				{object}	respond.ProblemDetails
+//	@Failure		422				{object}	respond.ProblemDetails
+//	@Failure		500				{object}	respond.ProblemDetails
+//	@Header			200				{string}	Link	"Optional RFC 8288 pagination links"
+//	@Router			/v1/items [get]
 func listHandler(c *echo.Context) error {
-	if err := request.RejectUnknownOrRepeatedQuery(c, "cursor", "limit", "category"); err != nil {
-		return err
-	}
-
-	var input ListInput
-	if err := echo.BindQueryParams(c, &input); err != nil {
-		return err
-	}
-	if err := c.Validate(&input); err != nil {
-		return err
-	}
-
-	limit := pagination.DefaultLimit
-	if input.Limit != nil {
-		limit = *input.Limit
-	}
-
-	cursor, err := pagination.DecodeCursor(input.Cursor)
+	query, err := request.ParseQuery(c, "cursor", "limit", "category")
 	if err != nil {
-		return respond.Error400("invalid cursor format")
+		return err
 	}
-
-	if input.Cursor != "" && cursor.Type != cursorType {
-		return respond.Error400("cursor type mismatch")
+	limit, err := request.Limit(query)
+	if err != nil {
+		return err
 	}
-
-	filtered := filterItems(mockItems, input.Category)
-
-	query := url.Values{}
-	if input.Category != "" {
-		query.Set("category", input.Category)
+	category := query.Get("category")
+	if category != "" && !validCategory(category) {
+		return respond.ValidationFailed(respond.ErrorDetail{
+			Detail: "category is not supported",
+			Source: &respond.ErrorSource{Parameter: "category"},
+		})
 	}
+	scope := pagination.Scope{Operation: operationID, Filter: category, Limit: limit}
+	var cursor *pagination.Cursor
+	if cursorValues, present := query["cursor"]; present {
+		decoded, decodeErr := pagination.DecodeCursor(cursorValues[0])
+		if decodeErr != nil || !decoded.Matches(scope) {
+			return respond.InvalidRequest()
+		}
+		cursor = &decoded
+	}
+	filtered := filterItems(catalog, category)
 
+	linkQuery := url.Values{}
+	if category != "" {
+		linkQuery.Set("category", category)
+	}
 	result, err := pagination.Paginate(
 		filtered,
 		cursor,
-		limit,
-		cursorType,
+		scope,
 		func(item Item) string { return item.ID },
 		c.Request().URL.Path,
-		query,
+		linkQuery,
 	)
 	if err != nil {
-		if errors.Is(err, pagination.ErrCursorScopeMismatch) {
-			return respond.Error400("cursor does not match the requested filters or limit")
-		}
-		return respond.Error400("cursor references unknown item")
+		return respond.InvalidRequest()
 	}
 
 	if result.LinkHeader != "" {
@@ -93,6 +87,15 @@ func listHandler(c *echo.Context) error {
 		Items: result.Items,
 		Total: result.Total,
 	})
+}
+
+func validCategory(value string) bool {
+	switch value {
+	case "electronics", "tools", "accessories", "robotics", "power", "components":
+		return true
+	default:
+		return false
+	}
 }
 
 func filterItems(items []Item, category string) []Item {

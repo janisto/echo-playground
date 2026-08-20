@@ -6,6 +6,12 @@ import (
 	"testing"
 )
 
+func TestBoundedNameRejectsInvalidUTF8(t *testing.T) {
+	if BoundedName(string([]byte{0xff})) {
+		t.Fatal("BoundedName accepted an invalid UTF-8 sequence")
+	}
+}
+
 type createInput struct {
 	Name  string `json:"name"        validate:"required,min=1,max=100"`
 	Email string `json:"email"       validate:"required,email"`
@@ -296,7 +302,7 @@ func TestValidate_DefaultBuildMessage(t *testing.T) {
 	if len(ve.Fields) != 1 {
 		t.Fatalf("expected 1 field error, got %d", len(ve.Fields))
 	}
-	if ve.Fields[0].Message != "value failed on ip validation" {
+	if ve.Fields[0].Message != "value is invalid" {
 		t.Fatalf("expected default message format, got %q", ve.Fields[0].Message)
 	}
 }

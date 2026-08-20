@@ -7,10 +7,14 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 )
 
-// CORS returns Echo middleware that applies permissive CORS defaults suitable for APIs.
-func CORS() echo.MiddlewareFunc {
+// CORS returns deployment-configured CORS middleware. An empty allowlist keeps
+// browser cross-origin access disabled.
+func CORS(origins []string) echo.MiddlewareFunc {
+	if len(origins) == 0 {
+		return func(next echo.HandlerFunc) echo.HandlerFunc { return next }
+	}
 	return middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
+		AllowOrigins: origins,
 		AllowMethods: []string{
 			http.MethodGet,
 			http.MethodHead,
@@ -31,6 +35,8 @@ func CORS() echo.MiddlewareFunc {
 			"Link",
 			"Location",
 			"X-Request-ID",
+			"Retry-After",
+			"X-RateLimit-Reset",
 		},
 		MaxAge: 300,
 	})

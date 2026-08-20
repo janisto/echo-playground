@@ -133,8 +133,8 @@ func TestCreateHello_MissingName(t *testing.T) {
 	if len(problem.Errors) == 0 {
 		t.Fatal("expected validation errors")
 	}
-	if problem.Errors[0].Location != "name" {
-		t.Fatalf("expected location 'name', got %q", problem.Errors[0].Location)
+	if problem.Errors[0].Source == nil || problem.Errors[0].Source.Pointer != "/name" {
+		t.Fatalf("expected pointer '/name', got %#v", problem.Errors[0].Source)
 	}
 }
 
@@ -189,13 +189,20 @@ func TestCreateHello_PreservesStreamedBodyLimitError(t *testing.T) {
 }
 
 func TestCreateHello_RejectsUnknownAndTrailingJSON(t *testing.T) {
-	for _, body := range []string{`null`, `{"name":"Ada","unknown":true}`, `{"name":"Ada"} {}`} {
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
+	for _, test := range []struct {
+		body   string
+		status int
+	}{
+		{body: `null`, status: http.StatusUnprocessableEntity},
+		{body: `{"name":"Ada","unknown":true}`, status: http.StatusUnprocessableEntity},
+		{body: `{"name":"Ada"} {}`, status: http.StatusBadRequest},
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(test.body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		setupEcho().ServeHTTP(rec, req)
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("body %q: expected 400, got %d", body, rec.Code)
+		if rec.Code != test.status {
+			t.Fatalf("body %q: expected %d, got %d", test.body, test.status, rec.Code)
 		}
 	}
 }

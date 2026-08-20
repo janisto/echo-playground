@@ -5,95 +5,137 @@ import (
 	"net/http"
 )
 
+const problemTypeAboutBlank = "about:blank"
+
+// Stable portable error codes.
 const (
-	problemTypeAboutBlank                  = "about:blank"
-	problemDetailInternalError             = "internal server error"
-	problemDetailResourceMissing           = "resource not found"
-	problemDetailRepresentationUnavailable = "no acceptable response representation is available"
+	CodeInvalidRequest        = "invalid_request"
+	CodeUnauthorized          = "unauthorized"
+	CodeForbidden             = "forbidden"
+	CodeNotFound              = "not_found"
+	CodeProfileNotFound       = "profile_not_found"
+	CodeGitHubNotFound        = "github_not_found"
+	CodeMethodNotAllowed      = "method_not_allowed"
+	CodeNotAcceptable         = "not_acceptable"
+	CodeProfileExists         = "profile_exists"
+	CodePayloadTooLarge       = "payload_too_large"
+	CodeUnsupportedMediaType  = "unsupported_media_type"
+	CodeValidationFailed      = "validation_failed"
+	CodeGitHubRateLimit       = "github_rate_limit"
+	CodeInternalError         = "internal_error"
+	CodeGitHubUpstream        = "github_upstream"
+	CodeDependencyUnavailable = "dependency_unavailable"
+	CodeGitHubTimeout         = "github_timeout"
 )
 
-// ProblemDetails represents an RFC 9457 Problem Details response.
+type problemDefinition struct {
+	Status int
+	Title  string
+	Detail string
+}
+
+var problemDefinitions = map[string]problemDefinition{
+	CodeInvalidRequest:   {http.StatusBadRequest, "Bad Request", "Request is malformed"},
+	CodeUnauthorized:     {http.StatusUnauthorized, "Unauthorized", "Authentication is required or invalid"},
+	CodeForbidden:        {http.StatusForbidden, "Forbidden", "Access is forbidden"},
+	CodeNotFound:         {http.StatusNotFound, "Not Found", "Resource not found"},
+	CodeProfileNotFound:  {http.StatusNotFound, "Not Found", "Profile not found"},
+	CodeGitHubNotFound:   {http.StatusNotFound, "Not Found", "GitHub resource not found"},
+	CodeMethodNotAllowed: {http.StatusMethodNotAllowed, "Method Not Allowed", "Method not allowed"},
+	CodeNotAcceptable: {
+		http.StatusNotAcceptable,
+		"Not Acceptable",
+		"No acceptable response representation is available",
+	},
+	CodeProfileExists:   {http.StatusConflict, "Conflict", "Profile already exists"},
+	CodePayloadTooLarge: {http.StatusRequestEntityTooLarge, "Content Too Large", "Request body is too large"},
+	CodeUnsupportedMediaType: {
+		http.StatusUnsupportedMediaType,
+		"Unsupported Media Type",
+		"Request representation is not supported",
+	},
+	CodeValidationFailed: {http.StatusUnprocessableEntity, "Unprocessable Content", "Request validation failed"},
+	CodeGitHubRateLimit:  {http.StatusTooManyRequests, "Too Many Requests", "GitHub rate limit exceeded"},
+	CodeInternalError:    {http.StatusInternalServerError, "Internal Server Error", "Internal server error"},
+	CodeGitHubUpstream: {
+		http.StatusBadGateway,
+		"Bad Gateway",
+		"GitHub upstream response is invalid or unavailable",
+	},
+	CodeDependencyUnavailable: {
+		http.StatusServiceUnavailable,
+		"Service Unavailable",
+		"A required dependency is unavailable",
+	},
+	CodeGitHubTimeout: {http.StatusGatewayTimeout, "Gateway Timeout", "GitHub request timed out"},
+}
+
+// ProblemDetails is the closed RFC 9457 error document used by the GCP profile.
 type ProblemDetails struct {
-	Type     string        `json:"type"               cbor:"type"               example:"about:blank"`
-	Title    string        `json:"title"              cbor:"title"              example:"Not Found"`
-	Status   int           `json:"status"             cbor:"status"             example:"404"`
-	Detail   string        `json:"detail,omitempty"   cbor:"detail,omitempty"   example:"resource not found"`
-	Instance string        `json:"instance,omitempty" cbor:"instance,omitempty" example:"/v1/items/42"`
-	Errors   []ErrorDetail `json:"errors,omitempty"   cbor:"errors,omitempty"`
+	Type   string        `json:"type,omitempty"   cbor:"type,omitempty"   example:"about:blank"`
+	Title  string        `json:"title"            cbor:"title"            example:"Not Found"`
+	Status int           `json:"status"           cbor:"status"           example:"404"`
+	Detail string        `json:"detail"           cbor:"detail"           example:"Resource not found"`
+	Code   string        `json:"code"             cbor:"code"             example:"not_found"`
+	Errors []ErrorDetail `json:"errors,omitempty" cbor:"errors,omitempty"`
 }
 
-// ErrorDetail represents a single field-level error within a Problem Details response.
+// ErrorDetail is a safe normalized validation issue.
 type ErrorDetail struct {
-	Message  string `json:"message"            cbor:"message"            example:"firstname is required"`
-	Location string `json:"location,omitempty" cbor:"location,omitempty" example:"body.firstname"`
+	Detail string       `json:"detail"           cbor:"detail"`
+	Source *ErrorSource `json:"source,omitempty" cbor:"source,omitempty"`
 }
 
-// Error implements the error interface.
+// ErrorSource identifies only application-owned input structure.
+type ErrorSource struct {
+	Pointer   string `json:"pointer,omitempty"   cbor:"pointer,omitempty"`
+	Parameter string `json:"parameter,omitempty" cbor:"parameter,omitempty"`
+	Header    string `json:"header,omitempty"    cbor:"header,omitempty"`
+}
+
 func (p *ProblemDetails) Error() string {
-	if p.Detail != "" {
-		return fmt.Sprintf("%d %s: %s", p.Status, p.Title, p.Detail)
+	return fmt.Sprintf("%d %s: %s", p.Status, p.Title, p.Detail)
+}
+
+func (p *ProblemDetails) StatusCode() int { return p.Status }
+
+// Problem returns the exact portable problem definition for code. Unknown
+// local codes fail closed as internal_error.
+func Problem(code string, issues ...ErrorDetail) *ProblemDetails {
+	definition, ok := problemDefinitions[code]
+	if !ok {
+		code = CodeInternalError
+		definition = problemDefinitions[code]
 	}
-	return fmt.Sprintf("%d %s", p.Status, p.Title)
-}
-
-// StatusCode implements echo.HTTPStatusCoder for Echo's status code detection.
-func (p *ProblemDetails) StatusCode() int {
-	return p.Status
-}
-
-// NewError creates a ProblemDetails error with the given status code and detail message.
-func NewError(status int, detail string) *ProblemDetails {
-	p := newProblem(status, detail)
-	return &p
-}
-
-func newProblem(status int, detail string) ProblemDetails {
-	return ProblemDetails{
+	if len(issues) > 32 {
+		issues = append(issues[:31], ErrorDetail{Detail: "Additional validation errors omitted"})
+	}
+	return &ProblemDetails{
 		Type:   problemTypeAboutBlank,
-		Title:  http.StatusText(status),
-		Status: status,
-		Detail: detail,
+		Title:  definition.Title,
+		Status: definition.Status,
+		Detail: definition.Detail,
+		Code:   code,
+		Errors: issues,
 	}
 }
 
-// Error400 returns a 400 Bad Request ProblemDetails error.
-func Error400(detail string) *ProblemDetails {
-	return NewError(http.StatusBadRequest, detail)
+func InvalidRequest() *ProblemDetails       { return Problem(CodeInvalidRequest) }
+func Unauthorized() *ProblemDetails         { return Problem(CodeUnauthorized) }
+func Forbidden() *ProblemDetails            { return Problem(CodeForbidden) }
+func NotFound() *ProblemDetails             { return Problem(CodeNotFound) }
+func ProfileNotFound() *ProblemDetails      { return Problem(CodeProfileNotFound) }
+func GitHubNotFound() *ProblemDetails       { return Problem(CodeGitHubNotFound) }
+func MethodNotAllowed() *ProblemDetails     { return Problem(CodeMethodNotAllowed) }
+func NotAcceptable() *ProblemDetails        { return Problem(CodeNotAcceptable) }
+func ProfileExists() *ProblemDetails        { return Problem(CodeProfileExists) }
+func PayloadTooLarge() *ProblemDetails      { return Problem(CodePayloadTooLarge) }
+func UnsupportedMediaType() *ProblemDetails { return Problem(CodeUnsupportedMediaType) }
+func ValidationFailed(issues ...ErrorDetail) *ProblemDetails {
+	return Problem(CodeValidationFailed, issues...)
 }
-
-// Error401 returns a 401 Unauthorized ProblemDetails error.
-func Error401(detail string) *ProblemDetails {
-	return NewError(http.StatusUnauthorized, detail)
-}
-
-// Error403 returns a 403 Forbidden ProblemDetails error.
-func Error403(detail string) *ProblemDetails {
-	return NewError(http.StatusForbidden, detail)
-}
-
-// Error404 returns a 404 Not Found ProblemDetails error.
-func Error404(detail string) *ProblemDetails {
-	return NewError(http.StatusNotFound, detail)
-}
-
-// Error409 returns a 409 Conflict ProblemDetails error.
-func Error409(detail string) *ProblemDetails {
-	return NewError(http.StatusConflict, detail)
-}
-
-// Error422 returns a 422 Unprocessable Entity ProblemDetails error with field-level errors.
-func Error422(detail string, fields ...ErrorDetail) *ProblemDetails {
-	p := NewError(http.StatusUnprocessableEntity, detail)
-	p.Errors = fields
-	return p
-}
-
-// Error500 returns a 500 Internal Server Error ProblemDetails error.
-func Error500(detail string) *ProblemDetails {
-	return NewError(http.StatusInternalServerError, detail)
-}
-
-// Error503 returns a 503 Service Unavailable ProblemDetails error.
-func Error503(detail string) *ProblemDetails {
-	return NewError(http.StatusServiceUnavailable, detail)
-}
+func GitHubRateLimit() *ProblemDetails       { return Problem(CodeGitHubRateLimit) }
+func InternalError() *ProblemDetails         { return Problem(CodeInternalError) }
+func GitHubUpstream() *ProblemDetails        { return Problem(CodeGitHubUpstream) }
+func DependencyUnavailable() *ProblemDetails { return Problem(CodeDependencyUnavailable) }
+func GitHubTimeout() *ProblemDetails         { return Problem(CodeGitHubTimeout) }

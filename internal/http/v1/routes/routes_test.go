@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/janisto/echo-playground/internal/http/health"
 	"github.com/janisto/echo-playground/internal/platform/auth"
 	"github.com/janisto/echo-playground/internal/platform/respond"
+	githubsvc "github.com/janisto/echo-playground/internal/service/github"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 	"github.com/janisto/echo-playground/internal/testutil"
 	testfake "github.com/janisto/echo-playground/internal/testutil/fake"
@@ -45,7 +47,7 @@ func setupTestServerWithLogger(verifier auth.Verifier, svc profilesvc.Service, l
 	e.GET("/health", health.Handler)
 
 	v1 := e.Group("/v1")
-	Register(v1, verifier, svc)
+	Register(v1, verifier, svc, githubsvc.NewClient())
 	return e
 }
 
@@ -117,6 +119,28 @@ func TestItemsEndpoint(t *testing.T) {
 	link := rec.Header().Get("Link")
 	if link == "" {
 		t.Fatal("expected Link header")
+	}
+}
+
+func TestPublicFamiliesDoNotInvokeProfileAuthentication(t *testing.T) {
+	verifier := &testfake.MockVerifier{Error: auth.ErrAuthUnavailable}
+	service := testfake.NewProfileStore()
+	e := setupTestServer(verifier, service)
+	for _, path := range []string{"/health", "/v1/hello", "/v1/items?limit=1"} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer must-not-be-used")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	if verifier.CallCount() != 0 || service.WriteCount() != 0 {
+		t.Fatalf(
+			"public routes invoked protected dependencies: auth=%d writes=%d",
+			verifier.CallCount(),
+			service.WriteCount(),
+		)
 	}
 }
 
@@ -255,7 +279,7 @@ func TestProfileCRUD(t *testing.T) {
 	e := setupTestServer(verifier, svc)
 
 	// Create.
-	body := `{"firstname":"John","lastname":"Doe","email":"john@example.com","phoneNumber":"+358401234567","marketing":true}`
+	body := `{"firstName":"John","lastName":"Doe","contactEmail":"john@example.com","phoneNumber":"+358401234567","marketingOptIn":true,"termsAccepted":true}`
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/profile", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -281,7 +305,7 @@ func TestProfileCRUD(t *testing.T) {
 		t.Context(),
 		http.MethodPatch,
 		"/v1/profile",
-		strings.NewReader(`{"firstname":"Jane"}`),
+		strings.NewReader(`{"firstName":"Jane"}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -310,8 +334,9 @@ func TestPanicRecovery(t *testing.T) {
 	svc := testfake.NewProfileStore()
 	e := setupTestServerWithLogger(verifier, svc, logger)
 
+	const panicCanary = "panic-secret-canary"
 	e.GET("/panic", func(_ *echo.Context) error {
-		panic("test panic")
+		panic(panicCanary)
 	})
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic", nil)
@@ -329,9 +354,15 @@ func TestPanicRecovery(t *testing.T) {
 	if problem.Status != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", problem.Status)
 	}
-	assertObservedFields(t, recorded.FilterMessage("panic recovered").All(), map[string]any{
+	recoveryEntries := recorded.FilterMessage("panic recovered").All()
+	assertObservedFields(t, recoveryEntries, map[string]any{
 		"request_id": rec.Header().Get(echo.HeaderXRequestID),
+		"reason":     "panic",
 	})
+	if fields := recoveryEntries[0].ContextMap(); fields["error"] != nil ||
+		strings.Contains(fmt.Sprint(fields), panicCanary) {
+		t.Fatalf("recovery log leaked panic data: %#v", fields)
+	}
 	accessEntries := recorded.FilterMessage("request completed").All()
 	assertObservedFields(t, accessEntries, map[string]any{"terminal_reason": "panic"})
 	assertObservedFieldsAbsent(t, accessEntries, "status", "error")

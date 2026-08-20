@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/grpc/codes"
@@ -14,343 +15,292 @@ import (
 	"github.com/janisto/echo-playground/internal/testutil"
 )
 
+var canonicalCreate = CreateParams{
+	FirstName: "Ada", LastName: "Lovelace", ContactEmail: "Ada@example.com",
+	PhoneNumber: "+358401234567", MarketingOptIn: false, TermsAccepted: true,
+}
+
 func newTestStore(t *testing.T) (*FirestoreStore, func()) {
 	t.Helper()
 	testutil.SkipIfEmulatorUnavailable(t)
 	testutil.SetupEmulator(t)
 	testutil.ClearFirestore(t)
-
-	ctx := t.Context()
-	client, err := firestore.NewClient(ctx, testutil.ProjectID)
+	client, err := firestore.NewClient(t.Context(), testutil.ProjectID)
 	if err != nil {
-		t.Fatalf("failed to create firestore client: %v", err)
+		t.Fatalf("create Firestore client: %v", err)
 	}
-
-	store := NewFirestoreStore(client)
 	cleanup := func() {
 		testutil.ClearFirestore(t)
 		if err := client.Close(); err != nil {
 			t.Errorf("close Firestore client: %v", err)
 		}
 	}
-	return store, cleanup
+	return NewFirestoreStore(client), cleanup
 }
 
-func TestFirestoreStore_CreateAndGet(t *testing.T) {
+func TestFirestoreLifecycleAndNoOpWrite(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-
-	ctx := t.Context()
-
-	params := CreateParams{
-		Firstname:   "John",
-		Lastname:    "Doe",
-		Email:       "  John.Doe@Example.COM  ",
-		PhoneNumber: " +1234567890 ",
-		Marketing:   true,
-	}
-
-	created, err := store.Create(ctx, "user-001", params)
+	createdClock := time.Date(2026, 7, 30, 12, 0, 0, 987_654_321, time.UTC)
+	store.clock = func() time.Time { return createdClock }
+	created, err := store.Create(t.Context(), "principal", canonicalCreate)
 	if err != nil {
-		t.Fatalf("Create failed: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
-	if created.ID != "user-001" {
-		t.Fatalf("expected ID user-001, got %q", created.ID)
+	wantCreated := createdClock.Truncate(time.Millisecond)
+	if created.ID != "principal" || !created.CreatedAt.Equal(wantCreated) || !created.UpdatedAt.Equal(wantCreated) {
+		t.Fatalf("created = %#v", created)
 	}
-	if created.Email != "  John.Doe@Example.COM  " {
-		t.Fatalf("expected preserved email, got %q", created.Email)
-	}
-	if created.PhoneNumber != " +1234567890 " {
-		t.Fatalf("expected preserved phone, got %q", created.PhoneNumber)
-	}
-	if created.CreatedAt.IsZero() {
-		t.Fatal("expected non-zero CreatedAt")
-	}
-
-	got, err := store.Get(ctx, "user-001")
+	document := store.client.Collection(profilesCollection).Doc(profileDocumentID("principal"))
+	before, err := document.Get(t.Context())
 	if err != nil {
-		t.Fatalf("Get failed: %v", err)
+		t.Fatal(err)
 	}
-	if got.Firstname != "John" {
-		t.Fatalf("expected firstname John, got %q", got.Firstname)
+	name := "Ada"
+	store.clock = func() time.Time { return createdClock.Add(time.Hour) }
+	unchanged, err := store.Update(t.Context(), "principal", UpdateParams{FirstName: &name})
+	if err != nil || !unchanged.UpdatedAt.Equal(wantCreated) {
+		t.Fatalf("no-op update = %#v, %v", unchanged, err)
 	}
-	if got.Email != "  John.Doe@Example.COM  " {
-		t.Fatalf("expected preserved email, got %q", got.Email)
+	afterNoOp, _ := document.Get(t.Context())
+	if !afterNoOp.UpdateTime.Equal(before.UpdateTime) {
+		t.Fatalf("no-op committed a write: %s -> %s", before.UpdateTime, afterNoOp.UpdateTime)
+	}
+
+	newName := "Grace"
+	store.clock = func() time.Time { return createdClock.Add(-time.Hour) }
+	changed, err := store.Update(t.Context(), "principal", UpdateParams{FirstName: &newName})
+	if err != nil || changed.FirstName != "Grace" || !changed.CreatedAt.Equal(wantCreated) ||
+		!changed.UpdatedAt.Equal(wantCreated.Add(time.Millisecond)) {
+		t.Fatalf("changed update = %#v, %v", changed, err)
+	}
+	got, err := store.Get(t.Context(), "principal")
+	if err != nil || got.FirstName != "Grace" || got.ContactEmail != "Ada@example.com" || !got.TermsAccepted {
+		t.Fatalf("Get = %#v, %v", got, err)
+	}
+	if err := store.Delete(t.Context(), "principal"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := store.Get(t.Context(), "principal"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get after delete = %v", err)
 	}
 }
 
-func TestFirestoreStore_TreatsUserIDAsOpaque(t *testing.T) {
+func TestFirestoreAtomicCreateAndDeleteRaces(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-
-	const userID = "firebase/user:with/slash"
-	created, err := store.Create(t.Context(), userID, CreateParams{Firstname: "Ada"})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
+	store.clock = func() time.Time { return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC) }
+	createErrors := concurrentErrors(2, func() error {
+		_, err := store.Create(t.Context(), "principal", canonicalCreate)
+		return err
+	})
+	assertRaceOutcomes(t, createErrors, nil, ErrAlreadyExists)
+	stored, err := store.Get(t.Context(), "principal")
+	if err != nil || stored.FirstName != canonicalCreate.FirstName || stored.LastName != canonicalCreate.LastName ||
+		!stored.TermsAccepted {
+		t.Fatalf("race winner = %#v, %v", stored, err)
 	}
-	if created.ID != userID {
-		t.Fatalf("created ID = %q, want %q", created.ID, userID)
-	}
-	got, err := store.Get(t.Context(), userID)
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if got.ID != userID {
-		t.Fatalf("stored ID = %q, want %q", got.ID, userID)
-	}
+	deleteErrors := concurrentErrors(2, func() error { return store.Delete(t.Context(), "principal") })
+	assertRaceOutcomes(t, deleteErrors, nil, ErrNotFound)
 }
 
-func TestProfileDocumentID(t *testing.T) {
-	const userID = "firebase/user:with/slash"
-	got := profileDocumentID(userID)
-	if strings.Contains(got, "/") || got == userID {
-		t.Fatalf("profileDocumentID(%q) = %q, want an opaque Firestore document ID", userID, got)
-	}
-	if got != profileDocumentID(userID) || got == profileDocumentID(userID+"x") {
-		t.Fatal("profile document ID mapping must be deterministic and distinct")
-	}
-}
-
-func TestFirestoreStore_CreateDuplicate(t *testing.T) {
+func TestStoredProfileFailsClosedOnLegacyOrNoncanonicalData(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
-	ctx := t.Context()
-
-	params := CreateParams{
-		Firstname: "Jane",
-		Lastname:  "Doe",
-		Email:     "jane@example.com",
-	}
-
-	if _, err := store.Create(ctx, "user-dup", params); err != nil {
-		t.Fatalf("first Create failed: %v", err)
-	}
-
-	_, err := store.Create(ctx, "user-dup", params)
-	if !errors.Is(err, ErrAlreadyExists) {
-		t.Fatalf("expected ErrAlreadyExists, got %v", err)
-	}
-}
-
-func TestFirestoreStore_GetNotFound(t *testing.T) {
-	store, cleanup := newTestStore(t)
-	defer cleanup()
-	ctx := t.Context()
-
-	_, err := store.Get(ctx, "nonexistent")
-	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
-	}
-}
-
-func TestFirestoreStore_Update(t *testing.T) {
-	store, cleanup := newTestStore(t)
-	defer cleanup()
-	ctx := t.Context()
-
-	params := CreateParams{
-		Firstname:   "Alice",
-		Lastname:    "Smith",
-		Email:       "alice@example.com",
-		PhoneNumber: "+1111111111",
-		Marketing:   false,
-	}
-	if _, err := store.Create(ctx, "user-upd", params); err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	docRef := store.client.Collection(profilesCollection).Doc(profileDocumentID("user-upd"))
-	if _, err := docRef.Set(ctx, map[string]any{"future_field": "preserve-me"}, firestore.MergeAll); err != nil {
-		t.Fatalf("seed unknown field: %v", err)
-	}
-
-	newFirst := "Alicia"
-	newEmail := "  Alicia@Example.COM  "
-	newPhone := " +2222222222 "
-	newMarketing := true
-	updated, err := store.Update(ctx, "user-upd", UpdateParams{
-		Firstname:   &newFirst,
-		Email:       &newEmail,
-		PhoneNumber: &newPhone,
-		Marketing:   &newMarketing,
+	document := store.client.Collection(profilesCollection).Doc(profileDocumentID("principal"))
+	_, err := document.Set(t.Context(), map[string]any{
+		"firstname": "Ada", "lastname": "Lovelace", "email": "Ada@example.com",
+		"phone_number": "+358401234567", "marketing": false,
+		"created_at": time.Now(), "updated_at": time.Now(),
 	})
 	if err != nil {
-		t.Fatalf("Update failed: %v", err)
+		t.Fatal(err)
 	}
+	if _, err := store.Get(t.Context(), "principal"); !errors.Is(err, ErrInvalidStoredData) {
+		t.Fatalf("legacy Get error = %v", err)
+	}
+	if _, err := store.Update(t.Context(), "principal", UpdateParams{}); !errors.Is(err, ErrInvalidStoredData) {
+		t.Fatalf("legacy Update error = %v", err)
+	}
+}
 
-	if updated.Firstname != "Alicia" {
-		t.Fatalf("expected firstname Alicia, got %q", updated.Firstname)
+func TestMigrationClassificationRequiresTermsEvidenceAndCanonicalizes(t *testing.T) {
+	created := time.Date(2026, 7, 30, 12, 0, 0, 987_654_000, time.FixedZone("offset", 2*60*60))
+	legacy := map[string]any{
+		"firstname": "Ada", "lastname": "Lovelace", "email": " Ada@EXAMPLE.com ",
+		"phone_number": " +358401234567 ", "marketing": true,
+		"created_at": created, "updated_at": created.Add(time.Second),
 	}
-	if updated.Lastname != "Smith" {
-		t.Fatalf("expected lastname Smith (unchanged), got %q", updated.Lastname)
+	state, _, replacement := classifyMigration(legacy, MigrationAuthorization{})
+	if state != MigrationBlocked || replacement != nil {
+		t.Fatalf("migration without evidence = %s %#v", state, replacement)
 	}
-	if updated.Email != "  Alicia@Example.COM  " {
-		t.Fatalf("expected preserved email, got %q", updated.Email)
+	state, _, replacement = classifyMigration(
+		legacy,
+		MigrationAuthorization{TermsAccepted: true, Evidence: "consent-ledger/record-1"},
+	)
+	replacementCreatedAt, hasCreatedAt := replacement["created_at"].(time.Time)
+	if state != MigrationRequired || replacement["contact_email"] != "Ada@example.com" ||
+		replacement["phone_number"] != "+358401234567" ||
+		replacement["terms_accepted"] != true ||
+		!hasCreatedAt || !replacementCreatedAt.Equal(created.UTC().Truncate(time.Millisecond)) {
+		t.Fatalf("canonical replacement = %s %#v", state, replacement)
 	}
-	if updated.PhoneNumber != " +2222222222 " {
-		t.Fatalf("expected preserved phone, got %q", updated.PhoneNumber)
+	state, _, _ = classifyMigration(replacement, MigrationAuthorization{})
+	if state != MigrationVerified {
+		t.Fatalf("canonical replacement classified %s", state)
 	}
-	if !updated.Marketing {
-		t.Fatal("expected marketing to be updated to true")
+	legacy["unknown"] = "value"
+	state, _, _ = classifyMigration(
+		legacy,
+		MigrationAuthorization{TermsAccepted: true, Evidence: "consent-ledger/record-1"},
+	)
+	if state != MigrationBlocked {
+		t.Fatalf("unknown legacy field classified %s", state)
 	}
-	doc, err := docRef.Get(ctx)
+}
+
+func TestProfileMigrationAgainstEmulator(t *testing.T) {
+	store, cleanup := newTestStore(t)
+	defer cleanup()
+	documentID := profileDocumentID("principal")
+	_, err := store.client.Collection(profilesCollection).Doc(documentID).Set(t.Context(), map[string]any{
+		"firstname": "Ada", "lastname": "Lovelace", "email": "Ada@EXAMPLE.com",
+		"phone_number": "+358401234567", "marketing": false,
+		"created_at": time.Date(2026, 7, 30, 12, 0, 0, 123_000, time.UTC),
+		"updated_at": time.Date(2026, 7, 30, 12, 1, 0, 456_000, time.UTC),
+	})
 	if err != nil {
-		t.Fatalf("read updated document: %v", err)
+		t.Fatal(err)
 	}
-	if got := doc.Data()["future_field"]; got != "preserve-me" {
-		t.Fatalf("unknown field was not preserved: %v", got)
+	manifest := MigrationManifest{Version: 1, Entries: map[string]MigrationAuthorization{
+		documentID: {TermsAccepted: true, Evidence: "consent-ledger/record-1"},
+	}}
+	audit, err := AuditProfileMigration(t.Context(), store.client, manifest)
+	if err != nil || len(audit) != 1 || audit[0].State != MigrationRequired {
+		t.Fatalf("audit = %#v, %v", audit, err)
 	}
-}
-
-func TestFirestoreStore_UpdateNotFound(t *testing.T) {
-	store, cleanup := newTestStore(t)
-	defer cleanup()
-	ctx := t.Context()
-
-	newName := "Ghost"
-	_, err := store.Update(ctx, "nonexistent", UpdateParams{Firstname: &newName})
-	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
+	results, err := ApplyProfileMigration(t.Context(), store.client, manifest)
+	if err != nil || len(results) != 1 || results[0].State != MigrationApplied {
+		t.Fatalf("apply = %#v, %v", results, err)
 	}
-}
-
-func TestFirestoreStore_UpdateLastnameOnly(t *testing.T) {
-	store, cleanup := newTestStore(t)
-	defer cleanup()
-	ctx := t.Context()
-
-	params := CreateParams{
-		Firstname: "Bob",
-		Lastname:  "Builder",
-		Email:     "bob@example.com",
-	}
-	if _, err := store.Create(ctx, "user-ln", params); err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	newLast := "Constructor"
-	updated, err := store.Update(ctx, "user-ln", UpdateParams{Lastname: &newLast})
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-
-	if updated.Lastname != "Constructor" {
-		t.Fatalf("expected lastname Constructor, got %q", updated.Lastname)
-	}
-	if updated.Firstname != "Bob" {
-		t.Fatalf("expected firstname Bob (unchanged), got %q", updated.Firstname)
+	got, err := store.Get(t.Context(), "principal")
+	if err != nil || got.ContactEmail != "Ada@example.com" || !got.TermsAccepted ||
+		got.CreatedAt.Nanosecond()%1_000_000 != 0 {
+		t.Fatalf("migrated profile = %#v, %v", got, err)
 	}
 }
 
-func TestFirestoreStore_Delete(t *testing.T) {
-	store, cleanup := newTestStore(t)
-	defer cleanup()
-	ctx := t.Context()
-
-	params := CreateParams{
-		Firstname: "Charlie",
-		Lastname:  "Brown",
-		Email:     "charlie@example.com",
-	}
-	if _, err := store.Create(ctx, "user-del", params); err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	if err := store.Delete(ctx, "user-del"); err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
-
-	_, err := store.Get(ctx, "user-del")
-	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("expected ErrNotFound after delete, got %v", err)
-	}
-}
-
-func TestFirestoreStore_DeleteNotFound(t *testing.T) {
-	store, cleanup := newTestStore(t)
-	defer cleanup()
-	ctx := t.Context()
-
-	err := store.Delete(ctx, "nonexistent")
-	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
-	}
-}
-
-func TestFirestoreStore_ConcurrentDelete(t *testing.T) {
-	store, cleanup := newTestStore(t)
-	defer cleanup()
-	if _, err := store.Create(t.Context(), "user-concurrent-delete", CreateParams{Firstname: "Ada"}); err != nil {
-		t.Fatalf("create profile: %v", err)
-	}
-
-	const attempts = 5
-	errs := make(chan error, attempts)
-	var wg sync.WaitGroup
-	for range attempts {
-		wg.Go(func() {
-			errs <- store.Delete(t.Context(), "user-concurrent-delete")
-		})
-	}
-	wg.Wait()
-	close(errs)
-
-	successes := 0
-	notFound := 0
-	for err := range errs {
-		switch {
-		case err == nil:
-			successes++
-		case errors.Is(err, ErrNotFound):
-			notFound++
-		default:
-			t.Fatalf("unexpected delete error: %v", err)
+func TestProfileTimeAdvanceAndExhaustion(t *testing.T) {
+	previous := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	for _, now := range []time.Time{previous, previous.Add(-time.Hour)} {
+		got, err := nextUpdatedAt(previous, now)
+		if err != nil || !got.Equal(previous.Add(time.Millisecond)) {
+			t.Fatalf("nextUpdatedAt(%s) = %s, %v", now, got, err)
 		}
 	}
-	if successes != 1 || notFound != attempts-1 {
-		t.Fatalf("successes=%d not_found=%d", successes, notFound)
+	later := previous.Add(time.Hour + 987*time.Microsecond)
+	if got, err := nextUpdatedAt(previous, later); err != nil || !got.Equal(later.Truncate(time.Millisecond)) {
+		t.Fatalf("later nextUpdatedAt = %s, %v", got, err)
+	}
+	if _, err := nextUpdatedAt(maximumTimestamp, maximumTimestamp); !errors.Is(err, ErrTimestampExhausted) {
+		t.Fatalf("maximum timestamp error = %v", err)
+	}
+	for _, invalid := range []time.Time{
+		maximumTimestamp.Add(time.Millisecond),
+		time.Date(-1, 12, 31, 23, 59, 59, 999_000_000, time.UTC),
+	} {
+		if _, err := nextUpdatedAt(previous, invalid); !errors.Is(err, ErrTimestampExhausted) {
+			t.Fatalf("out-of-domain clock %s error = %v", invalid, err)
+		}
 	}
 }
 
-func TestClassifyDependencyError(t *testing.T) {
-	if err := classifyDependencyError(nil); err != nil {
-		t.Fatalf("expected nil to remain nil, got %v", err)
+func TestCreateRejectsOutOfDomainClockBeforeFirestoreAccess(t *testing.T) {
+	store := &FirestoreStore{
+		clock: func() time.Time { return maximumTimestamp.Add(time.Millisecond) },
+	}
+	if _, err := store.Create(t.Context(), "principal", canonicalCreate); !errors.Is(err, ErrTimestampExhausted) {
+		t.Fatalf("Create error = %v, want %v", err, ErrTimestampExhausted)
+	}
+}
+
+func TestMigrationManifestRequiresMeaningfulEvidence(t *testing.T) {
+	for _, evidence := range []string{"", "   ", " leading", "trailing\u00a0", string([]byte{0xff})} {
+		manifest := MigrationManifest{
+			Version: ProfileMigrationManifestVersion,
+			Entries: map[string]MigrationAuthorization{
+				"record": {TermsAccepted: true, Evidence: evidence},
+			},
+		}
+		if err := manifest.Validate(); err == nil {
+			t.Fatalf("evidence %q was accepted", evidence)
+		}
+	}
+	manifest := MigrationManifest{Version: ProfileMigrationManifestVersion, Entries: map[string]MigrationAuthorization{
+		"record": {TermsAccepted: true, Evidence: "consent-ledger/record-1"},
+	}}
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("valid evidence rejected: %v", err)
+	}
+}
+
+func TestProfileDocumentIDAndDependencyClassification(t *testing.T) {
+	const userID = "firebase/user:with/slash"
+	got := profileDocumentID(userID)
+	if strings.Contains(got, "/") || got == userID || got != profileDocumentID(userID) ||
+		got == profileDocumentID(userID+"x") {
+		t.Fatalf("profileDocumentID(%q) = %q", userID, got)
 	}
 	for _, err := range []error{
-		context.DeadlineExceeded,
-		status.Error(codes.Aborted, "aborted"),
-		status.Error(codes.DeadlineExceeded, "deadline"),
-		status.Error(codes.ResourceExhausted, "quota"),
-		status.Error(codes.Unavailable, "unavailable"),
+		context.DeadlineExceeded, status.Error(codes.Aborted, "aborted"), status.Error(codes.ResourceExhausted, "quota"), status.Error(codes.Unavailable, "unavailable"),
 	} {
-		if got := classifyDependencyError(err); !errors.Is(got, ErrUnavailable) || !errors.Is(got, err) {
-			t.Fatalf("expected joined unavailable error for %v, got %v", err, got)
+		if classified := classifyDependencyError(
+			err,
+		); !errors.Is(classified, ErrUnavailable) ||
+			!errors.Is(classified, err) {
+			t.Fatalf("classifyDependencyError(%v) = %v", err, classified)
 		}
 	}
-	if got := classifyDependencyError(
+	if classified := classifyDependencyError(
 		context.Canceled,
-	); !errors.Is(got, context.Canceled) ||
-		errors.Is(got, ErrUnavailable) {
-		t.Fatalf("expected cancellation to remain distinct, got %v", got)
+	); !errors.Is(classified, context.Canceled) ||
+		errors.Is(classified, ErrUnavailable) {
+		t.Fatalf("cancellation classified %v", classified)
 	}
 }
 
-func TestCategorizeError(t *testing.T) {
-	tests := []struct {
-		name     string
-		err      error
-		expected string
-	}{
-		{"already exists", ErrAlreadyExists, "already_exists"},
-		{"not found", ErrNotFound, "not_found"},
-		{"unavailable", ErrUnavailable, "unavailable"},
-		{"generic error", context.Canceled, "internal_error"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := categorizeError(tt.err)
-			if got != tt.expected {
-				t.Fatalf("expected %q, got %q", tt.expected, got)
-			}
+func concurrentErrors(count int, operation func() error) []error {
+	start := make(chan struct{})
+	results := make(chan error, count)
+	var wait sync.WaitGroup
+	for range count {
+		wait.Go(func() {
+			<-start
+			results <- operation()
 		})
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	errors := make([]error, 0, count)
+	for err := range results {
+		errors = append(errors, err)
+	}
+	return errors
+}
+
+func assertRaceOutcomes(t *testing.T, actual []error, first, second error) {
+	t.Helper()
+	matches := func(value, target error) bool {
+		if target == nil {
+			return value == nil
+		}
+		return errors.Is(value, target)
+	}
+	forward := len(actual) == 2 && matches(actual[0], first) && matches(actual[1], second)
+	reverse := len(actual) == 2 && matches(actual[0], second) && matches(actual[1], first)
+	if !forward && !reverse {
+		t.Fatalf("race outcomes = %v, want %v and %v", actual, first, second)
 	}
 }

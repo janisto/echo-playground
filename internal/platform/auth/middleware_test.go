@@ -36,7 +36,7 @@ func TestMiddleware_Success(t *testing.T) {
 	e.GET("/test", func(c *echo.Context) error {
 		u, err := UserFromEchoContext(c)
 		if err != nil {
-			return respond.Error500("no user in context")
+			return respond.InternalError()
 		}
 		return c.JSON(http.StatusOK, map[string]string{"uid": u.UID})
 	})
@@ -142,9 +142,8 @@ func TestMiddleware_CertificateFetchError(t *testing.T) {
 		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 
-	retryAfter := rec.Header().Get("Retry-After")
-	if retryAfter != "30" {
-		t.Fatalf("expected Retry-After: 30, got %q", retryAfter)
+	if retryAfter := rec.Header().Get("Retry-After"); retryAfter != "" {
+		t.Fatalf("undocumented Retry-After = %q", retryAfter)
 	}
 }
 
@@ -163,38 +162,56 @@ func TestMiddleware_AuthDependencyUnavailable(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d", rec.Code)
 	}
-	if got := rec.Header().Get("Retry-After"); got != "30" {
-		t.Fatalf("expected Retry-After 30, got %q", got)
+	if got := rec.Header().Get("Retry-After"); got != "" {
+		t.Fatalf("undocumented Retry-After = %q", got)
 	}
 }
 
 func TestMiddleware_RejectsMissingIdentity(t *testing.T) {
-	for _, verifier := range []Verifier{
-		&MockVerifier{},
-		&MockVerifier{User: &FirebaseUser{}},
-		&MockVerifier{User: &FirebaseUser{UID: "   "}},
-		nil,
-	} {
-		e := echo.New()
-		e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
-		e.Use(Middleware(verifier))
-		handled := false
-		e.GET("/test", func(c *echo.Context) error {
-			handled = true
-			return c.NoContent(http.StatusNoContent)
+	tests := []struct {
+		name     string
+		verifier Verifier
+		status   int
+		handled  bool
+	}{
+		{name: "nil user", verifier: &MockVerifier{}, status: http.StatusUnauthorized},
+		{name: "empty subject", verifier: &MockVerifier{User: &FirebaseUser{}}, status: http.StatusUnauthorized},
+		{
+			name:     "invalid UTF-8",
+			verifier: &MockVerifier{User: &FirebaseUser{UID: string([]byte{0xff})}},
+			status:   http.StatusUnauthorized,
+		},
+		{name: "missing verifier", verifier: nil, status: http.StatusServiceUnavailable},
+		{
+			name:     "opaque whitespace subject",
+			verifier: &MockVerifier{User: &FirebaseUser{UID: "   "}},
+			status:   http.StatusNoContent,
+			handled:  true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e := echo.New()
+			e.HTTPErrorHandler = respond.NewHTTPErrorHandler()
+			e.Use(Middleware(test.verifier))
+			handled := false
+			e.GET("/test", func(c *echo.Context) error {
+				handled = true
+				return c.NoContent(http.StatusNoContent)
+			})
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+			req.Header.Set("Authorization", "Bearer token")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != test.status || handled != test.handled {
+				t.Fatalf("status/handled = %d/%v, want %d/%v", rec.Code, handled, test.status, test.handled)
+			}
+			if got := rec.Header().Get("Retry-After"); got != "" {
+				t.Fatalf("undocumented Retry-After = %q", got)
+			}
 		})
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
-		req.Header.Set("Authorization", "Bearer token")
-		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusServiceUnavailable || handled {
-			t.Fatalf("expected fail-closed 503 without handler, got status=%d handled=%v", rec.Code, handled)
-		}
-		if got := rec.Header().Get("Retry-After"); got != "30" {
-			t.Fatalf("expected Retry-After 30, got %q", got)
-		}
 	}
 }
 

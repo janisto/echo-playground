@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"mime"
 	"net/http"
 	"runtime/debug"
@@ -12,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/janisto/echo-observability/v2"
+	obs "github.com/janisto/echo-observability/v2"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 	"go.uber.org/zap"
@@ -22,9 +21,10 @@ import (
 )
 
 const (
-	mediaTypeApplicationCBOR = "application/cbor"
-	mediaTypeProblemCBOR     = "application/problem+cbor"
-	mediaTypeProblemJSON     = "application/problem+json"
+	MediaTypeCBOR        = "application/cbor"
+	MediaTypeJSON        = "application/json"
+	MediaTypeProblemJSON = "application/problem+json"
+	selectedFormatKey    = "portable-response-format"
 )
 
 type responseFormat uint8
@@ -35,82 +35,51 @@ const (
 	formatCBOR
 )
 
-// mediaRange represents a parsed Accept header media range with quality value.
+type representation struct {
+	format      responseFormat
+	contentType string
+}
+
 type mediaRange struct {
-	typ            string
-	subtype        string
-	q              float64
-	hasMediaParams bool
+	typ         string
+	subtype     string
+	params      map[string]string
+	quality     int
+	specificity int
 }
 
-// parseAccept parses an Accept header value into media ranges per RFC 9110.
-func parseAccept(header string) []mediaRange {
-	if header == "" {
-		return nil
-	}
-
-	var ranges []mediaRange
-	for _, part := range splitQuoted(header, ',') {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		mr := mediaRange{q: 1.0}
-		segments := splitQuoted(part, ';')
-		mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(segments[0]))
-		typ, subtype, hasSlash := strings.Cut(strings.ToLower(mediaType), "/")
-		if err != nil || !hasSlash || typ == "" || subtype == "" ||
-			(typ == "*" && subtype != "*") {
-			continue
-		}
-		mr.typ, mr.subtype = typ, subtype
-
-		hasQ := false
-		valid := true
-		for _, segment := range segments[1:] {
-			segment = strings.TrimSpace(segment)
-			name, rawValue, _ := strings.Cut(segment, "=")
-			if strings.EqualFold(strings.TrimSpace(name), "q") &&
-				strings.HasPrefix(strings.TrimSpace(rawValue), `"`) {
-				valid = false
-				break
-			}
-			_, params, err := mime.ParseMediaType("application/x-accept;" + segment)
-			if err != nil || len(params) != 1 {
-				valid = false
-				break
-			}
-			for name, value := range params {
-				if strings.EqualFold(name, "q") {
-					if hasQ {
-						valid = false
-						break
-					}
-					q, ok := parseQuality(value)
-					if !ok {
-						valid = false
-						break
-					}
-					mr.q = q
-					hasQ = true
-				} else {
-					mr.hasMediaParams = true
-				}
-			}
-		}
-		if valid {
-			ranges = append(ranges, mr)
-		}
-	}
-	return ranges
+type candidate struct {
+	format      responseFormat
+	typ         string
+	subtype     string
+	params      map[string]string
+	contentType string
 }
+
+var (
+	jsonCandidates = []candidate{
+		{formatJSON, "application", "json", nil, MediaTypeJSON},
+		{formatJSON, "application", "json", map[string]string{"charset": "utf-8"}, MediaTypeJSON + "; charset=utf-8"},
+	}
+	problemCandidates = []candidate{
+		{formatJSON, "application", "problem+json", nil, MediaTypeProblemJSON},
+		{
+			formatJSON,
+			"application",
+			"problem+json",
+			map[string]string{"charset": "utf-8"},
+			MediaTypeProblemJSON + "; charset=utf-8",
+		},
+		{formatCBOR, "application", "cbor", nil, MediaTypeCBOR},
+	}
+	successCandidates = append(append([]candidate(nil), jsonCandidates...), candidate{
+		formatCBOR, "application", "cbor", nil, MediaTypeCBOR,
+	})
+)
 
 func splitQuoted(value string, separator byte) []string {
 	parts := make([]string, 0, 1)
-	start := 0
-	quoted := false
-	escaped := false
+	start, quoted, escaped := 0, false, false
 	for i := range len(value) {
 		switch {
 		case escaped:
@@ -127,190 +96,277 @@ func splitQuoted(value string, separator byte) []string {
 	return append(parts, value[start:])
 }
 
-func parseQuality(value string) (float64, bool) {
+func parseQuality(value string) (int, bool) {
 	whole, fraction, hasFraction := strings.Cut(value, ".")
-	if whole != "0" && whole != "1" {
+	if whole != "0" && whole != "1" || hasFraction && len(fraction) > 3 {
 		return 0, false
 	}
-	if hasFraction {
-		if len(fraction) > 3 {
+	for _, digit := range fraction {
+		if digit < '0' || digit > '9' || whole == "1" && digit != '0' {
 			return 0, false
 		}
-		for _, digit := range fraction {
-			if digit < '0' || digit > '9' || whole == "1" && digit != '0' {
-				return 0, false
+	}
+	for len(fraction) < 3 {
+		fraction += "0"
+	}
+	if fraction == "" {
+		fraction = "000"
+	}
+	quality, err := strconv.Atoi(fraction)
+	if err != nil {
+		return 0, false
+	}
+	if whole == "1" {
+		quality += 1000
+	}
+	return quality, true
+}
+
+func parseAccept(header string) []mediaRange {
+	if header == "" {
+		return nil
+	}
+	ranges := make([]mediaRange, 0, 4)
+	for _, rawRange := range splitQuoted(header, ',') {
+		segments := splitQuoted(strings.TrimSpace(rawRange), ';')
+		if len(segments) == 0 {
+			continue
+		}
+		mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(segments[0]))
+		typ, subtype, ok := strings.Cut(strings.ToLower(mediaType), "/")
+		if err != nil || !ok || typ == "" || subtype == "" || typ == "*" && subtype != "*" {
+			continue
+		}
+		parsed := mediaRange{typ: typ, subtype: subtype, params: make(map[string]string), quality: 1000}
+		if typ == "*" {
+			parsed.specificity = 0
+		} else if subtype == "*" {
+			parsed.specificity = 100
+		} else {
+			parsed.specificity = 200
+		}
+		valid, sawQ := true, false
+		for _, rawParameter := range segments[1:] {
+			parameter := strings.TrimSpace(rawParameter)
+			name, rawValue, found := strings.Cut(parameter, "=")
+			name = strings.ToLower(strings.TrimSpace(name))
+			if !found || name == "" {
+				valid = false
+				break
 			}
+			if name == "q" {
+				if sawQ || strings.HasPrefix(strings.TrimSpace(rawValue), "\"") {
+					valid = false
+					break
+				}
+				quality, qualityOK := parseQuality(strings.TrimSpace(rawValue))
+				if !qualityOK {
+					valid = false
+					break
+				}
+				parsed.quality, sawQ = quality, true
+				continue
+			}
+			if sawQ {
+				continue
+			}
+			_, parameterMap, parseErr := mime.ParseMediaType("application/x;" + parameter)
+			if parseErr != nil || len(parameterMap) != 1 {
+				valid = false
+				break
+			}
+			value, exists := parameterMap[name]
+			if !exists {
+				valid = false
+				break
+			}
+			if _, duplicate := parsed.params[name]; duplicate {
+				valid = false
+				break
+			}
+			parsed.params[name] = strings.ToLower(value)
+			parsed.specificity++
+		}
+		if valid {
+			ranges = append(ranges, parsed)
 		}
 	}
-	q, err := strconv.ParseFloat(value, 64)
-	return q, err == nil
+	return ranges
 }
 
-func acceptHeader(header http.Header) string {
-	return strings.Join(header.Values("Accept"), ",")
-}
+func acceptHeader(header http.Header) string { return strings.Join(header.Values("Accept"), ",") }
 
-func selectSuccessFormat(header string) responseFormat {
-	return selectFormat(header, []string{"json"}, []string{"cbor"})
-}
-
-func selectProblemFormat(header string) responseFormat {
-	return selectFormat(header, []string{"problem+json", "json"}, []string{"problem+cbor", "cbor"})
-}
-
-// selectFormat chooses between supported JSON and CBOR subtypes. The first
-// subtype in each list is the canonical representation; later entries are
-// explicit aliases with lower specificity.
-func selectFormat(header string, jsonSubtypes, cborSubtypes []string) responseFormat {
+func selectRepresentation(header string, candidates []candidate) representation {
+	if header == "" {
+		return representation{format: candidates[0].format, contentType: candidates[0].contentType}
+	}
 	ranges := parseAccept(header)
 	if len(ranges) == 0 {
-		if strings.TrimSpace(header) != "" {
-			return formatNotAcceptable
+		return representation{format: formatNotAcceptable}
+	}
+	best := representation{format: formatNotAcceptable}
+	bestQuality, bestSpecificity, bestPreference := -1, -1, -1
+	for candidateIndex, candidate := range candidates {
+		effectiveQuality, effectiveSpecificity := -1, -1
+		for _, mediaRange := range ranges {
+			if !rangeMatches(mediaRange, candidate) {
+				continue
+			}
+			if mediaRange.specificity > effectiveSpecificity ||
+				mediaRange.specificity == effectiveSpecificity && mediaRange.quality > effectiveQuality {
+				effectiveQuality = mediaRange.quality
+				effectiveSpecificity = mediaRange.specificity
+			}
 		}
-		return formatJSON
-	}
-
-	var cborQ, jsonQ float64 = -1, -1
-	cborSpecificity, jsonSpecificity := 0, 0
-
-	for _, mr := range ranges {
-		cborMatch := matchSpecificity(mr, cborSubtypes)
-		jsonMatch := matchSpecificity(mr, jsonSubtypes)
-		if cborMatch > cborSpecificity || (cborMatch != 0 && cborMatch == cborSpecificity && mr.q > cborQ) {
-			cborQ = mr.q
-			cborSpecificity = cborMatch
+		if effectiveQuality <= 0 {
+			continue
 		}
-		if jsonMatch > jsonSpecificity || (jsonMatch != 0 && jsonMatch == jsonSpecificity && mr.q > jsonQ) {
-			jsonQ = mr.q
-			jsonSpecificity = jsonMatch
+		preference := len(candidates) - candidateIndex
+		if effectiveQuality > bestQuality ||
+			effectiveQuality == bestQuality && effectiveSpecificity > bestSpecificity ||
+			effectiveQuality == bestQuality && effectiveSpecificity == bestSpecificity && preference > bestPreference {
+			best = representation{format: candidate.format, contentType: candidate.contentType}
+			bestQuality, bestSpecificity, bestPreference = effectiveQuality, effectiveSpecificity, preference
 		}
 	}
-
-	if cborQ <= 0 && jsonQ <= 0 {
-		return formatNotAcceptable
-	}
-
-	if cborQ > jsonQ {
-		return formatCBOR
-	}
-	if jsonQ > cborQ {
-		return formatJSON
-	}
-	if cborSpecificity > jsonSpecificity {
-		return formatCBOR
-	}
-	return formatJSON
+	return best
 }
 
-func matchSpecificity(mr mediaRange, subtypes []string) int {
-	if mr.hasMediaParams {
-		return 0
+func rangeMatches(mediaRange mediaRange, candidate candidate) bool {
+	if mediaRange.typ != "*" && mediaRange.typ != candidate.typ ||
+		mediaRange.subtype != "*" && mediaRange.subtype != candidate.subtype {
+		return false
 	}
-	if mr.typ == "*" && mr.subtype == "*" {
-		return 1
-	}
-	if mr.typ != "application" {
-		return 0
-	}
-	if mr.subtype == "*" {
-		return 2
-	}
-	for i, subtype := range subtypes {
-		if mr.subtype == subtype {
-			return 4 - i
+	for name, value := range mediaRange.params {
+		candidateValue, ok := candidate.params[name]
+		if !ok || !strings.EqualFold(candidateValue, value) {
+			return false
 		}
 	}
-	return 0
+	return true
 }
 
-// writeProblem writes a Problem Details response honoring content negotiation.
-// Uses application/problem+json (RFC 9457) by default.
-// Uses application/problem+cbor when CBOR is preferred via Accept header.
-func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails) {
-	if problem.Instance == "" {
-		problem.Instance = r.URL.Path
+// SuccessNegotiation rejects an unacceptable success representation before
+// authentication, persistence, or an external-service call. Bodyless DELETE
+// is intentionally exempt.
+func SuccessNegotiation(jsonOnly bool) echo.MiddlewareFunc {
+	candidates := successCandidates
+	if jsonOnly {
+		candidates = jsonCandidates
 	}
-
-	httpheader.AddVary(w.Header(), "Origin", "Accept")
-
-	format := selectProblemFormat(acceptHeader(r.Header))
-	if format == formatNotAcceptable {
-		problem = newProblem(http.StatusNotAcceptable, problemDetailRepresentationUnavailable)
-		format = formatJSON
-	}
-
-	if format == formatCBOR {
-		w.Header().Set("Content-Type", mediaTypeProblemCBOR)
-		w.WriteHeader(problem.Status)
-		if r.Method == http.MethodHead {
-			return
-		}
-		if err := cbor.NewEncoder(w).Encode(problem); err != nil {
-			obs.Logger(r.Context()).Error("failed to encode problem+cbor", zap.Error(err))
-		}
-	} else {
-		w.Header().Set("Content-Type", mediaTypeProblemJSON)
-		w.WriteHeader(problem.Status)
-		if r.Method == http.MethodHead {
-			return
-		}
-		enc := json.NewEncoder(w)
-		enc.SetEscapeHTML(false)
-		if err := enc.Encode(problem); err != nil {
-			obs.Logger(r.Context()).Error("failed to encode problem+json", zap.Error(err))
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			if c.Request().Method == http.MethodDelete {
+				return next(c)
+			}
+			selected := selectRepresentation(acceptHeader(c.Request().Header), candidates)
+			if selected.format == formatNotAcceptable {
+				return NotAcceptable()
+			}
+			c.Set(selectedFormatKey, selected)
+			return next(c)
 		}
 	}
 }
 
-// Negotiate writes a response using content negotiation (JSON or CBOR).
+func selectedSuccess(c *echo.Context) representation {
+	if selected, ok := c.Get(selectedFormatKey).(representation); ok {
+		return selected
+	}
+	return selectRepresentation(acceptHeader(c.Request().Header), successCandidates)
+}
+
+func marshalJSON(value any) ([]byte, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+// Negotiate writes a GCP-profile JSON or CBOR success.
 func Negotiate(c *echo.Context, status int, data any) error {
 	httpheader.AddVary(c.Response().Header(), "Accept")
-	switch selectSuccessFormat(acceptHeader(c.Request().Header)) {
-	case formatCBOR:
-		b, err := cbor.Marshal(data)
-		if err != nil {
-			return err
-		}
-		return c.Blob(status, mediaTypeApplicationCBOR, b)
-	case formatNotAcceptable:
-		return echo.NewHTTPError(http.StatusNotAcceptable, problemDetailRepresentationUnavailable)
-	default:
-		return c.JSON(status, data)
+	selected := selectedSuccess(c)
+	if selected.format == formatNotAcceptable {
+		return NotAcceptable()
+	}
+	var (
+		body []byte
+		err  error
+	)
+	if selected.format == formatCBOR {
+		body, err = cbor.Marshal(data)
+	} else {
+		body, err = marshalJSON(data)
+	}
+	if err != nil {
+		return InternalError()
+	}
+	return c.Blob(status, selected.contentType, body)
+}
+
+// JSONDocument writes already-generated JSON while honoring the selected
+// parameterless or UTF-8-charset JSON candidate.
+func JSONDocument(c *echo.Context, status int, document []byte) error {
+	httpheader.AddVary(c.Response().Header(), "Accept")
+	selected := selectedSuccess(c)
+	if selected.format != formatJSON {
+		return NotAcceptable()
+	}
+	return c.Blob(status, selected.contentType, document)
+}
+
+func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails) {
+	httpheader.AddVary(w.Header(), "Accept")
+	selected := selectRepresentation(acceptHeader(r.Header), problemCandidates)
+	if selected.format == formatNotAcceptable {
+		selected = representation{format: formatJSON, contentType: MediaTypeProblemJSON}
+	}
+	var (
+		body []byte
+		err  error
+	)
+	if selected.format == formatCBOR {
+		body, err = cbor.Marshal(problem)
+	} else {
+		body, err = marshalJSON(problem)
+	}
+	if err != nil {
+		fallback := *InternalError()
+		body, _ = marshalJSON(fallback)
+		selected = representation{format: formatJSON, contentType: MediaTypeProblemJSON}
+		problem.Status = fallback.Status
+	}
+	w.Header().Set("Content-Type", selected.contentType)
+	w.WriteHeader(problem.Status)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(body)
 	}
 }
 
-// Recoverer returns Echo middleware that recovers from panics with Problem Details.
-// Re-panics on http.ErrAbortHandler to preserve net/http abort semantics.
 func Recoverer(loggers ...*zap.Logger) echo.MiddlewareFunc {
 	fallback := zap.NewNop()
 	if len(loggers) > 0 && loggers[0] != nil {
 		fallback = loggers[0]
 	}
-
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			defer func() {
-				if rec := recover(); rec != nil {
-					if err, ok := rec.(error); ok && errors.Is(err, http.ErrAbortHandler) {
-						panic(rec)
+				if recovered := recover(); recovered != nil {
+					if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+						panic(recovered)
 					}
-
-					stack := debug.Stack()
-					recoveryLogger(c.Request().Context(), fallback).Error("panic recovered",
-						zap.Any("error", rec),
-						zap.ByteString("stack", stack),
+					recoveryLogger(c.Request().Context(), fallback).Error(
+						"panic recovered",
+						zap.String("reason", "panic"),
+						zap.ByteString("stack", debug.Stack()),
 					)
-
-					resp, unwrapErr := echo.UnwrapResponse(c.Response())
-					if unwrapErr == nil && resp.Committed {
+					response, unwrapErr := echo.UnwrapResponse(c.Response())
+					if unwrapErr == nil && response.Committed {
 						panic(http.ErrAbortHandler)
 					}
-
-					writeProblem(
-						c.Response(),
-						c.Request(),
-						newProblem(http.StatusInternalServerError, problemDetailInternalError),
-					)
+					writeProblem(c.Response(), c.Request(), *InternalError())
 				}
 			}()
 			return next(c)
@@ -328,61 +384,80 @@ func recoveryLogger(ctx context.Context, fallback *zap.Logger) *zap.Logger {
 	return fallback
 }
 
-// NewHTTPErrorHandler returns an Echo HTTPErrorHandler that produces RFC 9457 Problem Details.
 func NewHTTPErrorHandler() echo.HTTPErrorHandler {
 	return func(c *echo.Context, err error) {
-		resp, unwrapErr := echo.UnwrapResponse(c.Response())
-		if unwrapErr == nil && resp.Committed {
+		response, unwrapErr := echo.UnwrapResponse(c.Response())
+		if unwrapErr == nil && response.Committed {
 			return
 		}
 		if errors.Is(err, context.Canceled) {
 			c.Response().WriteHeader(middleware.StatusCodeContextCanceled)
 			return
 		}
-
-		writeProblem(c.Response(), c.Request(), problemFromError(c, err))
+		writeProblem(c.Response(), c.Request(), problemFromError(err))
 	}
 }
 
-func problemFromError(c *echo.Context, err error) ProblemDetails {
-	if pd, ok := errors.AsType[*ProblemDetails](err); ok {
-		return *pd
-	}
-
-	if ve, ok := errors.AsType[*validate.ValidationError](err); ok {
-		problem := Error422(ve.Message, validationErrorDetails(ve)...)
+func problemFromError(err error) ProblemDetails {
+	if problem, ok := errors.AsType[*ProblemDetails](err); ok {
+		definition, valid := problemDefinitions[problem.Code]
+		if !valid || definition.Status != problem.Status || definition.Title != problem.Title ||
+			definition.Detail != problem.Detail {
+			return *InternalError()
+		}
 		return *problem
 	}
-
-	switch {
-	case errors.Is(err, echo.ErrNotFound):
-		return newProblem(http.StatusNotFound, problemDetailResourceMissing)
-
-	case errors.Is(err, echo.ErrMethodNotAllowed):
-		return newProblem(http.StatusMethodNotAllowed, fmt.Sprintf("method %s not allowed", c.Request().Method))
+	if validationError, ok := errors.AsType[*validate.ValidationError](err); ok {
+		return *ValidationFailed(validationErrorDetails(validationError)...)
 	}
-
-	if he, ok := errors.AsType[*echo.HTTPError](err); ok {
-		return newProblem(he.Code, he.Message)
+	if errors.Is(err, echo.ErrNotFound) {
+		return *NotFound()
 	}
-	if status := echo.StatusCode(err); status != 0 {
-		return newProblem(status, http.StatusText(status))
+	if errors.Is(err, echo.ErrMethodNotAllowed) {
+		return *MethodNotAllowed()
 	}
-
-	return newProblem(http.StatusInternalServerError, problemDetailInternalError)
-}
-
-func validationErrorDetails(ve *validate.ValidationError) []ErrorDetail {
-	if len(ve.Fields) == 0 {
-		return nil
+	if maxBytesError := (*http.MaxBytesError)(nil); errors.As(err, &maxBytesError) {
+		return *PayloadTooLarge()
 	}
-
-	details := make([]ErrorDetail, len(ve.Fields))
-	for i, f := range ve.Fields {
-		details[i] = ErrorDetail{
-			Message:  f.Message,
-			Location: f.Field,
+	if httpError, ok := errors.AsType[*echo.HTTPError](err); ok {
+		switch httpError.Code {
+		case http.StatusBadRequest:
+			return *InvalidRequest()
+		case http.StatusRequestEntityTooLarge:
+			return *PayloadTooLarge()
+		case http.StatusUnsupportedMediaType:
+			return *UnsupportedMediaType()
+		case http.StatusUnprocessableEntity:
+			return *ValidationFailed()
+		case http.StatusNotAcceptable:
+			return *NotAcceptable()
+		case http.StatusNotFound:
+			return *NotFound()
+		case http.StatusMethodNotAllowed:
+			return *MethodNotAllowed()
 		}
 	}
+	return *InternalError()
+}
+
+func validationErrorDetails(validationError *validate.ValidationError) []ErrorDetail {
+	details := make([]ErrorDetail, 0, len(validationError.Fields))
+	for _, field := range validationError.Fields {
+		issue := ErrorDetail{Detail: field.Message}
+		switch field.Location {
+		case validate.LocationBody:
+			issue.Source = &ErrorSource{Pointer: "/" + escapeJSONPointer(field.Field)}
+		case validate.LocationQuery:
+			issue.Source = &ErrorSource{Parameter: field.Field}
+		case validate.LocationHeader:
+			issue.Source = &ErrorSource{Header: field.Field}
+		}
+		details = append(details, issue)
+	}
 	return details
+}
+
+func escapeJSONPointer(value string) string {
+	value = strings.ReplaceAll(value, "~", "~0")
+	return strings.ReplaceAll(value, "/", "~1")
 }

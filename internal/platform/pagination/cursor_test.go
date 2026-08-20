@@ -2,232 +2,148 @@ package pagination
 
 import (
 	"encoding/base64"
-	"errors"
+	"encoding/binary"
 	"strings"
 	"testing"
 )
 
-func TestCursor_EncodeDecode_Roundtrip(t *testing.T) {
-	original := Cursor{Type: "item", Value: "42", Scope: "category=tools&limit=20"}
-	encoded := original.Encode()
+func TestCursorRoundTripBindsEveryScopeMember(t *testing.T) {
+	scope := Scope{Operation: "operation", Owner: "owner", Repository: "repo", Filter: "category", Limit: 100}
+	want := NewCursor(scope, "prev", "position")
+	encoded := want.Encode()
 	decoded, err := DecodeCursor(encoded)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("DecodeCursor: %v", err)
 	}
-	if decoded != original {
-		t.Fatalf("expected %+v, got %+v", original, decoded)
+	if decoded != want || !decoded.Matches(scope) || decoded.Encode() != encoded {
+		t.Fatalf("cursor round trip = %#v, want %#v", decoded, want)
 	}
+	for _, changed := range []Scope{
+		{Operation: "other", Owner: "owner", Repository: "repo", Filter: "category", Limit: 100},
+		{Operation: "operation", Owner: "other", Repository: "repo", Filter: "category", Limit: 100},
+		{Operation: "operation", Owner: "owner", Repository: "other", Filter: "category", Limit: 100},
+		{Operation: "operation", Owner: "owner", Repository: "repo", Filter: "other", Limit: 100},
+		{Operation: "operation", Owner: "owner", Repository: "repo", Filter: "category", Limit: 99},
+	} {
+		if decoded.Matches(changed) {
+			t.Fatalf("cursor matched changed scope %#v", changed)
+		}
+	}
+}
+
+func TestCursorRoundTripAcceptsAdjacentValidLimitsAndMaximumWireLength(t *testing.T) {
+	for _, limit := range []int{1, 100} {
+		cursor := NewCursor(Scope{Operation: "items", Limit: limit}, "next", "item-001")
+		decoded, err := DecodeCursor(cursor.Encode())
+		if err != nil || decoded != cursor {
+			t.Fatalf("limit %d round trip = %#v, err=%v", limit, decoded, err)
+		}
+	}
+
+	maximum := NewCursor(Scope{Operation: "items", Limit: 1}, "next", strings.Repeat("p", 1518)).Encode()
+	if len(maximum) != MaxCursorLength {
+		t.Fatalf("constructed cursor length = %d, want %d", len(maximum), MaxCursorLength)
+	}
+	if _, err := DecodeCursor(maximum); err != nil {
+		t.Fatalf("maximum-length cursor rejected: %v", err)
+	}
+	overlong := NewCursor(Scope{Operation: "items", Limit: 1}, "next", strings.Repeat("p", 1519)).Encode()
+	if len(overlong) <= MaxCursorLength {
+		t.Fatalf("constructed overlong cursor length = %d", len(overlong))
+	}
+	if _, err := DecodeCursor(overlong); err == nil {
+		t.Fatal("overlong otherwise-canonical cursor accepted")
+	}
+}
+
+func TestDecodeCursorRejectsMalformedNoncanonicalAndInvalidState(t *testing.T) {
+	valid := NewCursor(Scope{Operation: "items", Limit: 20}, "next", "item-020").Encode()
+	padded := valid + "="
+	payload, _ := base64.RawURLEncoding.DecodeString(valid)
+	noncanonical := base64.URLEncoding.EncodeToString(payload)
+	tests := []string{
+		"", strings.Repeat("a", MaxCursorLength+1), "contains space", "é", "%%%", padded, noncanonical,
+		base64.RawURLEncoding.EncodeToString([]byte{2, 1}),
+		NewCursor(Scope{Operation: "items", Limit: 0}, "next", "x").Encode(),
+		NewCursor(Scope{Operation: "items", Limit: 20}, "sideways", "x").Encode(),
+		NewCursor(Scope{Operation: "", Limit: 20}, "next", "x").Encode(),
+		NewCursor(Scope{Operation: "items", Limit: 20}, "next", "").Encode(),
+	}
+	for _, value := range tests {
+		if _, err := DecodeCursor(value); err == nil {
+			t.Fatalf("DecodeCursor(%q) unexpectedly succeeded", value)
+		}
+	}
+}
+
+func TestCursorEncodeRejectsAdjacentInvalidLimits(t *testing.T) {
+	for _, limit := range []int{0, 101} {
+		cursor := NewCursor(Scope{Operation: "items", Limit: limit}, "next", "item-001")
+		if encoded := cursor.Encode(); encoded != "" {
+			t.Fatalf("Encode limit %d = %q, want empty", limit, encoded)
+		}
+	}
+}
+
+func TestDecodeCursorRejectsMalformedEncodedStateAtEachBoundary(t *testing.T) {
+	validParts := []string{"items", "", "", "", "next", "item-020"}
+	tests := [][]byte{
+		{1},
+		{1, 0x80},
+		cursorPayload(0, validParts...),
+		cursorPayload(101, validParts...),
+		cursorPayload(20, "", "", "", "", "next", "item-020"),
+		cursorPayload(20, "items", "", "", "", "sideways", "item-020"),
+		cursorPayload(20, "items", "", "", "", "next", ""),
+		append(cursorPayload(20, validParts...), 0),
+		{1, 20, 5, 'i'},
+	}
+	wrongVersion := cursorPayload(20, validParts...)
+	wrongVersion[0] = 0
+	tests = append(tests, wrongVersion)
+	for _, payload := range tests {
+		encoded := base64.RawURLEncoding.EncodeToString(payload)
+		if _, err := DecodeCursor(encoded); err == nil {
+			t.Fatalf("DecodeCursor accepted payload %x", payload)
+		}
+	}
+
+	noncanonicalLimit := append([]byte{1, 0x94, 0x00}, cursorPayloadParts(validParts...)...)
+	if _, err := DecodeCursor(base64.RawURLEncoding.EncodeToString(noncanonicalLimit)); err == nil {
+		t.Fatalf("DecodeCursor accepted noncanonical uvarint %x", noncanonicalLimit)
+	}
+	valid := base64.RawURLEncoding.EncodeToString(cursorPayload(20, validParts...))
+	if _, err := DecodeCursor(valid[:len(valid)-1] + "%"); err == nil {
+		t.Fatal("DecodeCursor accepted a partially decodable invalid base64 value")
+	}
+}
+
+func cursorPayload(limit uint64, parts ...string) []byte {
+	payload := binary.AppendUvarint([]byte{1}, limit)
+	return append(payload, cursorPayloadParts(parts...)...)
+}
+
+func cursorPayloadParts(parts ...string) []byte {
+	var payload []byte
+	for _, part := range parts {
+		payload = binary.AppendUvarint(payload, uint64(len(part)))
+		payload = append(payload, part...)
+	}
+	return payload
 }
 
 func FuzzDecodeCursor(f *testing.F) {
-	f.Add("")
-	f.Add(Cursor{Type: "item", Value: "42"}.Encode())
-	f.Add("not-base64")
+	f.Add(NewCursor(Scope{Operation: "items", Limit: 20}, "next", "item-020").Encode())
+	f.Add("malformed")
 	f.Fuzz(func(t *testing.T, value string) {
-		want := Cursor{Type: "item", Value: value}
-		decoded, err := DecodeCursor(want.Encode())
-		if err != nil {
-			t.Fatalf("decode encoded cursor: %v", err)
-		}
-		if decoded != want {
-			t.Fatalf("encoded cursor mismatch: got %#v, want %#v", decoded, want)
-		}
-
 		cursor, err := DecodeCursor(value)
-		if err != nil {
-			return
-		}
-		roundTrip, err := DecodeCursor(cursor.Encode())
-		if err != nil {
-			t.Fatalf("decode encoded cursor: %v", err)
-		}
-		if roundTrip != cursor {
-			t.Fatalf("round trip mismatch: got %#v, want %#v", roundTrip, cursor)
+		if err == nil {
+			if cursor.Encode() != value {
+				t.Fatalf("accepted noncanonical cursor %q", value)
+			}
+			if cursor.Direction != "next" && cursor.Direction != "prev" {
+				t.Fatalf("accepted direction %q", cursor.Direction)
+			}
 		}
 	})
-}
-
-func TestDecodeCursor_Empty(t *testing.T) {
-	decoded, err := DecodeCursor("")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if decoded.Type != "" || decoded.Value != "" {
-		t.Fatalf("expected zero Cursor, got %+v", decoded)
-	}
-}
-
-func TestDecodeCursor_InvalidBase64(t *testing.T) {
-	_, err := DecodeCursor("!!!not-base64!!!")
-	if err == nil {
-		t.Fatal("expected error for invalid base64")
-	}
-	if !errors.Is(err, ErrInvalidCursor) {
-		t.Fatalf("expected ErrInvalidCursor, got %v", err)
-	}
-}
-
-func TestDecodeCursor_RejectsLegacyPayload(t *testing.T) {
-	_, err := DecodeCursor("bm9jb2xvbg")
-	if err == nil {
-		t.Fatal("expected error for missing colon")
-	}
-	if !errors.Is(err, ErrInvalidCursor) {
-		t.Fatalf("expected ErrInvalidCursor, got %v", err)
-	}
-}
-
-func TestDecodeCursor_RejectsMalformedBinaryPayloads(t *testing.T) {
-	payloads := [][]byte{
-		{1},
-		{1, 0x80},
-		{1, 2, 'a'},
-		{2, 0, 0, 0},
-	}
-	valid, err := base64.RawURLEncoding.DecodeString(Cursor{}.Encode())
-	if err != nil {
-		t.Fatalf("decode valid cursor: %v", err)
-	}
-	payloads = append(payloads, append(valid, 0))
-
-	for _, payload := range payloads {
-		encoded := base64.RawURLEncoding.EncodeToString(payload)
-		if _, err := DecodeCursor(encoded); !errors.Is(err, ErrInvalidCursor) {
-			t.Fatalf("DecodeCursor(%q) error = %v, want %v", encoded, err, ErrInvalidCursor)
-		}
-	}
-}
-
-func TestCursor_Encode_SpecialChars(t *testing.T) {
-	original := Cursor{Type: "item", Value: "key with spaces & symbols!"}
-	encoded := original.Encode()
-	decoded, err := DecodeCursor(encoded)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if decoded.Value != original.Value {
-		t.Fatalf("expected %q, got %q", original.Value, decoded.Value)
-	}
-}
-
-func TestCursor_Encode_EmptyValue(t *testing.T) {
-	c := Cursor{Type: "item", Value: ""}
-	encoded := c.Encode()
-	decoded, err := DecodeCursor(encoded)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if decoded.Type != "item" {
-		t.Fatalf("expected type 'item', got %q", decoded.Type)
-	}
-	if decoded.Value != "" {
-		t.Fatalf("expected empty value, got %q", decoded.Value)
-	}
-}
-
-func TestCursor_Encode_URLSafe(t *testing.T) {
-	c := Cursor{Type: "test", Value: "value+with/special=chars"}
-	encoded := c.Encode()
-
-	for _, ch := range encoded {
-		if ch == '+' || ch == '/' {
-			t.Errorf("encoded cursor contains non-URL-safe character: %c", ch)
-		}
-	}
-}
-
-func TestCursor_EmptyType_NonEmptyValue(t *testing.T) {
-	c := Cursor{Type: "", Value: "some-value"}
-	encoded := c.Encode()
-
-	decoded, err := DecodeCursor(encoded)
-	if err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if decoded.Type != "" {
-		t.Errorf("expected empty type, got %q", decoded.Type)
-	}
-	if decoded.Value != "some-value" {
-		t.Errorf("expected 'some-value', got %q", decoded.Value)
-	}
-}
-
-func TestCursor_ColonInValue(t *testing.T) {
-	c := Cursor{Type: "item", Value: "2024-01-15T10:30:00.000Z"}
-	encoded := c.Encode()
-
-	decoded, err := DecodeCursor(encoded)
-	if err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if decoded.Type != "item" {
-		t.Errorf("type mismatch: got %q", decoded.Type)
-	}
-	if decoded.Value != "2024-01-15T10:30:00.000Z" {
-		t.Errorf("value mismatch: got %q", decoded.Value)
-	}
-}
-
-func TestCursor_MultipleColonsInValue(t *testing.T) {
-	c := Cursor{Type: "composite", Value: "a:b:c:d"}
-	encoded := c.Encode()
-
-	decoded, err := DecodeCursor(encoded)
-	if err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if decoded.Value != "a:b:c:d" {
-		t.Errorf("value should preserve all colons, got %q", decoded.Value)
-	}
-}
-
-func TestCursor_LongValue(t *testing.T) {
-	longValue := strings.Repeat("x", 1000)
-	c := Cursor{Type: "item", Value: longValue}
-	encoded := c.Encode()
-
-	decoded, err := DecodeCursor(encoded)
-	if err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if decoded.Value != longValue {
-		t.Error("long value not preserved correctly")
-	}
-}
-
-func TestCursor_UnicodeValue(t *testing.T) {
-	c := Cursor{Type: "item", Value: "日本語テスト"}
-	encoded := c.Encode()
-
-	decoded, err := DecodeCursor(encoded)
-	if err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if decoded.Value != "日本語テスト" {
-		t.Errorf("unicode value mismatch: got %q", decoded.Value)
-	}
-}
-
-func TestDecodeCursor_PaddingVariations(t *testing.T) {
-	tests := []struct {
-		name   string
-		cursor Cursor
-	}{
-		{"no-padding-needed", Cursor{Type: "abc", Value: "def"}},
-		{"one-pad", Cursor{Type: "ab", Value: "cd"}},
-		{"two-pad", Cursor{Type: "a", Value: "b"}},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			encoded := tc.cursor.Encode()
-			decoded, err := DecodeCursor(encoded)
-			if err != nil {
-				t.Fatalf("decode error: %v", err)
-			}
-			if decoded.Type != tc.cursor.Type || decoded.Value != tc.cursor.Value {
-				t.Errorf("mismatch: got %+v, want %+v", decoded, tc.cursor)
-			}
-		})
-	}
 }

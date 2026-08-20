@@ -24,6 +24,7 @@ const (
 
 type config struct {
 	Address           string
+	CORSOrigins       []string
 	Environment       string
 	FirebaseProject   string
 	FirebaseMode      string
@@ -78,19 +79,51 @@ func loadConfig(getenv func(string) string) (config, error) {
 		return config{}, fmt.Errorf("parse LOG_LEVEL: %w", err)
 	}
 
+	corsOrigins, err := parseCORSOrigins(getenv("CORS_ALLOWED_ORIGINS"))
+	if err != nil {
+		return config{}, err
+	}
+
 	return config{
 		Address:           net.JoinHostPort(host, port),
+		CORSOrigins:       corsOrigins,
 		Environment:       environment,
 		FirebaseProject:   projectID,
 		FirebaseMode:      mode,
 		LogLevel:          level,
-		RequestTimeout:    8 * time.Second,
+		RequestTimeout:    15 * time.Second,
 		ShutdownTimeout:   10 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      20 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}, nil
+}
+
+func parseCORSOrigins(value string) ([]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	origins := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		origin := strings.TrimSpace(part)
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme != "https" && parsed.Scheme != "http" || parsed.Host == "" ||
+			parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
+			return nil, errors.New("CORS_ALLOWED_ORIGINS must contain comma-separated absolute HTTP(S) origins")
+		}
+		if origin == "*" {
+			return nil, errors.New("CORS_ALLOWED_ORIGINS must not contain a wildcard")
+		}
+		if _, duplicate := seen[origin]; duplicate {
+			continue
+		}
+		seen[origin] = struct{}{}
+		origins = append(origins, origin)
+	}
+	return origins, nil
 }
 
 func validateFirebaseConfig(environment, mode, projectID, authEmulator, firestoreEmulator string) error {

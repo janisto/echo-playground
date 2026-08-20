@@ -1,5 +1,5 @@
 SwaggerUIBundle({
-    url: "/api-docs/openapi.json",
+    url: "/openapi.json",
     dom_id: "#swagger-ui",
     deepLinking: true,
     presets: [

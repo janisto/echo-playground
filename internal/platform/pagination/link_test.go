@@ -79,7 +79,11 @@ func TestBuildLinkHeader_MultipleQueryValues(t *testing.T) {
 }
 
 func TestBuildLinkHeader_CursorWithSpecialChars(t *testing.T) {
-	cursor := Cursor{Type: "item", Value: "abc/def+ghi=jkl"}.Encode()
+	cursor := NewCursor(
+		Scope{Operation: "listItems", Limit: 20},
+		"next",
+		"abc/def+ghi=jkl",
+	).Encode()
 	link := BuildLinkHeader("/items", nil, cursor, "")
 
 	if !strings.Contains(link, "cursor=") {
