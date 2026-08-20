@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -27,6 +28,8 @@ const (
 	migrationModeEmulator = "emulator"
 	migrationModeLive     = "live"
 )
+
+var errMigrationReportWrite = errors.New("write migration report failed")
 
 func main() {
 	if err := run(context.Background(), os.Args[1:]); err != nil {
@@ -90,8 +93,8 @@ func run(ctx context.Context, arguments []string) (runErr error) {
 	} else {
 		results, err = profilesvc.AuditProfileMigration(ctx, client, manifest)
 	}
-	printResults(results)
-	return err
+	reportErr := printResults(os.Stdout, results)
+	return errors.Join(err, reportErr)
 }
 
 func validateApplyConfirmations(
@@ -203,18 +206,30 @@ func readManifest(path string) (profilesvc.MigrationManifest, error) {
 	return manifest, nil
 }
 
-func printResults(results []profilesvc.MigrationResult) {
+func printResults(writer io.Writer, results []profilesvc.MigrationResult) error {
 	sort.Slice(results, func(left, right int) bool {
 		return results[left].DocumentFingerprint < results[right].DocumentFingerprint
 	})
 	counts := make(map[profilesvc.MigrationState]int)
 	for _, result := range results {
 		counts[result.State]++
-		_, _ = fmt.Printf("%s %s %s\n", result.DocumentFingerprint, result.State, result.Reason)
+		line := fmt.Sprintf(
+			"%s %s %s\n",
+			result.DocumentFingerprint,
+			result.State,
+			result.Reason,
+		)
+		if written, err := io.WriteString(writer, line); err != nil || written != len(line) {
+			return errMigrationReportWrite
+		}
 	}
-	_, _ = fmt.Printf(
+	summary := fmt.Sprintf(
 		"summary verified=%d required=%d blocked=%d applied=%d\n",
 		counts[profilesvc.MigrationVerified], counts[profilesvc.MigrationRequired], counts[profilesvc.MigrationBlocked],
 		counts[profilesvc.MigrationApplied],
 	)
+	if written, err := io.WriteString(writer, summary); err != nil || written != len(summary) {
+		return errMigrationReportWrite
+	}
+	return nil
 }

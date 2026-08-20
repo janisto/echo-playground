@@ -290,7 +290,8 @@ collection and changes nothing when that scan contains a blocked record. It then
 re-reads each document in a transaction before replacing only an exact known legacy shape. Firestore cannot make an
 unbounded collection migration one global transaction; an infrastructure failure can therefore leave an auditable
 prefix applied. The required snapshot and quiesced apply window are the rollback boundary. This repository never runs
-the migration automatically.
+the migration automatically. A fingerprint-report write failure makes the command fail rather than claiming success
+with missing or truncated operator evidence.
 
 ## Firebase emulators
 

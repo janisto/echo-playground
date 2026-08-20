@@ -185,6 +185,7 @@ func TestItemsStrictQueryAndCursorFailures(t *testing.T) {
 		{"limit=0", 422, "validation_failed"},
 		{"limit=101", 422, "validation_failed"},
 		{"limit=1.0", 422, "validation_failed"},
+		{"category=", 422, "validation_failed"},
 		{"category=unknown", 422, "validation_failed"},
 		{"limit=2&cursor=" + url.QueryEscape(validCursor), 400, "invalid_request"},
 	}

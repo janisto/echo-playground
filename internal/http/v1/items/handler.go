@@ -46,12 +46,15 @@ func listHandler(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	category := query.Get("category")
-	if category != "" && !validCategory(category) {
-		return respond.ValidationFailed(respond.ErrorDetail{
-			Detail: "category is not supported",
-			Source: &respond.ErrorSource{Parameter: "category"},
-		})
+	category := ""
+	if categoryValues, present := query["category"]; present {
+		category = categoryValues[0]
+		if !validCategory(category) {
+			return respond.ValidationFailed(respond.ErrorDetail{
+				Detail: "category is not supported",
+				Source: &respond.ErrorSource{Parameter: "category"},
+			})
+		}
 	}
 	scope := pagination.Scope{Operation: operationID, Filter: category, Limit: limit}
 	var cursor *pagination.Cursor

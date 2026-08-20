@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,23 @@ import (
 
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 )
+
+type reportTestWriter struct {
+	writes int
+	failAt int
+	short  bool
+}
+
+func (writer *reportTestWriter) Write(data []byte) (int, error) {
+	writer.writes++
+	if writer.writes != writer.failAt {
+		return len(data), nil
+	}
+	if writer.short {
+		return len(data) - 1, nil
+	}
+	return 0, errors.New("report destination failed")
+}
 
 func TestRunRejectsUnsafeInvocationBeforeFirestoreInitialization(t *testing.T) {
 	t.Setenv("FIRESTORE_EMULATOR_HOST", "")
@@ -205,5 +223,29 @@ func TestReadManifestDefaultsToEmptyAuditManifest(t *testing.T) {
 	if err != nil || manifest.Version != profilesvc.ProfileMigrationManifestVersion || manifest.Entries == nil ||
 		len(manifest.Entries) != 0 {
 		t.Fatalf("default manifest = %#v, %v", manifest, err)
+	}
+}
+
+func TestPrintResultsIsDeterministicAndPropagatesWriteFailures(t *testing.T) {
+	results := []profilesvc.MigrationResult{
+		{DocumentFingerprint: "b", State: profilesvc.MigrationApplied, Reason: "applied reason"},
+		{DocumentFingerprint: "a", State: profilesvc.MigrationBlocked, Reason: "blocked reason"},
+	}
+	var output strings.Builder
+	if err := printResults(&output, results); err != nil {
+		t.Fatalf("printResults() error = %v", err)
+	}
+	want := "a blocked blocked reason\nb applied applied reason\n" +
+		"summary verified=0 required=0 blocked=1 applied=1\n"
+	if output.String() != want {
+		t.Fatalf("printResults() = %q, want %q", output.String(), want)
+	}
+
+	for _, short := range []bool{false, true} {
+		writer := &reportTestWriter{failAt: 2, short: short}
+		err := printResults(writer, results)
+		if !errors.Is(err, errMigrationReportWrite) || writer.writes != 2 {
+			t.Fatalf("printResults(short=%t) = %v after %d writes", short, err, writer.writes)
+		}
 	}
 }
