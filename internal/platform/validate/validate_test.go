@@ -12,6 +12,24 @@ func TestBoundedNameRejectsInvalidUTF8(t *testing.T) {
 	}
 }
 
+func TestNormalizeContactEmailUsesOnlyASCIICaseMapping(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		want  string
+	}{
+		{input: " Ada@EXAMPLE.COM ", want: "Ada@example.com"},
+		{input: " not-an-address ", want: "not-an-address"},
+		{input: " Ada@example.\u212AOM ", want: "Ada@example.\u212AOM"},
+	} {
+		if got := NormalizeContactEmail(test.input); got != test.want {
+			t.Fatalf("NormalizeContactEmail(%q) = %q, want %q", test.input, got, test.want)
+		}
+	}
+	if ContactEmail(NormalizeContactEmail("Ada@example.\u212AOM")) {
+		t.Fatal("internationalized domain became a valid ASCII contact email")
+	}
+}
+
 type createInput struct {
 	Name  string `json:"name"        validate:"required,min=1,max=100"`
 	Email string `json:"email"       validate:"required,email"`

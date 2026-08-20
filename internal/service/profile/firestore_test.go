@@ -158,6 +158,15 @@ func TestMigrationClassificationRequiresTermsEvidenceAndCanonicalizes(t *testing
 	if state != MigrationBlocked {
 		t.Fatalf("unknown legacy field classified %s", state)
 	}
+	delete(legacy, "unknown")
+	legacy["email"] = "Ada@example.\u212AOM"
+	state, _, replacement = classifyMigration(
+		legacy,
+		MigrationAuthorization{TermsAccepted: true, Evidence: "consent-ledger/record-1"},
+	)
+	if state != MigrationBlocked || replacement != nil {
+		t.Fatalf("internationalized legacy email classified %s: %#v", state, replacement)
+	}
 }
 
 func TestProfileMigrationAgainstEmulator(t *testing.T) {

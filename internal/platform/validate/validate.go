@@ -268,7 +268,7 @@ func PhoneNumber(value string) bool {
 func NormalizeContactEmail(value string) string {
 	value = StripASCIIWhitespace(value)
 	local, domain, found := strings.Cut(value, "@")
-	if !found {
+	if !found || !isASCII(value) {
 		return value
 	}
 	return local + "@" + strings.ToLower(domain)

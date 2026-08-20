@@ -307,6 +307,12 @@ func TestProfileStrictValidationHasNoPersistenceSideEffect(t *testing.T) {
 		},
 		{
 			http.MethodPost,
+			`{"firstName":"Ada","lastName":"Lovelace","contactEmail":"Ada@example.\u212AOM","phoneNumber":"+358401234567","termsAccepted":true}`,
+			422,
+			"validation_failed",
+		},
+		{
+			http.MethodPost,
 			`{"firstName":"Ada","lastName":"Lovelace","contactEmail":"ada@example.com","phoneNumber":"+358401234567","marketingOptIn":null,"termsAccepted":true}`,
 			422,
 			"validation_failed",
