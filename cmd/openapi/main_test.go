@@ -83,6 +83,14 @@ func TestNormalizerRejectsNativeRegistrationDrift(t *testing.T) {
 			t.Helper()
 			nativeOperation(t, document, "/health", "get")["security"] = []any{map[string]any{"BearerAuth": []any{}}}
 		}},
+		{name: "inherited public security requirement", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			document["security"] = []any{map[string]any{"BearerAuth": []any{}}}
+		}},
+		{name: "malformed document security", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			document["security"] = map[string]any{"BearerAuth": []any{}}
+		}},
 		{name: "optional request body", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
 			mapValue(t, nativeOperation(t, document, "/v1/hello", "post"), "requestBody")["required"] = false
@@ -154,6 +162,14 @@ func TestNormalizerRejectsNativeRegistrationDrift(t *testing.T) {
 				t.Fatal("normalizeDocument accepted native registration drift")
 			}
 		})
+	}
+}
+
+func TestNormalizerAcceptsExplicitEmptyNativeDocumentSecurity(t *testing.T) {
+	document := nativeRegistrationFixture()
+	document["security"] = []any{}
+	if _, err := normalizeDocument(document); err != nil {
+		t.Fatalf("normalizeDocument rejected explicit empty document security: %v", err)
 	}
 }
 

@@ -106,6 +106,12 @@ func normalizeDocument(generated map[string]any) (map[string]any, error) {
 }
 
 func validateNativeDocument(generated, expectedPaths map[string]any) error {
+	if securityValue, present := generated["security"]; present {
+		security, ok := securityValue.([]any)
+		if !ok || len(security) != 0 {
+			return errors.New("document-level security must be absent or empty")
+		}
+	}
 	generatedPaths, ok := generated["paths"].(map[string]any)
 	if !ok {
 		return errors.New("paths is not an object")
