@@ -36,11 +36,89 @@ func TestRunRejectsUnsafeInvocationBeforeFirestoreInitialization(t *testing.T) {
 			},
 			want: "--confirm-project",
 		},
+		{
+			name: "apply confirmation without apply",
+			args: []string{
+				"--project", "production", "--mode", "live", "--confirm-project", "production",
+			},
+			want: "require --apply",
+		},
+		{
+			name: "missing rollback confirmation",
+			args: []string{
+				"--project", "production", "--mode", "live", "--apply",
+				"--confirm-project", "production", "--confirm-profile-writes-quiesced",
+				"--manifest", "/path/that/must/not/be-read.json",
+			},
+			want: "--confirm-rollback-reference",
+		},
+		{
+			name: "unsafe rollback confirmation",
+			args: []string{
+				"--project", "production", "--mode", "live", "--apply",
+				"--confirm-project", "production", "--confirm-rollback-reference", " backup/export-1",
+				"--confirm-profile-writes-quiesced",
+			},
+			want: "--confirm-rollback-reference",
+		},
+		{
+			name: "missing quiescence confirmation",
+			args: []string{
+				"--project", "production", "--mode", "live", "--apply",
+				"--confirm-project", "production", "--confirm-rollback-reference", "backup/export-1",
+			},
+			want: "--confirm-profile-writes-quiesced",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := run(t.Context(), test.args)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("run error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateApplyConfirmations(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		apply             bool
+		project           string
+		projectConfirm    string
+		rollbackReference string
+		writesQuiesced    bool
+		wantErr           bool
+	}{
+		{name: "audit"},
+		{
+			name:              "apply",
+			apply:             true,
+			project:           "production",
+			projectConfirm:    "production",
+			rollbackReference: "provider-export/2026-08-20T12:00:00Z",
+			writesQuiesced:    true,
+		},
+		{name: "audit with rollback confirmation", rollbackReference: "provider-export/1", wantErr: true},
+		{
+			name:              "apply with control in rollback reference",
+			apply:             true,
+			project:           "production",
+			projectConfirm:    "production",
+			rollbackReference: "provider-export/1\nforged-output",
+			writesQuiesced:    true,
+			wantErr:           true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateApplyConfirmations(
+				test.apply,
+				test.project,
+				test.projectConfirm,
+				test.rollbackReference,
+				test.writesQuiesced,
+			)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("validateApplyConfirmations() error = %v, wantErr %v", err, test.wantErr)
 			}
 		})
 	}

@@ -169,6 +169,41 @@ func TestMigrationClassificationRequiresTermsEvidenceAndCanonicalizes(t *testing
 	}
 }
 
+func TestMigrationErrorsExposeOnlyStableCategoriesAndFingerprints(t *testing.T) {
+	const rawDocumentID = "firebase-uid-that-must-not-appear"
+	fingerprint := fingerprintDocumentID(rawDocumentID)
+	providerError := errors.New(
+		"rpc failed for projects/production/databases/(default)/documents/profiles/" + rawDocumentID,
+	)
+
+	got := sanitizedMigrationError("apply profile migration", fingerprint, providerError)
+	if !errors.Is(got, errMigrationProvider) || errors.Is(got, providerError) ||
+		!strings.Contains(got.Error(), fingerprint) || strings.Contains(got.Error(), rawDocumentID) ||
+		strings.Contains(got.Error(), "projects/production") {
+		t.Fatalf("sanitized provider error = %q", got)
+	}
+
+	got = sanitizedMigrationError(
+		"apply profile migration",
+		fingerprint,
+		errors.Join(context.DeadlineExceeded, providerError),
+	)
+	if !errors.Is(got, context.DeadlineExceeded) || errors.Is(got, providerError) ||
+		strings.Contains(got.Error(), rawDocumentID) {
+		t.Fatalf("sanitized deadline error = %q", got)
+	}
+
+	got = sanitizedMigrationError(
+		"apply profile migration",
+		fingerprint,
+		errors.Join(errMigrationBlockedDuringApply, providerError),
+	)
+	if !errors.Is(got, errMigrationBlockedDuringApply) || errors.Is(got, providerError) ||
+		strings.Contains(got.Error(), rawDocumentID) {
+		t.Fatalf("sanitized blocked error = %q", got)
+	}
+}
+
 func TestProfileMigrationAgainstEmulator(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()

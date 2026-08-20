@@ -93,6 +93,12 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 			wantStatus:  415,
 		},
 		{
+			name:        "JSON bare parameter delimiter",
+			contentType: []string{"application/json; \t"},
+			body:        []byte(`{"name":"Ada"}`),
+			wantStatus:  415,
+		},
+		{
 			name:        "duplicate identical charset",
 			contentType: []string{"application/json; charset=utf-8; charset=utf-8"},
 			body:        []byte(`{"name":"Ada"}`),
@@ -113,6 +119,12 @@ func TestDecodeJSONAndCBOR(t *testing.T) {
 		{
 			name:        "CBOR parameter",
 			contentType: []string{"application/cbor; charset=utf-8"},
+			body:        cborBody,
+			wantStatus:  415,
+		},
+		{
+			name:        "CBOR bare parameter delimiter",
+			contentType: []string{"application/cbor;"},
 			body:        cborBody,
 			wantStatus:  415,
 		},

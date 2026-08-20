@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"cloud.google.com/go/firestore"
 
@@ -41,6 +42,16 @@ func run(ctx context.Context, arguments []string) (runErr error) {
 	manifestPath := flags.String("manifest", "", "versioned terms-evidence manifest")
 	apply := flags.Bool("apply", false, "apply authorized replacements instead of auditing")
 	confirmation := flags.String("confirm-project", "", "must exactly equal --project when --apply is used")
+	rollbackReference := flags.String(
+		"confirm-rollback-reference",
+		"",
+		"verified backup and rollback reference required by --apply",
+	)
+	quiesced := flags.Bool(
+		"confirm-profile-writes-quiesced",
+		false,
+		"affirm that profile writes are quiesced for --apply",
+	)
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -50,8 +61,14 @@ func run(ctx context.Context, arguments []string) (runErr error) {
 	if err := validateMigrationTarget(*mode, *project, os.Getenv("FIRESTORE_EMULATOR_HOST")); err != nil {
 		return err
 	}
-	if *apply && (*confirmation == "" || *confirmation != *project) {
-		return errors.New("--apply requires --confirm-project to exactly equal --project")
+	if err := validateApplyConfirmations(
+		*apply,
+		*project,
+		*confirmation,
+		*rollbackReference,
+		*quiesced,
+	); err != nil {
+		return err
 	}
 	manifest, err := readManifest(*manifestPath)
 	if err != nil {
@@ -59,9 +76,13 @@ func run(ctx context.Context, arguments []string) (runErr error) {
 	}
 	client, err := firestore.NewClient(ctx, *project)
 	if err != nil {
-		return fmt.Errorf("initialize Firestore client: %w", err)
+		return errors.New("initialize firestore client failed")
 	}
-	defer func() { runErr = errors.Join(runErr, client.Close()) }()
+	defer func() {
+		if closeErr := client.Close(); closeErr != nil {
+			runErr = errors.Join(runErr, errors.New("close firestore client failed"))
+		}
+	}()
 
 	var results []profilesvc.MigrationResult
 	if *apply {
@@ -71,6 +92,44 @@ func run(ctx context.Context, arguments []string) (runErr error) {
 	}
 	printResults(results)
 	return err
+}
+
+func validateApplyConfirmations(
+	apply bool,
+	project string,
+	projectConfirmation string,
+	rollbackReference string,
+	writesQuiesced bool,
+) error {
+	if !apply {
+		if projectConfirmation != "" || rollbackReference != "" || writesQuiesced {
+			return errors.New("apply confirmation flags require --apply")
+		}
+		return nil
+	}
+	if projectConfirmation == "" || projectConfirmation != project {
+		return errors.New("--apply requires --confirm-project to exactly equal --project")
+	}
+	if !validRollbackReference(rollbackReference) {
+		return errors.New("--apply requires a safe non-empty --confirm-rollback-reference")
+	}
+	if !writesQuiesced {
+		return errors.New("--apply requires --confirm-profile-writes-quiesced")
+	}
+	return nil
+}
+
+func validRollbackReference(value string) bool {
+	if value == "" || !utf8.ValidString(value) || strings.TrimSpace(value) != value ||
+		utf8.RuneCountInString(value) > 500 {
+		return false
+	}
+	for _, character := range value {
+		if character <= 0x1f || character >= 0x7f && character <= 0x9f {
+			return false
+		}
+	}
+	return true
 }
 
 func validateMigrationTarget(mode, project, firestoreEmulatorHost string) error {

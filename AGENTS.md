@@ -672,9 +672,9 @@ just emulators
 
 `cmd/profile-migrate` is audit-only by default. Do not execute it against any project unless the current request
 explicitly authorizes that project and mode. Applying requires an exact `--confirm-project`, a closed version-1 manifest
-with approved per-document terms evidence, a verified provider backup and rollback reference, and a quiesced profile
-write window. Never invent terms acceptance, log document IDs or profile data, or treat a partially applied collection
-as globally atomic. See README.md for the operator sequence.
+with approved per-document terms evidence, `--confirm-rollback-reference` for the verified provider backup, and
+`--confirm-profile-writes-quiesced` for the write freeze. Never invent terms acceptance, log document IDs or profile
+data, or treat a partially applied collection as globally atomic. See README.md for the operator sequence.
 
 ---
 

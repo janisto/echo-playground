@@ -18,6 +18,11 @@ import (
 
 const ProfileMigrationManifestVersion = 1
 
+var (
+	errMigrationProvider           = errors.New("firestore operation failed")
+	errMigrationBlockedDuringApply = errors.New("profile record became blocked during migration")
+)
+
 type MigrationAuthorization struct {
 	TermsAccepted bool   `json:"termsAccepted"`
 	Evidence      string `json:"evidence"`
@@ -77,7 +82,7 @@ func AuditProfileMigration(
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("iterate profile documents: %w", err)
+			return nil, sanitizedMigrationError("audit profile migration", "", err)
 		}
 		state, reason, _ := classifyMigration(snapshot.Data(), manifest.Entries[snapshot.Ref.ID])
 		results = append(results, MigrationResult{
@@ -116,7 +121,7 @@ func ApplyProfileMigration(
 			break
 		}
 		if nextErr != nil {
-			return results, fmt.Errorf("iterate profile documents for apply: %w", nextErr)
+			return results, sanitizedMigrationError("iterate profile migration documents", "", nextErr)
 		}
 		result := MigrationResult{DocumentFingerprint: fingerprintDocumentID(snapshot.Ref.ID)}
 		transactionErr := client.RunTransaction(
@@ -138,16 +143,39 @@ func ApplyProfileMigration(
 					result.State = MigrationApplied
 					return nil
 				default:
-					return errors.New("profile record became blocked during migration")
+					return errMigrationBlockedDuringApply
 				}
 			},
 		)
 		if transactionErr != nil {
-			return results, fmt.Errorf("apply profile migration to %s: %w", result.DocumentFingerprint, transactionErr)
+			return results, sanitizedMigrationError(
+				"apply profile migration",
+				result.DocumentFingerprint,
+				transactionErr,
+			)
 		}
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+func sanitizedMigrationError(operation, documentFingerprint string, source error) error {
+	prefix := operation
+	if documentFingerprint != "" {
+		prefix += " to " + documentFingerprint
+	}
+	var category error
+	switch {
+	case errors.Is(source, context.Canceled):
+		category = context.Canceled
+	case errors.Is(source, context.DeadlineExceeded):
+		category = context.DeadlineExceeded
+	case errors.Is(source, errMigrationBlockedDuringApply):
+		category = errMigrationBlockedDuringApply
+	default:
+		category = errMigrationProvider
+	}
+	return fmt.Errorf("%s: %w", prefix, category)
 }
 
 func classifyMigration(

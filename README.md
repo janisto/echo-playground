@@ -266,7 +266,8 @@ The mandatory `--mode` flag makes the target explicit. `--mode live` rejects `de
      --manifest /secure/path/profile-migration-manifest.json
    ```
 
-4. Resolve every `blocked` result. Applying requires a second exact project confirmation:
+4. Resolve every `blocked` result. Applying requires a second exact project confirmation, the immutable reference of
+   the verified backup or rollback snapshot, and an explicit confirmation that profile writes are quiesced:
 
    ```bash
    go run ./cmd/profile-migrate \
@@ -274,14 +275,18 @@ The mandatory `--mode` flag makes the target explicit. `--mode live` rejects `de
      --mode live \
      --manifest /secure/path/profile-migration-manifest.json \
      --apply \
-     --confirm-project EXACT_PROJECT_ID
+     --confirm-project EXACT_PROJECT_ID \
+     --confirm-rollback-reference IMMUTABLE_BACKUP_REFERENCE \
+     --confirm-profile-writes-quiesced
    ```
 
 5. Re-run audit, verify application reads, and retain the manifest, command output, source revision, project, backup
    reference, and operator change record together. If application verification fails, stop writes and restore the
    verified snapshot according to the provider runbook.
 
-The tool preflights the entire collection and changes nothing when that scan contains a blocked record. It then
+The apply flags make all three operator prerequisites explicit before the tool creates a Firestore client; they do not
+independently verify the provider snapshot or enforce the external write freeze. The tool preflights the entire
+collection and changes nothing when that scan contains a blocked record. It then
 re-reads each document in a transaction before replacing only an exact known legacy shape. Firestore cannot make an
 unbounded collection migration one global transaction; an infrastructure failure can therefore leave an auditable
 prefix applied. The required snapshot and quiesced apply window are the rollback boundary. This repository never runs

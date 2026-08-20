@@ -172,9 +172,6 @@ func mediaTypeParameterNames(value string) []string {
 	parameters := make([]string, 0, len(segments))
 	for _, segment := range segments[1:] {
 		segment = strings.Trim(segment, " \t")
-		if segment == "" {
-			continue
-		}
 		name, _, _ := strings.Cut(segment, "=")
 		parameters = append(parameters, strings.ToLower(strings.Trim(name, " \t")))
 	}
