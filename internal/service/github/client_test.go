@@ -538,6 +538,59 @@ func TestClientQuotaHintsUseInjectedFractionalClock(t *testing.T) {
 	}
 }
 
+func TestClientQuotaResetDelayUsesExactIntegerArithmetic(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		now        time.Time
+		reset      uint64
+		retryAfter string
+		resetOut   string
+	}{
+		{
+			name:       "reset equals current epoch",
+			now:        time.Unix(0, 0),
+			reset:      0,
+			retryAfter: "60",
+			resetOut:   "",
+		},
+		{
+			name:       "subsecond before epoch",
+			now:        time.Unix(-1, 500_000_000),
+			reset:      0,
+			retryAfter: "1",
+			resetOut:   "0",
+		},
+		{
+			name:       "negative fractional clock",
+			now:        time.Unix(-3, 500_000_000),
+			reset:      2,
+			retryAfter: "5",
+			resetOut:   "2",
+		},
+		{
+			name:       "maximum reset with fractional clock",
+			now:        time.Unix(100, 750_000_000),
+			reset:      maximumSafeInteger,
+			retryAfter: strconv.FormatUint(maximumSafeInteger-100, 10),
+			resetOut:   strconv.FormatUint(maximumSafeInteger, 10),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := transportClient(func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("unused")
+			})
+			client.clock = func() time.Time { return test.now }
+			reset := strconv.FormatUint(test.reset, 10)
+			header := make(http.Header)
+			header.Set("X-Ratelimit-Reset", reset)
+			got := client.rateLimitError(header)
+			if got.RetryAfter != test.retryAfter || got.Reset != test.resetOut {
+				t.Fatalf("rate limit = %#v, want retry/reset %q/%q", got, test.retryAfter, test.resetOut)
+			}
+		})
+	}
+}
+
 func TestClientBodyBoundaryAndCollectionLimit(t *testing.T) {
 	exact := paddedOwnerFixture(t, maximumProviderBody)
 	client := transportClient(func(*http.Request) (*http.Response, error) {

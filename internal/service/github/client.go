@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"math"
 	"mime"
 	"net/http"
 	"net/url"
@@ -308,17 +307,22 @@ func (c *Client) rateLimitError(header http.Header) *RateLimitError {
 	now := c.clock()
 	retryValue, retryOK := canonicalHeaderInteger(header, "Retry-After")
 	resetValue, resetOK := canonicalHeaderInteger(header, "X-RateLimit-Reset")
-	nowSeconds := now.Unix()
-	resetOK = resetOK && nowSeconds >= 0 &&
-		resetValue > uint64(nowSeconds)
+	var resetDelay uint64
+	if resetOK {
+		nowSeconds := now.Unix()
+		if nowSeconds >= 0 && resetValue <= uint64(nowSeconds) {
+			resetOK = false
+		} else {
+			//nolint:gosec // Modulo conversion makes subtraction exact for negative Unix seconds.
+			resetDelay = resetValue - uint64(nowSeconds)
+		}
+	}
 
 	retryAfter := "60"
 	if retryOK {
 		retryAfter = strconv.FormatUint(retryValue, 10)
 	} else if resetOK {
-		difference := float64(resetValue) - float64(now.UnixNano())/float64(time.Second)
-		delay := uint64(math.Max(1, math.Ceil(difference)))
-		retryAfter = strconv.FormatUint(delay, 10)
+		retryAfter = strconv.FormatUint(resetDelay, 10)
 	}
 	reset := ""
 	if resetOK {
