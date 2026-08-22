@@ -237,8 +237,8 @@ func validateNativeRequestBody(location string, generated, expected map[string]a
 		return fmt.Errorf("%s native JSON request media is not an object", location)
 	}
 	jsonSchema, ok := jsonMedia["schema"].(map[string]any)
-	if !ok {
-		return fmt.Errorf("%s native JSON request schema is not an object", location)
+	if !ok || len(jsonSchema) != 1 {
+		return fmt.Errorf("%s native JSON request schema is not exactly oneOf", location)
 	}
 	variants, ok := jsonSchema["oneOf"].([]any)
 	if !ok || len(variants) != 2 {

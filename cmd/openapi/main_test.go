@@ -119,6 +119,12 @@ func TestNormalizerRejectsNativeRegistrationDrift(t *testing.T) {
 			variants := arrayValue(t, mapValue(t, jsonMedia, "schema")["oneOf"], "request schema variants")
 			objectValue(t, variants[1], "request DTO")["not"] = map[string]any{}
 		}},
+		{name: "request schema sibling keyword", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			body := mapValue(t, nativeOperation(t, document, "/v1/profile", "post"), "requestBody")
+			jsonMedia := mapValue(t, mapValue(t, body, "content"), "application/json")
+			mapValue(t, jsonMedia, "schema")["not"] = map[string]any{}
+		}},
 		{name: "body on bodyless operation", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
 			nativeOperation(t, document, "/health", "get")["requestBody"] = nativeRequestBodyFixture(
@@ -303,7 +309,7 @@ func TestPortableParameterSchemas(t *testing.T) {
 		"Cursor": {
 			"name": "cursor", "in": "query", "required": false,
 			"schema": map[string]any{
-				"type": "string", "minLength": float64(1), "maxLength": float64(2048), "pattern": `^[!-~]+$`,
+				"type": "string", "minLength": float64(1), "maxLength": float64(2048), "pattern": `^[A-Za-z0-9_-]+$`,
 			},
 		},
 		"Category": {

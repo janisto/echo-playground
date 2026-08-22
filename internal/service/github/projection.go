@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"time"
@@ -13,6 +14,8 @@ import (
 )
 
 const maximumSafeInteger uint64 = 9_007_199_254_740_991
+
+var rawURIQueryPattern = regexp.MustCompile(`^(?:[A-Za-z0-9._~!$&'()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*$`)
 
 func projectOwner(document []byte) (Owner, error) {
 	object, err := decodeObject(document)
@@ -426,7 +429,7 @@ func requiredURL(object map[string]json.RawMessage, field string) (string, error
 	}
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
-		parsed.Fragment != "" {
+		parsed.Fragment != "" || parsed.String() != value || !rawURIQueryPattern.MatchString(parsed.RawQuery) {
 		return "", ErrUpstream
 	}
 	return value, nil

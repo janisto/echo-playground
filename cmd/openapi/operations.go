@@ -359,9 +359,16 @@ func parameterComponents() map[string]any {
 			"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
 		},
 		"Cursor": map[string]any{
-			"name": "cursor", "in": "query", "required": false,
+			"name":        "cursor",
+			"in":          "query",
+			"required":    false,
 			"description": "Opaque scoped cursor in the closed scalar query.",
-			"schema":      map[string]any{"type": "string", "minLength": 1, "maxLength": 2048, "pattern": `^[!-~]+$`},
+			"schema": map[string]any{
+				"type":      "string",
+				"minLength": 1,
+				"maxLength": 2048,
+				"pattern":   `^[A-Za-z0-9_-]+$`,
+			},
 		},
 		"Category": map[string]any{
 			"name":        "category",

@@ -153,6 +153,33 @@ func TestProjectionRejectsInconsistentOrMalformedActorAndTag(t *testing.T) {
 	}
 }
 
+func TestProjectionRequiresCanonicalProviderURI(t *testing.T) {
+	canonical := "https://example.test/a%20b?size=109&next=%2F"
+	body := strings.Replace(ownerFixture(""), "https://example.test/avatar", canonical, 1)
+	owner, err := projectOwner([]byte(body))
+	if err != nil || owner.AvatarURL != canonical {
+		t.Fatalf("canonical provider URI = %q, %v", owner.AvatarURL, err)
+	}
+
+	for _, value := range []string{
+		"https://example.test/a b",
+		"https://example.test/a?q=b c",
+		"https://example.test/a?q=%",
+		"https://example.test/a?q=%A",
+		"https://example.test/a?q=%ZZ",
+		"https://example.test/a?q=[AA",
+		"https://example.test/a?q=[]",
+		"https://example.test/café",
+	} {
+		t.Run(value, func(t *testing.T) {
+			body := strings.Replace(ownerFixture(""), "https://example.test/avatar", value, 1)
+			if _, err := projectOwner([]byte(body)); !errors.Is(err, ErrUpstream) {
+				t.Fatalf("provider URI %q error = %v", value, err)
+			}
+		})
+	}
+}
+
 func repositoryDetailFixture(pushedAt, license, topics string) string {
 	return `{"id":1,"name":"repo","full_name":"acme/repo","description":null,"html_url":"https://example.test/acme/repo","fork":false,"private":false,"visibility":"public","language":null,"stargazers_count":2,"forks_count":3,"open_issues_count":4,"archived":false,"created_at":"2026-07-30T12:00:00.000Z","updated_at":"2026-07-30T12:01:00.000Z","pushed_at":` + pushedAt + `,"default_branch":"main","license":` + license + topics + `,"disabled":false}`
 }

@@ -74,7 +74,7 @@ components:
       schema:
         maxLength: 2048
         minLength: 1
-        pattern: ^[!-~]+$
+        pattern: ^[A-Za-z0-9_-]+$
         type: string
     Limit:
       description: Closed scalar query; unknown or repeated parameters are rejected.
