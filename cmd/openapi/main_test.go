@@ -112,6 +112,13 @@ func TestNormalizerRejectsNativeRegistrationDrift(t *testing.T) {
 			variants := arrayValue(t, mapValue(t, jsonMedia, "schema")["oneOf"], "request schema variants")
 			objectValue(t, variants[1], "request DTO")["$ref"] = "#/components/schemas/profile.UpdateInput"
 		}},
+		{name: "request DTO sibling keyword", mutate: func(t *testing.T, document map[string]any) {
+			t.Helper()
+			body := mapValue(t, nativeOperation(t, document, "/v1/profile", "post"), "requestBody")
+			jsonMedia := mapValue(t, mapValue(t, body, "content"), "application/json")
+			variants := arrayValue(t, mapValue(t, jsonMedia, "schema")["oneOf"], "request schema variants")
+			objectValue(t, variants[1], "request DTO")["not"] = map[string]any{}
+		}},
 		{name: "body on bodyless operation", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
 			nativeOperation(t, document, "/health", "get")["requestBody"] = nativeRequestBodyFixture(
@@ -489,7 +496,9 @@ func nativeRequestBodyFixture(reference string) map[string]any {
 		"content": map[string]any{
 			"application/json": map[string]any{"schema": map[string]any{"oneOf": []any{
 				map[string]any{"type": "object"},
-				map[string]any{"$ref": reference},
+				map[string]any{
+					"$ref": reference, "summary": "body", "description": "request document",
+				},
 			}}},
 			"application/cbor": map[string]any{"schema": map[string]any{"type": "string"}},
 		},

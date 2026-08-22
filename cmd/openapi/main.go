@@ -249,8 +249,13 @@ func validateNativeRequestBody(location string, generated, expected map[string]a
 		return fmt.Errorf("%s native JSON request schema lacks the generator object registration", location)
 	}
 	dtoVariant, ok := variants[1].(map[string]any)
-	if !ok || dtoVariant["$ref"] != expectedReference {
-		return fmt.Errorf("%s native JSON request schema does not reference %s", location, expectedReference)
+	summary, summaryOK := dtoVariant["summary"].(string)
+	description, descriptionOK := dtoVariant["description"].(string)
+	if !ok || !sameKeys(dtoVariant, map[string]struct{}{
+		"$ref": {}, "summary": {}, "description": {},
+	}) || dtoVariant["$ref"] != expectedReference || !summaryOK || summary == "" ||
+		!descriptionOK || description == "" {
+		return fmt.Errorf("%s native JSON request schema does not exactly reference %s", location, expectedReference)
 	}
 	cborMedia, ok := content["application/cbor"].(map[string]any)
 	if !ok {
