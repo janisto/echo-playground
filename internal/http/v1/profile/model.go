@@ -2,14 +2,15 @@ package profile
 
 import "github.com/janisto/echo-playground/internal/platform/timeutil"
 
-// Profile represents a user profile response.
+// Profile is the closed current-principal profile response.
 type Profile struct {
-	ID          string        `json:"id"          example:"user-123"`
-	Firstname   string        `json:"firstname"   example:"John"`
-	Lastname    string        `json:"lastname"    example:"Doe"`
-	Email       string        `json:"email"       example:"john@example.com"`
-	PhoneNumber string        `json:"phoneNumber" example:"+358401234567"`
-	Marketing   bool          `json:"marketing"   example:"true"`
-	CreatedAt   timeutil.Time `json:"createdAt"   example:"2024-01-15T10:30:00.000Z"`
-	UpdatedAt   timeutil.Time `json:"updatedAt"   example:"2024-01-15T10:30:00.000Z"`
+	ID             string        `json:"id"             cbor:"id"             example:"principal-123"`
+	FirstName      string        `json:"firstName"      cbor:"firstName"      example:"Ada"`
+	LastName       string        `json:"lastName"       cbor:"lastName"       example:"Lovelace"`
+	ContactEmail   string        `json:"contactEmail"   cbor:"contactEmail"   example:"Ada@example.com"`
+	PhoneNumber    string        `json:"phoneNumber"    cbor:"phoneNumber"    example:"+358401234567"`
+	MarketingOptIn bool          `json:"marketingOptIn" cbor:"marketingOptIn" example:"false"`
+	TermsAccepted  bool          `json:"termsAccepted"  cbor:"termsAccepted"  example:"true"`
+	CreatedAt      timeutil.Time `json:"createdAt"      cbor:"createdAt"      example:"2026-07-30T12:00:00.000Z"`
+	UpdatedAt      timeutil.Time `json:"updatedAt"      cbor:"updatedAt"      example:"2026-07-30T12:00:00.000Z"`
 }

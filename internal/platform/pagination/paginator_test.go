@@ -2,338 +2,320 @@ package pagination
 
 import (
 	"errors"
-	"math"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-type testItem struct {
-	ID   string
-	Name string
+type testItem struct{ id string }
+
+func TestPaginateTraversesForwardAndBackwardWithoutGaps(t *testing.T) {
+	items := []testItem{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}}
+	scope := Scope{Operation: "list", Filter: "all", Limit: 2}
+	identifier := func(item testItem) string { return item.id }
+	first, err := Paginate(items, nil, scope, identifier, "/items", url.Values{"category": {"all"}})
+	if err != nil || !reflect.DeepEqual(first.Items, items[:2]) || first.PrevCursor != "" || first.NextCursor == "" {
+		t.Fatalf("first = %#v, err=%v", first, err)
+	}
+	next, _ := DecodeCursor(first.NextCursor)
+	middle, err := Paginate(items, &next, scope, identifier, "/items", url.Values{"category": {"all"}})
+	if err != nil || !reflect.DeepEqual(middle.Items, items[2:4]) || middle.PrevCursor == "" ||
+		middle.NextCursor == "" {
+		t.Fatalf("middle = %#v, err=%v", middle, err)
+	}
+	next, _ = DecodeCursor(middle.NextCursor)
+	last, err := Paginate(items, &next, scope, identifier, "/items", url.Values{"category": {"all"}})
+	if err != nil || !reflect.DeepEqual(last.Items, items[4:]) || last.NextCursor != "" || last.PrevCursor == "" {
+		t.Fatalf("last = %#v, err=%v", last, err)
+	}
+	previous, _ := DecodeCursor(last.PrevCursor)
+	back, err := Paginate(items, &previous, scope, identifier, "/items", url.Values{"category": {"all"}})
+	if err != nil || !reflect.DeepEqual(back.Items, items[2:4]) {
+		t.Fatalf("back = %#v, err=%v", back, err)
+	}
+	if first.LinkHeader == "" || middle.LinkHeader == "" || last.LinkHeader == "" {
+		t.Fatal("navigation links were not emitted")
+	}
 }
 
-func makeItems(n int) []testItem {
-	items := make([]testItem, n)
-	for i := range n {
-		items[i] = testItem{ID: string(rune('a' + i)), Name: "item-" + string(rune('a'+i))}
+func TestPaginateRejectsScopeStalePositionAndLimit(t *testing.T) {
+	items := []testItem{{"a"}}
+	identifier := func(item testItem) string { return item.id }
+	scope := Scope{Operation: "list", Limit: 1}
+	tests := []struct {
+		scope  Scope
+		cursor *Cursor
+		error  error
+	}{
+		{scope: Scope{Operation: "list", Limit: 0}, error: ErrInvalidLimit},
+		{scope: Scope{Operation: "list", Limit: 101}, error: ErrInvalidLimit},
+		{
+			scope:  scope,
+			cursor: new(NewCursor(Scope{Operation: "other", Limit: 1}, "next", "a")),
+			error:  ErrCursorScopeMismatch,
+		},
+		{scope: scope, cursor: new(NewCursor(scope, "next", "missing")), error: ErrCursorNotFound},
 	}
-	return items
+	for _, test := range tests {
+		if _, err := Paginate(items, test.cursor, test.scope, identifier, "/items", nil); !errors.Is(err, test.error) {
+			t.Fatalf("error = %v, want %v", err, test.error)
+		}
+	}
 }
 
-func getTestID(item testItem) string { return item.ID }
-
-func mustPaginate(
-	t *testing.T,
-	items []testItem,
-	cursor Cursor,
-	limit int,
-	query url.Values,
-) Result[testItem] {
-	t.Helper()
-	result, err := Paginate(items, cursor, limit, "item", getTestID, "/items", query)
-	if err != nil {
-		t.Fatalf("paginate: %v", err)
+func TestPaginateEmptyExactAndAdjacentPagesHaveExactNavigation(t *testing.T) {
+	identifier := func(item testItem) string { return item.id }
+	for _, test := range []struct {
+		name      string
+		items     []testItem
+		limit     int
+		wantItems int
+		wantNext  bool
+		wantPrev  bool
+	}{
+		{name: "empty", limit: 1},
+		{name: "exact page", items: []testItem{{"a"}, {"b"}}, limit: 2, wantItems: 2},
+		{
+			name:  "one beyond page",
+			items: []testItem{{"a"}, {"b"}, {"c"}},
+			limit: 2, wantItems: 2, wantNext: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			scope := Scope{Operation: "list", Limit: test.limit}
+			result, err := Paginate(test.items, nil, scope, identifier, "/items", nil)
+			if err != nil || len(result.Items) != test.wantItems || result.Total != len(test.items) ||
+				(result.NextCursor != "") != test.wantNext || (result.PrevCursor != "") != test.wantPrev {
+				t.Fatalf("result = %#v, err=%v", result, err)
+			}
+			if (result.LinkHeader != "") != (test.wantNext || test.wantPrev) {
+				t.Fatalf("Link = %q", result.LinkHeader)
+			}
+		})
 	}
-	return result
+}
+
+func TestPaginateCursorAtFirstAndLastItemHonorsEmptyPageBoundaries(t *testing.T) {
+	items := []testItem{{"a"}, {"b"}, {"c"}}
+	identifier := func(item testItem) string { return item.id }
+	scope := Scope{Operation: "list", Limit: 1}
+
+	first := NewCursor(scope, "next", "a")
+	afterFirst, err := Paginate(items, &first, scope, identifier, "/items", nil)
+	if err != nil || len(afterFirst.Items) != 1 || afterFirst.Items[0].id != "b" ||
+		afterFirst.NextCursor == "" || afterFirst.PrevCursor == "" {
+		t.Fatalf("after first = %#v, err=%v", afterFirst, err)
+	}
+
+	last := NewCursor(scope, "next", "c")
+	afterLast, err := Paginate(items, &last, scope, identifier, "/items", nil)
+	if err != nil || len(afterLast.Items) != 0 || afterLast.Total != len(items) ||
+		afterLast.NextCursor != "" || afterLast.PrevCursor != "" || afterLast.LinkHeader != "" {
+		t.Fatalf("after last = %#v, err=%v", afterLast, err)
+	}
+
+	hundred := make([]testItem, 101)
+	for index := range hundred {
+		hundred[index].id = string(rune(index + 1))
+	}
+	maximumScope := Scope{Operation: "list", Limit: 100}
+	maximumPage, err := Paginate(hundred, nil, maximumScope, identifier, "/items", nil)
+	if err != nil || len(maximumPage.Items) != 100 || maximumPage.NextCursor == "" {
+		t.Fatalf("maximum page = %#v, err=%v", maximumPage, err)
+	}
+
+	wideScope := Scope{Operation: "list", Limit: 2}
+	beforeSecond := NewCursor(wideScope, "prev", "b")
+	nearStart, err := Paginate(items, &beforeSecond, wideScope, identifier, "/items", nil)
+	if err != nil || !reflect.DeepEqual(nearStart.Items, items[:1]) || nearStart.PrevCursor != "" ||
+		nearStart.NextCursor == "" {
+		t.Fatalf("near-start previous page = %#v, err=%v", nearStart, err)
+	}
 }
 
 func FuzzPaginate(f *testing.F) {
-	f.Add(uint8(0), uint8(0), int16(-1))
-	f.Add(uint8(10), uint8(1), int16(-1))
-	f.Add(uint8(10), uint8(4), int16(-1))
-	f.Add(uint8(10), uint8(4), int16(2))
-	f.Add(uint8(5), uint8(17), int16(4))
-	f.Add(uint8(2), uint8(math.MaxUint8), int16(0))
-
-	f.Fuzz(func(t *testing.T, countInput, limitInput uint8, cursorPosition int16) {
-		count := int(countInput % 64)
-		limit := int(limitInput%18) - 1
-		if limitInput == math.MaxUint8 {
-			limit = math.MaxInt
+	f.Add(2, 0, false, false, false)
+	f.Add(2, 1, true, false, false)
+	f.Add(2, 1, true, true, false)
+	f.Add(2, 4, true, true, false)
+	f.Add(0, 0, false, false, false)
+	f.Add(101, 0, false, false, false)
+	f.Add(2, -1, true, false, false)
+	f.Add(2, 1, true, false, true)
+	f.Fuzz(func(t *testing.T, rawLimit, rawPosition int, useCursor, backwards, scopeMismatch bool) {
+		items := []testItem{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}}
+		limit, invalidLimit := fuzzLimit(rawLimit)
+		positionIndex, stalePosition := fuzzPosition(rawPosition, len(items))
+		scope := Scope{
+			Operation: "listItems", Owner: "owner", Repository: "repository", Filter: "all", Limit: limit,
 		}
-		items := makeItems(count)
-		query := url.Values{"category": {"tools"}, "cursor": {"stale"}}
-		cursor := Cursor{}
-		start := 0
-		if count > 0 && cursorPosition >= 0 {
-			index := int(cursorPosition) % count
-			cursor = NewCursor("item", items[index].ID, limit, query)
-			start = index + 1
+		query := url.Values{
+			"category": {"all"}, "tag": {"a", "b"}, "limit": {"999"}, "cursor": {"caller-owned"},
+		}
+		originalQuery := url.Values{
+			"category": {"all"}, "tag": {"a", "b"}, "limit": {"999"}, "cursor": {"caller-owned"},
 		}
 
-		result, err := Paginate(items, cursor, limit, "item", getTestID, "/items", query)
-		if limit <= 0 {
-			if !errors.Is(err, ErrInvalidLimit) {
-				t.Fatalf("non-positive limit %d error = %v, want %v", limit, err, ErrInvalidLimit)
+		var cursor *Cursor
+		if useCursor {
+			cursorScope := scope
+			if scopeMismatch {
+				cursorScope.Operation = "otherOperation"
+			}
+			direction := "next"
+			if backwards {
+				direction = "prev"
+			}
+			position := "missing"
+			if !stalePosition {
+				position = items[positionIndex].id
+			}
+			value := NewCursor(cursorScope, direction, position)
+			cursor = &value
+		}
+		result, err := Paginate(
+			items,
+			cursor,
+			scope,
+			func(item testItem) string { return item.id },
+			"/items",
+			query,
+		)
+		if !reflect.DeepEqual(query, originalQuery) {
+			t.Fatalf("caller query mutated: %#v, want %#v", query, originalQuery)
+		}
+
+		var wantErr error
+		switch {
+		case invalidLimit:
+			wantErr = ErrInvalidLimit
+		case cursor != nil && scopeMismatch:
+			wantErr = ErrCursorScopeMismatch
+		case cursor != nil && stalePosition:
+			wantErr = ErrCursorNotFound
+		}
+		if wantErr != nil {
+			if !errors.Is(err, wantErr) {
+				t.Fatalf("Paginate() error = %v, want %v", err, wantErr)
 			}
 			return
 		}
 		if err != nil {
-			t.Fatalf("paginate valid cursor: %v", err)
+			t.Fatalf("Paginate() unexpected error = %v", err)
 		}
 
-		end := start + min(limit, count-start)
-		if result.Total != count {
-			t.Fatalf("total = %d, want %d", result.Total, count)
-		}
-		if len(result.Items) != end-start {
-			t.Fatalf("page length = %d, want %d", len(result.Items), end-start)
-		}
-		for i, item := range result.Items {
-			if want := items[start+i]; item != want {
-				t.Fatalf("item %d = %#v, want %#v", i, item, want)
+		start := 0
+		end := min(len(items), limit)
+		if cursor != nil {
+			if cursor.Direction == "next" {
+				start = positionIndex + 1
+				end = min(len(items), start+limit)
+			} else {
+				end = positionIndex
+				start = max(0, end-limit)
 			}
+		}
+		if !reflect.DeepEqual(result.Items, items[start:end]) || result.Total != len(items) {
+			t.Fatalf("page = %#v total=%d, want %#v total=%d", result.Items, result.Total, items[start:end], len(items))
 		}
 
-		wantNext := end < count && end > start
-		if (result.NextCursor != "") != wantNext {
-			t.Fatalf("next cursor presence = %t, want %t", result.NextCursor != "", wantNext)
+		wantNext := ""
+		if len(result.Items) > 0 && end < len(items) {
+			wantNext = NewCursor(scope, "next", items[end-1].id).Encode()
 		}
-		if wantNext {
-			next, decodeErr := DecodeCursor(result.NextCursor)
-			if decodeErr != nil {
-				t.Fatalf("decode next cursor: %v", decodeErr)
-			}
-			if want := NewCursor("item", items[end-1].ID, limit, query); next != want {
-				t.Fatalf("next cursor = %#v, want %#v", next, want)
-			}
+		wantPrev := ""
+		if len(result.Items) > 0 && start > 0 {
+			wantPrev = NewCursor(scope, "prev", items[start].id).Encode()
 		}
-
-		wantPrev := start > 0
-		if (result.PrevCursor != "") != wantPrev {
-			t.Fatalf("previous cursor presence = %t, want %t", result.PrevCursor != "", wantPrev)
+		if result.NextCursor != wantNext || result.PrevCursor != wantPrev {
+			t.Fatalf("cursors = %q/%q, want %q/%q", result.NextCursor, result.PrevCursor, wantNext, wantPrev)
 		}
-		if wantPrev {
-			prev, decodeErr := DecodeCursor(result.PrevCursor)
-			if decodeErr != nil {
-				t.Fatalf("decode previous cursor: %v", decodeErr)
-			}
-			wantValue := ""
-			if start > limit {
-				wantValue = items[start-limit-1].ID
-			}
-			if want := NewCursor("item", wantValue, limit, query); prev != want {
-				t.Fatalf("previous cursor = %#v, want %#v", prev, want)
-			}
+		if wantNext != "" {
+			assertFuzzCursor(t, wantNext, NewCursor(scope, "next", items[end-1].id))
 		}
-
-		wantLinks := 0
-		if wantNext {
-			wantLinks++
+		if wantPrev != "" {
+			assertFuzzCursor(t, wantPrev, NewCursor(scope, "prev", items[start].id))
 		}
-		if wantPrev {
-			wantLinks++
-		}
-		if got := strings.Count(result.LinkHeader, "rel=\""); got != wantLinks {
-			t.Fatalf("link count = %d, want %d: %q", got, wantLinks, result.LinkHeader)
-		}
-		if wantLinks > 0 {
-			if !strings.Contains(result.LinkHeader, "category=tools") ||
-				!strings.Contains(result.LinkHeader, "limit="+strconv.Itoa(limit)) {
-				t.Fatalf("link did not preserve filters and limit: %q", result.LinkHeader)
-			}
-			if strings.Contains(result.LinkHeader, "cursor=stale") {
-				t.Fatalf("link retained stale cursor: %q", result.LinkHeader)
-			}
-		}
-		if got := query.Get("cursor"); got != "stale" {
-			t.Fatalf("input query cursor mutated to %q", got)
-		}
+		assertFuzzLinks(t, result.LinkHeader, scope, wantNext, wantPrev)
 	})
 }
 
-func TestPaginate_RejectsNonPositiveLimit(t *testing.T) {
-	for _, limit := range []int{-1, 0} {
-		t.Run(strconv.Itoa(limit), func(t *testing.T) {
-			_, err := Paginate(makeItems(3), Cursor{}, limit, "item", getTestID, "/items", nil)
-			if !errors.Is(err, ErrInvalidLimit) {
-				t.Fatalf("Paginate limit %d error = %v, want %v", limit, err, ErrInvalidLimit)
-			}
-		})
+func fuzzLimit(value int) (int, bool) {
+	if value >= -10 && value <= 0 || value >= 101 && value <= 110 {
+		return value, true
+	}
+	value %= 100
+	if value <= 0 {
+		value += 100
+	}
+	return value, false
+}
+
+func fuzzPosition(value, itemCount int) (int, bool) {
+	if value >= -3 && value < 0 || value >= itemCount && value <= itemCount+3 {
+		return value, true
+	}
+	value %= itemCount
+	if value < 0 {
+		value += itemCount
+	}
+	return value, false
+}
+
+func assertFuzzCursor(t *testing.T, encoded string, want Cursor) {
+	t.Helper()
+	decoded, err := DecodeCursor(encoded)
+	if err != nil || !reflect.DeepEqual(decoded, want) {
+		t.Fatalf("decoded cursor = %#v, %v, want %#v", decoded, err, want)
 	}
 }
 
-func TestPaginate_MaximumLimitAfterCursor(t *testing.T) {
-	items := makeItems(2)
-	result, err := Paginate(
-		items,
-		NewCursor("item", items[0].ID, math.MaxInt, nil),
-		math.MaxInt,
-		"item",
-		getTestID,
-		"/items",
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("Paginate maximum limit: %v", err)
+func assertFuzzLinks(t *testing.T, header string, scope Scope, nextCursor, prevCursor string) {
+	t.Helper()
+	expected := map[string]string{}
+	if nextCursor != "" {
+		expected["next"] = nextCursor
 	}
-	if len(result.Items) != 1 || result.Items[0] != items[1] {
-		t.Fatalf("items = %#v, want %#v", result.Items, items[1:])
+	if prevCursor != "" {
+		expected["prev"] = prevCursor
 	}
-	if result.NextCursor != "" {
-		t.Fatalf("next cursor = %q, want empty", result.NextCursor)
+	if len(expected) == 0 {
+		if header != "" {
+			t.Fatalf("Link = %q, want empty", header)
+		}
+		return
 	}
-}
-
-func TestPaginate_FirstPage(t *testing.T) {
-	items := makeItems(10)
-	result := mustPaginate(t, items, Cursor{}, 3, nil)
-	if len(result.Items) != 3 {
-		t.Fatalf("expected 3 items, got %d", len(result.Items))
+	parts := strings.Split(header, ", ")
+	if len(parts) != len(expected) {
+		t.Fatalf("Link parts = %#v, want %d", parts, len(expected))
 	}
-	if result.Total != 10 {
-		t.Fatalf("expected total 10, got %d", result.Total)
-	}
-	if result.NextCursor == "" {
-		t.Fatal("expected next cursor")
-	}
-	if result.PrevCursor != "" {
-		t.Fatalf("expected no prev cursor, got %q", result.PrevCursor)
-	}
-}
-
-func TestPaginate_SecondPage(t *testing.T) {
-	items := makeItems(10)
-	first := mustPaginate(t, items, Cursor{}, 3, nil)
-	cursor, err := DecodeCursor(first.NextCursor)
-	if err != nil {
-		t.Fatalf("decode cursor: %v", err)
-	}
-	second := mustPaginate(t, items, cursor, 3, nil)
-	if len(second.Items) != 3 {
-		t.Fatalf("expected 3 items, got %d", len(second.Items))
-	}
-	if second.Items[0].ID != "d" {
-		t.Fatalf("expected first item 'd', got %q", second.Items[0].ID)
-	}
-	if second.PrevCursor == "" {
-		t.Fatal("expected prev cursor on second page")
-	}
-}
-
-func TestPaginate_LastPage(t *testing.T) {
-	items := makeItems(5)
-	first := mustPaginate(t, items, Cursor{}, 3, nil)
-	cursor, err := DecodeCursor(first.NextCursor)
-	if err != nil {
-		t.Fatalf("decode cursor: %v", err)
-	}
-	second := mustPaginate(t, items, cursor, 3, nil)
-	if len(second.Items) != 2 {
-		t.Fatalf("expected 2 items on last page, got %d", len(second.Items))
-	}
-	if second.NextCursor != "" {
-		t.Fatalf("expected no next cursor on last page, got %q", second.NextCursor)
-	}
-}
-
-func TestPaginate_EmptyItems(t *testing.T) {
-	result := mustPaginate(t, []testItem{}, Cursor{}, 10, nil)
-	if len(result.Items) != 0 {
-		t.Fatalf("expected 0 items, got %d", len(result.Items))
-	}
-	if result.Total != 0 {
-		t.Fatalf("expected total 0, got %d", result.Total)
-	}
-}
-
-func TestPaginate_LimitExceedsItems(t *testing.T) {
-	items := makeItems(3)
-	result := mustPaginate(t, items, Cursor{}, 100, nil)
-	if len(result.Items) != 3 {
-		t.Fatalf("expected 3 items, got %d", len(result.Items))
-	}
-	if result.NextCursor != "" {
-		t.Fatalf("expected no next cursor, got %q", result.NextCursor)
-	}
-}
-
-func TestPaginate_PreservesQueryParams(t *testing.T) {
-	items := makeItems(10)
-	q := url.Values{"category": {"electronics"}}
-	result := mustPaginate(t, items, Cursor{}, 3, q)
-	if result.LinkHeader == "" {
-		t.Fatal("expected link header")
-	}
-	if !strings.Contains(result.LinkHeader, "category=electronics") {
-		t.Fatalf("expected category in link header, got %q", result.LinkHeader)
-	}
-}
-
-func TestPaginate_CursorNotFound(t *testing.T) {
-	items := makeItems(5)
-	cursor := NewCursor("item", "nonexistent", 3, nil)
-	_, err := Paginate(items, cursor, 3, "item", getTestID, "/items", nil)
-	if !errors.Is(err, ErrCursorNotFound) {
-		t.Fatalf("expected ErrCursorNotFound, got %v", err)
-	}
-}
-
-func TestPaginate_RejectsCursorScopeChanges(t *testing.T) {
-	items := makeItems(5)
-	cursor := NewCursor("item", items[0].ID, 2, url.Values{"category": {"tools"}})
-
-	tests := []struct {
-		name  string
-		limit int
-		query url.Values
-	}{
-		{name: "limit", limit: 3, query: url.Values{"category": {"tools"}}},
-		{name: "filter", limit: 2, query: url.Values{"category": {"electronics"}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := Paginate(items, cursor, tt.limit, "item", getTestID, "/items", tt.query)
-			if !errors.Is(err, ErrCursorScopeMismatch) {
-				t.Fatalf("Paginate() error = %v, want %v", err, ErrCursorScopeMismatch)
-			}
-		})
-	}
-}
-
-func TestPaginate_PrevCursorSecondPage(t *testing.T) {
-	items := makeItems(10)
-	first := mustPaginate(t, items, Cursor{}, 3, nil)
-	cursor, err := DecodeCursor(first.NextCursor)
-	if err != nil {
-		t.Fatalf("decode cursor: %v", err)
-	}
-	second := mustPaginate(t, items, cursor, 3, nil)
-	if second.PrevCursor == "" {
-		t.Fatal("expected prev cursor on second page")
-	}
-	prev, err := DecodeCursor(second.PrevCursor)
-	if err != nil {
-		t.Fatalf("decode prev cursor: %v", err)
-	}
-	if prev.Value != "" {
-		t.Fatalf("expected empty prev cursor value for first page, got %q", prev.Value)
-	}
-}
-
-func TestPaginate_PrevCursorThirdPage(t *testing.T) {
-	items := makeItems(10)
-	first := mustPaginate(t, items, Cursor{}, 3, nil)
-	c1, err := DecodeCursor(first.NextCursor)
-	if err != nil {
-		t.Fatalf("decode cursor: %v", err)
-	}
-	second := mustPaginate(t, items, c1, 3, nil)
-	c2, err := DecodeCursor(second.NextCursor)
-	if err != nil {
-		t.Fatalf("decode cursor: %v", err)
-	}
-	third := mustPaginate(t, items, c2, 3, nil)
-	if third.PrevCursor == "" {
-		t.Fatal("expected prev cursor on third page")
-	}
-	prev, err := DecodeCursor(third.PrevCursor)
-	if err != nil {
-		t.Fatalf("decode prev cursor: %v", err)
-	}
-	if prev.Value != "c" {
-		t.Fatalf("expected prev cursor to point to %q, got %q", "c", prev.Value)
+	seen := make(map[string]bool, len(parts))
+	for _, part := range parts {
+		closeIndex := strings.Index(part, ">; rel=\"")
+		if len(part) < 3 || part[0] != '<' || closeIndex < 2 || part[len(part)-1] != '"' {
+			t.Fatalf("malformed Link value %q", part)
+		}
+		relation := part[closeIndex+8 : len(part)-1]
+		cursor, ok := expected[relation]
+		if !ok || seen[relation] {
+			t.Fatalf("unexpected or repeated Link relation %q in %q", relation, part)
+		}
+		seen[relation] = true
+		target, err := url.Parse(part[1:closeIndex])
+		if err != nil || target.Scheme != "" || target.Host != "" || target.User != nil ||
+			target.Path != "/items" || target.Fragment != "" {
+			t.Fatalf("Link target = %#v, %v", target, err)
+		}
+		wantQuery := url.Values{
+			"category": {scope.Filter},
+			"tag":      {"a", "b"},
+			"limit":    {strconv.Itoa(scope.Limit)},
+			"cursor":   {cursor},
+		}
+		if query := target.Query(); !reflect.DeepEqual(query, wantQuery) {
+			t.Fatalf("Link query = %#v, want %#v", query, wantQuery)
+		}
 	}
 }

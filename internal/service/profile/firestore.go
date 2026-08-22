@@ -12,25 +12,15 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/janisto/echo-playground/internal/platform/audit"
+	"github.com/janisto/echo-playground/internal/platform/validate"
 )
 
 const profilesCollection = "profiles"
 
+var maximumTimestamp = time.Date(9999, 12, 31, 23, 59, 59, 999_000_000, time.UTC)
+
 func profileDocumentID(userID string) string {
 	return "uid_" + base64.RawURLEncoding.EncodeToString([]byte(userID))
-}
-
-func categorizeError(err error) string {
-	switch {
-	case errors.Is(err, ErrAlreadyExists):
-		return "already_exists"
-	case errors.Is(err, ErrNotFound):
-		return "not_found"
-	case errors.Is(err, ErrUnavailable):
-		return "unavailable"
-	default:
-		return "internal_error"
-	}
 }
 
 func classifyDependencyError(err error) error {
@@ -48,179 +38,152 @@ func classifyDependencyError(err error) error {
 	}
 }
 
-// firestoreProfile maps to Firestore document structure.
 type firestoreProfile struct {
-	Firstname   string    `firestore:"firstname"`
-	Lastname    string    `firestore:"lastname"`
-	Email       string    `firestore:"email"`
-	PhoneNumber string    `firestore:"phone_number"`
-	Marketing   bool      `firestore:"marketing"`
-	CreatedAt   time.Time `firestore:"created_at"`
-	UpdatedAt   time.Time `firestore:"updated_at"`
+	FirstName      string    `firestore:"first_name"`
+	LastName       string    `firestore:"last_name"`
+	ContactEmail   string    `firestore:"contact_email"`
+	PhoneNumber    string    `firestore:"phone_number"`
+	MarketingOptIn bool      `firestore:"marketing_opt_in"`
+	TermsAccepted  bool      `firestore:"terms_accepted"`
+	CreatedAt      time.Time `firestore:"created_at"`
+	UpdatedAt      time.Time `firestore:"updated_at"`
 }
 
 func newFirestoreProfile(params CreateParams, now time.Time) firestoreProfile {
 	return firestoreProfile{
-		Firstname:   params.Firstname,
-		Lastname:    params.Lastname,
-		Email:       params.Email,
-		PhoneNumber: params.PhoneNumber,
-		Marketing:   params.Marketing,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		FirstName:      params.FirstName,
+		LastName:       params.LastName,
+		ContactEmail:   params.ContactEmail,
+		PhoneNumber:    params.PhoneNumber,
+		MarketingOptIn: params.MarketingOptIn,
+		TermsAccepted:  params.TermsAccepted,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 }
 
-func (p firestoreProfile) toProfile(userID string) *Profile {
+func (profile firestoreProfile) toProfile(userID string) *Profile {
 	return &Profile{
-		ID:          userID,
-		Firstname:   p.Firstname,
-		Lastname:    p.Lastname,
-		Email:       p.Email,
-		PhoneNumber: p.PhoneNumber,
-		Marketing:   p.Marketing,
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   p.UpdatedAt,
+		ID:             userID,
+		FirstName:      profile.FirstName,
+		LastName:       profile.LastName,
+		ContactEmail:   profile.ContactEmail,
+		PhoneNumber:    profile.PhoneNumber,
+		MarketingOptIn: profile.MarketingOptIn,
+		TermsAccepted:  profile.TermsAccepted,
+		CreatedAt:      profile.CreatedAt,
+		UpdatedAt:      profile.UpdatedAt,
 	}
 }
 
-// FirestoreStore implements Service using Firestore with transactions.
+func (profile firestoreProfile) valid() bool {
+	return validate.BoundedName(profile.FirstName) && validate.BoundedName(profile.LastName) &&
+		validate.ContactEmail(
+			profile.ContactEmail,
+		) && validate.NormalizeContactEmail(profile.ContactEmail) == profile.ContactEmail &&
+		validate.PhoneNumber(
+			profile.PhoneNumber,
+		) && validate.StripASCIIWhitespace(profile.PhoneNumber) == profile.PhoneNumber &&
+		profile.TermsAccepted && !profile.CreatedAt.IsZero() && profile.CreatedAt.Year() >= 0 && profile.CreatedAt.Year() <= 9999 &&
+		profile.CreatedAt.Equal(profile.CreatedAt.UTC().Truncate(time.Millisecond)) &&
+		profile.UpdatedAt.Equal(profile.UpdatedAt.UTC().Truncate(time.Millisecond)) &&
+		!profile.UpdatedAt.Before(profile.CreatedAt) && !profile.UpdatedAt.After(maximumTimestamp)
+}
+
 type FirestoreStore struct {
 	client *firestore.Client
+	clock  func() time.Time
 }
 
-// NewFirestoreStore creates a new Firestore-backed store.
 func NewFirestoreStore(client *firestore.Client) *FirestoreStore {
-	return &FirestoreStore{client: client}
+	return &FirestoreStore{client: client, clock: time.Now}
 }
 
-// Create atomically creates a profile if it does not already exist.
-func (s *FirestoreStore) Create(ctx context.Context, userID string, params CreateParams) (*Profile, error) {
-	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
-	now := time.Now().UTC()
-	fp := newFirestoreProfile(params, now)
-	_, err := docRef.Create(ctx, fp)
+func (store *FirestoreStore) Create(ctx context.Context, userID string, params CreateParams) (*Profile, error) {
+	now, err := normalizeProfileClock(store.clock())
+	if err != nil {
+		audit.LogEvent(ctx, "create", "profile", "failure", map[string]any{"error": safeErrorCategory(err)})
+		return nil, err
+	}
+	document := store.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
+	stored := newFirestoreProfile(params, now)
+	_, err = document.Create(ctx, stored)
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
-			err = ErrAlreadyExists
-		} else {
-			err = classifyDependencyError(err)
+			audit.LogEvent(ctx, "create", "profile", "failure", map[string]any{"error": "already_exists"})
+			return nil, ErrAlreadyExists
 		}
-		audit.LogEvent(ctx, "create", userID, "profile", userID, "failure",
-			map[string]any{"error": categorizeError(err)})
-		if errors.Is(err, ErrAlreadyExists) {
-			return nil, err
-		}
+		err = classifyDependencyError(err)
+		audit.LogEvent(ctx, "create", "profile", "failure", map[string]any{"error": safeErrorCategory(err)})
 		return nil, fmt.Errorf("create profile: %w", err)
 	}
-
-	audit.LogEvent(ctx, "create", userID, "profile", userID, "success", nil)
-
-	return fp.toProfile(userID), nil
+	audit.LogEvent(ctx, "create", "profile", "success", nil)
+	return stored.toProfile(userID), nil
 }
 
-// Get retrieves a profile by user ID.
-func (s *FirestoreStore) Get(ctx context.Context, userID string) (*Profile, error) {
-	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
-	doc, err := docRef.Get(ctx)
+func (store *FirestoreStore) Get(ctx context.Context, userID string) (*Profile, error) {
+	document, err := store.client.Collection(profilesCollection).Doc(profileDocumentID(userID)).Get(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get profile: %w", classifyDependencyError(err))
 	}
-
-	var fp firestoreProfile
-	if err := doc.DataTo(&fp); err != nil {
+	stored, err := decodeStoredProfile(document)
+	if err != nil {
 		return nil, fmt.Errorf("decode profile: %w", err)
 	}
-
-	return fp.toProfile(userID), nil
+	return stored.toProfile(userID), nil
 }
 
-// Update updates a profile using a transaction for atomicity.
-func (s *FirestoreStore) Update(ctx context.Context, userID string, params UpdateParams) (*Profile, error) {
-	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
-
+func (store *FirestoreStore) Update(ctx context.Context, userID string, params UpdateParams) (*Profile, error) {
+	document := store.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
+	now := store.clock()
 	var result *Profile
-
-	err := s.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		doc, err := tx.Get(docRef)
+	err := store.client.RunTransaction(ctx, func(ctx context.Context, transaction *firestore.Transaction) error {
+		snapshot, err := transaction.Get(document)
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
 				return ErrNotFound
 			}
 			return err
 		}
-
-		var fp firestoreProfile
-		if err := doc.DataTo(&fp); err != nil {
+		stored, err := decodeStoredProfile(snapshot)
+		if err != nil {
 			return err
 		}
-
-		if params.Firstname != nil {
-			fp.Firstname = *params.Firstname
+		changed := applyUpdate(&stored, params)
+		if !changed {
+			result = stored.toProfile(userID)
+			return nil
 		}
-		if params.Lastname != nil {
-			fp.Lastname = *params.Lastname
-		}
-		if params.Email != nil {
-			fp.Email = *params.Email
-		}
-		if params.PhoneNumber != nil {
-			fp.PhoneNumber = *params.PhoneNumber
-		}
-		if params.Marketing != nil {
-			fp.Marketing = *params.Marketing
-		}
-		fp.UpdatedAt = time.Now().UTC()
-
-		if err := tx.Update(docRef, profileUpdates(params, fp.UpdatedAt)); err != nil {
+		updatedAt, err := nextUpdatedAt(stored.UpdatedAt, now)
+		if err != nil {
 			return err
 		}
-
-		result = fp.toProfile(userID)
+		stored.UpdatedAt = updatedAt
+		if err := transaction.Set(document, stored); err != nil {
+			return err
+		}
+		result = stored.toProfile(userID)
 		return nil
 	})
 	if err != nil {
 		err = classifyDependencyError(err)
-		audit.LogEvent(ctx, "update", userID, "profile", userID, "failure",
-			map[string]any{"error": categorizeError(err)})
-		if errors.Is(err, ErrNotFound) {
+		audit.LogEvent(ctx, "update", "profile", "failure", map[string]any{"error": safeErrorCategory(err)})
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalidStoredData) ||
+			errors.Is(err, ErrTimestampExhausted) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("update profile: %w", err)
 	}
-
-	audit.LogEvent(ctx, "update", userID, "profile", userID, "success", nil)
-
+	audit.LogEvent(ctx, "update", "profile", "success", nil)
 	return result, nil
 }
 
-func profileUpdates(params UpdateParams, updatedAt time.Time) []firestore.Update {
-	updates := make([]firestore.Update, 0, 6)
-	if params.Firstname != nil {
-		updates = append(updates, firestore.Update{Path: "firstname", Value: *params.Firstname})
-	}
-	if params.Lastname != nil {
-		updates = append(updates, firestore.Update{Path: "lastname", Value: *params.Lastname})
-	}
-	if params.Email != nil {
-		updates = append(updates, firestore.Update{Path: "email", Value: *params.Email})
-	}
-	if params.PhoneNumber != nil {
-		updates = append(updates, firestore.Update{Path: "phone_number", Value: *params.PhoneNumber})
-	}
-	if params.Marketing != nil {
-		updates = append(updates, firestore.Update{Path: "marketing", Value: *params.Marketing})
-	}
-	return append(updates, firestore.Update{Path: "updated_at", Value: updatedAt})
-}
-
-// Delete atomically removes an existing profile.
-func (s *FirestoreStore) Delete(ctx context.Context, userID string) error {
-	docRef := s.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
-	_, err := docRef.Delete(ctx, firestore.Exists)
+func (store *FirestoreStore) Delete(ctx context.Context, userID string) error {
+	document := store.client.Collection(profilesCollection).Doc(profileDocumentID(userID))
+	_, err := document.Delete(ctx, firestore.Exists)
 	if err != nil {
 		switch status.Code(err) {
 		case codes.FailedPrecondition, codes.NotFound:
@@ -228,17 +191,90 @@ func (s *FirestoreStore) Delete(ctx context.Context, userID string) error {
 		default:
 			err = classifyDependencyError(err)
 		}
-		audit.LogEvent(ctx, "delete", userID, "profile", userID, "failure",
-			map[string]any{"error": categorizeError(err)})
+		audit.LogEvent(ctx, "delete", "profile", "failure", map[string]any{"error": safeErrorCategory(err)})
 		if errors.Is(err, ErrNotFound) {
 			return err
 		}
 		return fmt.Errorf("delete profile: %w", err)
 	}
-
-	audit.LogEvent(ctx, "delete", userID, "profile", userID, "success", nil)
-
+	audit.LogEvent(ctx, "delete", "profile", "success", nil)
 	return nil
+}
+
+func decodeStoredProfile(snapshot *firestore.DocumentSnapshot) (firestoreProfile, error) {
+	data := snapshot.Data()
+	expected := map[string]struct{}{
+		"first_name": {}, "last_name": {}, "contact_email": {}, "phone_number": {},
+		"marketing_opt_in": {}, "terms_accepted": {}, "created_at": {}, "updated_at": {},
+	}
+	if len(data) != len(expected) {
+		return firestoreProfile{}, ErrInvalidStoredData
+	}
+	for field := range data {
+		if _, ok := expected[field]; !ok {
+			return firestoreProfile{}, ErrInvalidStoredData
+		}
+	}
+	var stored firestoreProfile
+	if err := snapshot.DataTo(&stored); err != nil || !stored.valid() {
+		return firestoreProfile{}, ErrInvalidStoredData
+	}
+	return stored, nil
+}
+
+func applyUpdate(stored *firestoreProfile, params UpdateParams) bool {
+	changed := false
+	if params.FirstName != nil && stored.FirstName != *params.FirstName {
+		stored.FirstName, changed = *params.FirstName, true
+	}
+	if params.LastName != nil && stored.LastName != *params.LastName {
+		stored.LastName, changed = *params.LastName, true
+	}
+	if params.ContactEmail != nil && stored.ContactEmail != *params.ContactEmail {
+		stored.ContactEmail, changed = *params.ContactEmail, true
+	}
+	if params.PhoneNumber != nil && stored.PhoneNumber != *params.PhoneNumber {
+		stored.PhoneNumber, changed = *params.PhoneNumber, true
+	}
+	if params.MarketingOptIn != nil && stored.MarketingOptIn != *params.MarketingOptIn {
+		stored.MarketingOptIn, changed = *params.MarketingOptIn, true
+	}
+	return changed
+}
+
+func nextUpdatedAt(previous, now time.Time) (time.Time, error) {
+	now, err := normalizeProfileClock(now)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if now.After(previous) {
+		return now, nil
+	}
+	if previous.Equal(maximumTimestamp) {
+		return time.Time{}, ErrTimestampExhausted
+	}
+	return previous.Add(time.Millisecond), nil
+}
+
+func normalizeProfileClock(now time.Time) (time.Time, error) {
+	normalized := now.UTC().Truncate(time.Millisecond)
+	if normalized.Year() < 0 || normalized.After(maximumTimestamp) {
+		return time.Time{}, ErrTimestampExhausted
+	}
+	return normalized, nil
+}
+
+func safeErrorCategory(err error) string {
+	switch {
+	case errors.Is(err, ErrAlreadyExists):
+		return "already_exists"
+	case errors.Is(err, ErrNotFound):
+		return "not_found"
+	case errors.Is(err, ErrUnavailable):
+		return "unavailable"
+	default:
+		return "internal_error"
+	}
 }
 
 var _ Service = (*FirestoreStore)(nil)

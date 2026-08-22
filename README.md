@@ -2,11 +2,11 @@
 
 [![Application CI](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-ci.yml?branch=main&label=application%20CI&logo=githubactions&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-ci.yml)
 [![Code quality](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-lint.yml?branch=main&label=code%20quality&logo=go&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-lint.yml)
-[![Go 1.26.5](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Go 1.26.7](https://img.shields.io/badge/Go-1.26.7-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![MIT license](https://img.shields.io/github/license/janisto/echo-playground)](LICENSE)
 
 A compact, high-quality REST API example built with [Echo 5.3](https://github.com/labstack/echo/tree/v5) and Go 1.26.
-It demonstrates HTTP contracts, structured observability, Firebase Authentication, Firestore CRUD, OpenAPI 3.1,
+It demonstrates HTTP contracts, structured observability, Firebase Authentication, Firestore CRUD, OpenAPI 3.1.2,
 and production-shaped verification without pretending to be a complete production platform.
 
 <img src="assets/gopher.svg" alt="Go Gopher mascot illustration" width="400">
@@ -15,32 +15,35 @@ and production-shaped verification without pretending to be a complete productio
 
 ## Features
 
-- Echo 5.3 with strict single-object JSON decoding, bounded request bodies, request deadlines, server timeouts, panic recovery, CORS, and security headers
+- Echo 5.3 with strict single-object JSON and CBOR decoding, exact decimal body limits, request deadlines, server timeouts, panic recovery, opt-in CORS, and security headers
 - Request-scoped Zap logging and W3C trace correlation through
   [echo-observability v2](https://pkg.go.dev/github.com/janisto/echo-observability/v2), without raw paths, peer IPs,
   user agents, or returned error text in access logs
-- RFC 9457 Problem Details with JSON and CBOR response negotiation
-- Cursor pagination with RFC 8288 `Link` headers
+- RFC 9457 Problem Details as `application/problem+json` or the equivalent ordinary `application/cbor` representation
+- Scoped cursor pagination with RFC 8288 `Link` headers
 - Firebase ID-token validation with revocation checks and explicit dependency-failure handling
-- Firestore CRUD with atomic create, field-specific transactional PATCH, existence-preconditioned delete, transient
-  dependency classification, and audit events
-- Generated and embedded OpenAPI 3.1 JSON with an exact seven-operation semantic contract, matched YAML, and SRI-pinned Swagger UI
+- Firestore CRUD with atomic create, transactional PATCH, existence-preconditioned delete, monotonic millisecond
+  timestamps, explicit legacy-data migration tooling, transient dependency classification, and audit events
+- Six anonymous, fixed-origin GitHub REST projections with strict public-only models, manual redirect and `Link` validation,
+  bounded response bodies, one overall deadline, and no ambient credential use
+- Generated and embedded OpenAPI 3.1.2 JSON with all fourteen portable operations, matched YAML, and SRI-pinned Swagger UI
 - A separate minimal Google Functions Framework example
 - Required CI checks for both Go modules, emulators, race detection, vulnerabilities, generated artifacts, and the final image
 
 ## HTTP contract
 
-JSON is the only supported request-body format. Successful and error responses use JSON by default and CBOR when
-the `Accept` header prefers `application/cbor`.
+The three body-bearing operations (`POST /v1/hello`, `POST /v1/profile`, and `PATCH /v1/profile`) accept exactly one
+closed JSON or CBOR document. JSON also accepts the `charset=utf-8` parameter; CBOR accepts no media-type parameters.
+Successful and error responses use JSON by default and CBOR when the `Accept` header prefers `application/cbor`.
 Negotiation follows RFC 9110 specificity and quality rules, so an explicit `q=0` exclusion overrides a broader
 range when another supported representation remains. A request with no acceptable success representation returns 406;
 when the client also rejects both Problem Details formats, the 406 explanation uses JSON as a final diagnostic fallback.
 Echo 5.3 automatically serves bodyless HEAD responses through the corresponding GET route.
 
-Errors use:
+Errors use either:
 
 - `application/problem+json`
-- `application/problem+cbor`
+- `application/cbor` with the same Problem Details members
 
 Malformed input returns 400. Valid input that fails field or PATCH semantics returns 422. The `/health`
 endpoint is dependency-free liveness; it does not claim Firebase readiness. Query contracts are closed and reject
@@ -56,10 +59,17 @@ repeated scalar parameters instead of choosing an arbitrary value.
 | GET | `/v1/profile` | Read authenticated profile |
 | PATCH | `/v1/profile` | Update at least one supplied field |
 | DELETE | `/v1/profile` | Delete authenticated profile, 204 |
+| GET | `/v1/github/owners/{owner}` | Public GitHub owner projection |
+| GET | `/v1/github/owners/{owner}/repos` | Cursor-paginated public repositories |
+| GET | `/v1/github/repos/{owner}/{repo}` | Public repository projection |
+| GET | `/v1/github/repos/{owner}/{repo}/activity` | Cursor-paginated repository activity |
+| GET | `/v1/github/repos/{owner}/{repo}/languages` | Deterministically ordered language totals |
+| GET | `/v1/github/repos/{owner}/{repo}/tags` | Cursor-paginated public tags |
+| GET | `/openapi.json` | Runtime OpenAPI 3.1.2 discovery document |
 
 ## Requirements
 
-- Go 1.26.5+
+- Go 1.26.7+
 - [Just](https://github.com/casey/just)
 - [golangci-lint](https://golangci-lint.run/) v2
 - [Firebase CLI](https://firebase.google.com/docs/cli) for Auth and Firestore emulators
@@ -84,7 +94,7 @@ Open:
 
 - http://localhost:8080/health
 - http://localhost:8080/api-docs
-- http://localhost:8080/api-docs/openapi.json
+- http://localhost:8080/openapi.json
 
 The default `FIREBASE_MODE=offline` keeps public health, docs, hello, and items routes available while protected routes
 return 503. Use explicit `emulator` mode for local Auth and Firestore, or `live` mode with a real project and ADC.
@@ -103,16 +113,19 @@ deployed misconfiguration cannot accept unsigned emulator tokens or silently fal
 | `APP_ENVIRONMENT` | `development` | `development`, `staging`, or `production` |
 | `FIREBASE_MODE` | `offline` | `offline`, `emulator`, or `live` |
 | `FIREBASE_PROJECT_ID` | `demo-test-project` outside live mode | Firebase project |
+| `CORS_ALLOWED_ORIGINS` | empty | Comma-separated absolute HTTP(S) origins; empty disables CORS |
 | `GOOGLE_APPLICATION_CREDENTIALS` | ADC | Optional service-account file |
 
-CORS intentionally permits all origins for this public playground API, does not permit credentialed browser requests,
-and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origins before adapting the example to a private API.
+CORS is disabled unless `CORS_ALLOWED_ORIGINS` contains an explicit allowlist. Origins must use browser-serialized
+form: lowercase schemes and hostnames, canonical IP spelling, and no explicit default port. Wildcards, user information,
+paths, queries, and fragments are rejected. Enabled CORS permits and exposes `X-Request-ID` and permits the W3C
+`Traceparent` and `Tracestate` request fields; browser credentials remain disabled.
 
 ## Development commands
 
 | Command | Scope |
 |---|---|
-| `just check` | Format-check, lint, build, and test both modules |
+| `just check` | OpenAPI drift, format, lint, build, and test checks for both modules |
 | `just build`, `just test`, `just lint` | Run the named check for both modules |
 | `just coverage` | Test both modules and generate separate coverage reports |
 | `just test-race`, `just vuln` | Race-test or vulnerability-scan both modules |
@@ -125,7 +138,9 @@ and permits the paired W3C `Traceparent` and `Tracestate` headers. Narrow origin
 | `just update` | Update root dependencies, root Go tools, and the function module |
 | `just functions-update` | Update only the function module |
 | `just functions-run 8081` | Run target `Hello` through the official Functions Framework |
-| `just docs` | Generate, normalize, and embed-review OpenAPI artifacts |
+| `just docs` | Generate deterministic OpenAPI JSON and YAML artifacts |
+| `just openapi-check` | Verify the generated semantic contract and runtime discovery without rewriting artifacts |
+| `just contract-smoke [base_url] [github_live]` | Probe an already-running server over real HTTP; live GitHub calls are explicit and off by default |
 | `just emulators` | Start Auth and Firestore emulators |
 | `just test-integration-ci` | Require emulators and generate separate integration coverage |
 | `just workflow-check`, `just workflow-security-check` | Run local actionlint or zizmor against GitHub Actions |
@@ -174,6 +189,7 @@ Go's native fuzzing engine targets the input spaces where examples alone are lea
 | `FuzzPaginate` | `./internal/platform/pagination` | Page bounds, item order, next/previous cursors, filters, and caller-owned query values stay consistent |
 | `FuzzSelectFormat` | `./internal/platform/respond` | Media-type selection is invariant to token casing and surrounding whitespace |
 | `FuzzSelectFormatQuality` | `./internal/platform/respond` | Exact JSON/CBOR quality ordering, ties, exclusions, and header order select the documented format |
+| `FuzzProviderLinkParsing` | `./internal/service/github` | Accepted Link values have nonempty targets and relations, with registered relation tokens normalized to lowercase |
 | `FuzzTimeUnmarshalCBOR` | `./internal/platform/timeutil` | Accepted CBOR timestamps canonicalize to the same millisecond on encode/decode |
 | `FuzzTimeCBORRoundTrip` | `./internal/platform/timeutil` | Canonically encoded timestamps always decode to the same millisecond |
 | `FuzzHelloHandler` | `./functions` | GET/POST precedence, Unicode rune counting, and the 100-rune boundary remain exact |
@@ -228,6 +244,56 @@ build contract.
 
 Run the same registry and target path locally with `just functions-run 8081`.
 
+## Profile persistence migration
+
+The accepted profile schema is a breaking persisted-data cutover. Runtime reads fail closed on the known legacy field
+shape; they do not invent `termsAccepted` or silently rewrite records. `cmd/profile-migrate` is an audit-first, one-time
+tool for operators who have separately established terms-acceptance evidence for each legacy document.
+
+The mandatory `--mode` flag makes the target explicit. `--mode live` rejects `demo-*` project IDs and any ambient
+`FIRESTORE_EMULATOR_HOST`; `--mode emulator` requires both a `demo-*` project ID and a strict `host:port`
+`FIRESTORE_EMULATOR_HOST`. This prevents an operator shell from silently redirecting an audit or apply run.
+
+1. Create and verify a Firestore export or equivalent rollback snapshot, record its immutable reference, and pause
+   profile mutations for the apply window.
+2. Copy `docs/profile-migration-manifest.example.json` outside version control and replace each placeholder with the
+   exact Firestore document ID and an approved evidence reference. Do not put profile values or credentials in it.
+3. Run the default audit and retain its fingerprint-only output:
+
+   ```bash
+   go run ./cmd/profile-migrate \
+     --project EXACT_PROJECT_ID \
+     --mode live \
+     --manifest /secure/path/profile-migration-manifest.json
+   ```
+
+4. Resolve every `blocked` result. Applying requires a second exact project confirmation, the immutable reference of
+   the verified backup or rollback snapshot, and an explicit confirmation that profile writes are quiesced:
+
+   ```bash
+   go run ./cmd/profile-migrate \
+     --project EXACT_PROJECT_ID \
+     --mode live \
+     --manifest /secure/path/profile-migration-manifest.json \
+     --apply \
+     --confirm-project EXACT_PROJECT_ID \
+     --confirm-rollback-reference IMMUTABLE_BACKUP_REFERENCE \
+     --confirm-profile-writes-quiesced
+   ```
+
+5. Re-run audit, verify application reads, and retain the manifest, command output, source revision, project, backup
+   reference, and operator change record together. If application verification fails, stop writes and restore the
+   verified snapshot according to the provider runbook.
+
+The apply flags make all three operator prerequisites explicit before the tool creates a Firestore client; they do not
+independently verify the provider snapshot or enforce the external write freeze. The tool preflights the entire
+collection and changes nothing when that scan contains a blocked record. It then
+re-reads each document in a transaction before replacing only an exact known legacy shape. Firestore cannot make an
+unbounded collection migration one global transaction; an infrastructure failure can therefore leave an auditable
+prefix applied. The required snapshot and quiesced apply window are the rollback boundary. This repository never runs
+the migration automatically. A fingerprint-report write failure makes the command fail rather than claiming success
+with missing or truncated operator evidence.
+
 ## Firebase emulators
 
 ```bash
@@ -251,10 +317,19 @@ from being exposed accidentally to clients.
 
 ## OpenAPI and Swagger UI
 
-`just docs` runs swag, applies deterministic OpenAPI corrections that swag v2 RC cannot currently express, and
-writes equivalent JSON and YAML. Semantic tests enforce the exact path, method, operation ID, status, security, request
-media, response media, and required-header matrix. CI regenerates the artifacts and rejects any diff. The service embeds
-`api-docs/swagger.json`, so documentation does not depend on its runtime working directory.
+`just docs` runs the repository's native Swag v2 registration generator and then `cmd/openapi`, the deterministic
+OpenAPI 3.1.2 normalizer for Draft 2020-12 details that annotations cannot express. The normalizer refuses missing or
+extra operations, operation-ID drift, status drift, parameter drift, request-body drift, and security drift in the
+native output before writing deterministic JSON and semantically equivalent YAML. Semantic tests independently enforce
+the exact schemas, media, headers, and runtime agreement. `just openapi-check` regenerates into a temporary directory
+and is the non-mutating drift gate. The service embeds `api-docs/swagger.json` and serves those exact bytes at
+`/openapi.json`, so runtime discovery does not depend on a working directory, Firebase, Firestore, DNS, or GitHub.
+
+The cutover is generated-client breaking: discovery moved to `/openapi.json`; six GitHub operations were added; profile
+fields and lifecycle semantics changed; item money and pagination schemas changed; CBOR request bodies were added for
+the three GCP write operations; and Problem Details CBOR uses `application/cbor`, not the nonstandard
+`application/problem+cbor`. Regenerate clients from the accepted artifact and remove old aliases rather than carrying
+compatibility shims.
 
 Swagger UI uses exact version 5.32.11 assets with SHA-384 integrity metadata. A docs-specific CSP permits scripts and
 styles from `unpkg.com`; SRI pins the selected external bytes, while the initialization script is embedded and same-origin.
@@ -264,13 +339,14 @@ styles from `unpkg.com`; SRI pins the selected external bytes, while the initial
 ```text
 .agents/skills/         Six portable project workflows with Codex UI metadata
 .github/agents/        Evidence-based security review profile for GitHub Copilot
-api-docs/              Generated OpenAPI plus embedded spec
-cmd/openapi/           Deterministic generated-spec normalization
+api-docs/              Generated OpenAPI plus embedded runtime document
+cmd/openapi/           Deterministic OpenAPI 3.1.2 normalizer and semantic tests
+cmd/profile-migrate/   Audit-first one-time profile data cutover
 cmd/server/            Process lifecycle, typed config, and application composition
 functions/             Independent Functions Framework Go module
-internal/http/         Health, docs, and versioned Echo handlers
+internal/http/         Health, docs, GitHub, and other versioned Echo handlers
 internal/platform/     Auth, middleware, pagination, responses, validation
-internal/service/      Firestore profile implementation and service contracts
+internal/service/      Fixed-origin GitHub client and Firestore profile persistence
 internal/testutil/     Echo, reusable test fakes, and Firebase emulator support
 ```
 

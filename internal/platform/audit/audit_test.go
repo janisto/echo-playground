@@ -19,7 +19,7 @@ func TestLogEventUsesRequestLogger(t *testing.T) {
 	e := echo.New()
 	e.Use(obs.RequestContext(obs.RequestContextConfig{Logger: logger}))
 	e.POST("/audit", func(c *echo.Context) error {
-		LogEvent(c.Request().Context(), "create", "user-1", "profile", "profile-1", "success",
+		LogEvent(c.Request().Context(), "create", "profile", "success",
 			map[string]any{"field": "value"})
 		return c.NoContent(http.StatusNoContent)
 	})
@@ -36,10 +36,14 @@ func TestLogEventUsesRequestLogger(t *testing.T) {
 	fields := entries[0].ContextMap()
 	assertAuditLogField(t, fields, "request_id", "audit-req")
 	assertAuditLogField(t, fields, "audit.action", "create")
-	assertAuditLogField(t, fields, "audit.user_id", "user-1")
 	assertAuditLogField(t, fields, "audit.resource_type", "profile")
-	assertAuditLogField(t, fields, "audit.resource_id", "profile-1")
 	assertAuditLogField(t, fields, "audit.result", "success")
+	if _, present := fields["audit.user_id"]; present {
+		t.Fatal("audit log must not contain a principal identifier")
+	}
+	if _, present := fields["audit.resource_id"]; present {
+		t.Fatal("audit log must not contain a profile identifier")
+	}
 	if got := fields["audit.details"]; !reflect.DeepEqual(got, map[string]any{"field": "value"}) {
 		t.Fatalf("expected audit details, got %#v", got)
 	}

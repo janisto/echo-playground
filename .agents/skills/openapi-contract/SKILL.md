@@ -1,72 +1,50 @@
 ---
 name: openapi-contract
-description: Maintain and verify echo-playground OpenAPI 3.1 annotations, deterministic generation, Problem Details media types, bearer security, embedded artifacts, and Swagger UI when routes, DTOs, errors, or API documentation change.
+description: Maintain and verify echo-playground's Swag v2 registration, deterministic OpenAPI 3.1.2 normalization, embedded discovery route, runtime agreement, and Swagger UI.
 ---
 
 # OpenAPI contract maintenance
 
-Read `AGENTS.md` and the affected handler before editing the OpenAPI contract or Swagger UI integration.
+Read `AGENTS.md`, the affected runtime route and models, and `cmd/openapi/` before changing the public contract.
 
-## Architecture
+## Contract architecture
 
-The public contract has four deliberately separate parts:
+Handler annotations are the native operation-registration source. `cmd/openapi` validates that Swag output against the
+portable inventory and deterministically normalizes the exact OpenAPI 3.1.2 contract into committed
+`api-docs/swagger.json` and `api-docs/swagger.yaml`; `api-docs/embed.go` embeds the JSON; `internal/http/docs/` serves
+those exact bytes at `/openapi.json` and points the optional `/api-docs` UI at that route.
 
-1. Handler annotations and DTO tags provide swag input.
-2. `just docs` generates OpenAPI 3.1 JSON and YAML and runs `cmd/openapi` for deterministic corrections swag cannot
-   currently express correctly.
-3. `api-docs/embed.go` embeds `swagger.json`; `api-docs/embed_test.go` validates semantics and JSON/YAML equivalence.
-4. `internal/http/docs/` serves the embedded document and the SRI-pinned Swagger UI.
+Do not hand-edit generated files, bypass native annotation registration, fetch references at runtime, or introduce
+another description. The normalizer must reject native method, path, operation-ID, response-status, parameter,
+request-body, and security drift before it supplies semantics Swag cannot express. Runtime code and OpenAPI remain
+independent evidence: inspect and test both.
 
-Generated `api-docs/swagger.json` and `api-docs/swagger.yaml` are committed. Do not restore `docs.go`, import a generated
-registry, or add a runtime filesystem dependency for the specification.
+## Required projection
 
-## Annotation rules
-
-- General API metadata and `BearerAuth` definition live in `cmd/server/main.go`.
-- Operation annotations live directly above handler functions.
-- Use paths relative to the OpenAPI `/v1` server.
-- Add `@Produce json,application/cbor` when an operation returns a negotiated success body or negotiated errors.
-- Do not add `@Accept json`: the tracked swag v2 body-parameter defect produces a broken empty schema. JSON remains the
-  documented request body through the body parameter.
-- Use `respond.ProblemDetails` for every documented error.
-- Include every status reachable from binding, body limits, strict JSON decoding, validation, authentication, service
-  mapping, and request deadlines.
-- Include 406 for operations whose success or error representation is negotiated through `Accept`.
-- Add `@Security BearerAuth` to every protected operation and nowhere else.
-- Document `Location` and `Link` headers when the runtime emits them.
-- Keep examples consistent with JSON field names and the repository's UTC millisecond timestamp contract.
-
-Error responses must expose `application/problem+json` and `application/problem+cbor`. If swag output requires a
-systematic correction, update `cmd/openapi` and its tests rather than hand-editing generated files.
+- Keep `openapi: 3.1.2`, Draft 2020-12-compatible schemas, fourteen exact portable operations, globally unique operation
+  IDs, canonical paths, and resolving same-document references.
+- Every operation documents the optional portable `X-Request-ID` input. Every included response documents the shared
+  request ID and security headers, plus `Vary` where runtime selection uses `Accept`.
+- Public operations use explicit `security: []`; all four profile operations use the single Firebase bearer scheme.
+- GCP request bodies advertise JSON and CBOR. Success bodies advertise JSON and CBOR. Problems advertise
+  `application/problem+json` and the same schema as ordinary `application/cbor`; never `application/problem+cbor`.
+- Include every controlled status reachable while processing the supported method, but do not project path-level 405
+  as a response of that method. Empty 204 responses have no content.
+- Application objects are closed and express exact requiredness, omission versus null, bounds, patterns, literals,
+  formats, and collection shapes. Examples, when present, must validate and contain no credential, personal, or live
+  provider data.
+- `/openapi.json` may omit itself. If included, use the exact discovery tuple and JSON-only success.
 
 ## Workflow
 
-1. Inspect the route registration, handler behavior, input and output models, and relevant error mapping.
-2. Update annotations or DTO tags.
-3. Run `just fmt-openapi` after annotation formatting changes.
-4. Run `just docs`.
-5. Review both generated artifacts. Reject unrelated churn, missing statuses, incorrect schemas, lost security, and media
-   types that disagree with runtime negotiation.
-6. Update the exact whole-contract matrix in `api-docs/embed_test.go`; it rejects missing or extra operations, statuses,
-   IDs, security, request or response media types, and required headers.
-7. If postprocessing changes, add focused coverage in `cmd/openapi/main_test.go`.
-8. If serving or UI behavior changes, test `internal/http/docs/`, CSP behavior, embedded assets, and exact routes.
-9. Run `just build`, `just test`, and `just lint`; these unqualified commands cover both modules.
-10. Run `just docs` again and confirm regeneration is stable.
+1. Trace route selection, negotiation, parsing, validation, authentication, service errors, headers, and response model.
+2. Update native handler annotations, the focused normalization definitions, and semantic tests in `cmd/openapi/`.
+3. Run `just fmt-openapi`, `just docs`, review both artifacts for only intended semantic changes, then run
+   `just openapi-check`.
+4. Test runtime discovery for exact embedded bytes, JSON-only negotiation, closed query, 405 behavior, body non-consumption,
+   and independence from authentication, persistence, GitHub, DNS, and filesystem state.
+5. Run the narrow affected tests and `just check`. Regenerate once more and confirm `just openapi-check` remains clean.
 
-Never conceal a generator limitation with an unexplained output patch. Keep corrections small, deterministic, tested,
-and documented in the source that applies them.
-
-## Review checklist
-
-- OpenAPI remains `3.1.0`.
-- JSON and YAML describe the same document.
-- Every operation ID is non-empty and unique, and the exact path/method set matches registration.
-- Protected operations use HTTP bearer authentication.
-- Request bodies are JSON-only and reject undocumented fields at runtime.
-- Successful responses advertise JSON and CBOR where implemented.
-- All documented error statuses use both Problem Details media types.
-- 201 responses document `Location`; paginated 200 responses document `Link`.
-- The generated JSON remains embedded and available at `/api-docs/openapi.json`.
-- Swagger UI remains at `/api-docs`, uses exact SRI-pinned assets, and receives only its narrow CSP exception.
-- The second generation produces no new diff.
+Use `api-docs/embed_test.go` for embedding and JSON/YAML equivalence. Keep detailed operation/schema semantics and
+generated drift in `cmd/openapi/main_test.go`; keep runtime discovery behavior in `cmd/server` or `internal/http/docs`
+tests. A version-prefix assertion or successful generation alone is not sufficient.

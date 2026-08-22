@@ -12,11 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-//	@title					Echo Playground API
-//	@version				1.0
-//	@description			Example API built with Echo 5.3. CBOR is supported for responses through content negotiation.
-//	@servers.url			/v1
-//	@servers.description	Version 1 API
+//	@title			Echo Playground Portable API
+//	@version		1.0.0
+//	@description	Portable REST contract implemented with Echo 5.3.
 
 // Version can be overridden at build time: -ldflags "-X main.Version=1.2.3"
 var Version = "dev"

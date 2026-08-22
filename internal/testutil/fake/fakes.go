@@ -4,9 +4,12 @@ package fake
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/janisto/echo-playground/internal/platform/auth"
+	"github.com/janisto/echo-playground/internal/platform/pagination"
+	githubsvc "github.com/janisto/echo-playground/internal/service/github"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 )
 
@@ -14,14 +17,78 @@ import (
 type MockVerifier struct {
 	User  *auth.FirebaseUser
 	Error error
+	calls atomic.Int32
 }
 
 func (m *MockVerifier) Verify(context.Context, string) (*auth.FirebaseUser, error) {
+	m.calls.Add(1)
 	if m.Error != nil {
 		return nil, m.Error
 	}
 	return m.User, nil
 }
+
+// CallCount returns the number of verification attempts.
+func (m *MockVerifier) CallCount() int32 { return m.calls.Load() }
+
+// GitHubService is a bounded zero-network fake that fails closed when invoked.
+type GitHubService struct {
+	calls atomic.Int32
+}
+
+func (service *GitHubService) GetOwner(context.Context, string) (githubsvc.Owner, error) {
+	service.calls.Add(1)
+	return githubsvc.Owner{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListOwnerRepositories(
+	context.Context,
+	string,
+	int,
+	*pagination.Cursor,
+) (githubsvc.Page[githubsvc.RepositorySummary], error) {
+	service.calls.Add(1)
+	return githubsvc.Page[githubsvc.RepositorySummary]{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) GetRepository(context.Context, string, string) (githubsvc.Repository, error) {
+	service.calls.Add(1)
+	return githubsvc.Repository{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListRepositoryActivity(
+	context.Context,
+	string,
+	string,
+	int,
+	*pagination.Cursor,
+) (githubsvc.Page[githubsvc.Activity], error) {
+	service.calls.Add(1)
+	return githubsvc.Page[githubsvc.Activity]{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListRepositoryLanguages(
+	context.Context,
+	string,
+	string,
+) ([]githubsvc.Language, error) {
+	service.calls.Add(1)
+	return nil, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListRepositoryTags(
+	context.Context,
+	string,
+	string,
+	int,
+	*pagination.Cursor,
+) (githubsvc.Page[githubsvc.Tag], error) {
+	service.calls.Add(1)
+	return githubsvc.Page[githubsvc.Tag]{}, githubsvc.ErrUpstream
+}
+
+// CallCount returns the number of attempted provider operations.
+func (service *GitHubService) CallCount() int32 { return service.calls.Load() }
 
 // TestUser returns a stable authenticated identity for tests.
 func TestUser() *auth.FirebaseUser {
@@ -32,11 +99,18 @@ func TestUser() *auth.FirebaseUser {
 type ProfileStore struct {
 	mu       sync.RWMutex
 	profiles map[string]*profilesvc.Profile
+	clock    func() time.Time
+	writes   int
 }
 
 // NewProfileStore creates an empty test profile store.
 func NewProfileStore() *ProfileStore {
-	return &ProfileStore{profiles: make(map[string]*profilesvc.Profile)}
+	return &ProfileStore{
+		profiles: make(map[string]*profilesvc.Profile),
+		clock: func() time.Time {
+			return time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+		},
+	}
 }
 
 func (m *ProfileStore) Create(
@@ -49,12 +123,14 @@ func (m *ProfileStore) Create(
 	if _, exists := m.profiles[userID]; exists {
 		return nil, profilesvc.ErrAlreadyExists
 	}
-	now := time.Now().UTC()
+	now := m.clock().UTC().Truncate(time.Millisecond)
 	p := &profilesvc.Profile{
-		ID: userID, Firstname: params.Firstname, Lastname: params.Lastname, Email: params.Email,
-		PhoneNumber: params.PhoneNumber, Marketing: params.Marketing, CreatedAt: now, UpdatedAt: now,
+		ID: userID, FirstName: params.FirstName, LastName: params.LastName, ContactEmail: params.ContactEmail,
+		PhoneNumber: params.PhoneNumber, MarketingOptIn: params.MarketingOptIn, TermsAccepted: params.TermsAccepted,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	m.profiles[userID] = p
+	m.writes++
 	return cloneProfile(p), nil
 }
 
@@ -79,22 +155,30 @@ func (m *ProfileStore) Update(
 	if !ok {
 		return nil, profilesvc.ErrNotFound
 	}
-	if params.Firstname != nil {
-		p.Firstname = *params.Firstname
+	changed := false
+	if params.FirstName != nil && p.FirstName != *params.FirstName {
+		p.FirstName, changed = *params.FirstName, true
 	}
-	if params.Lastname != nil {
-		p.Lastname = *params.Lastname
+	if params.LastName != nil && p.LastName != *params.LastName {
+		p.LastName, changed = *params.LastName, true
 	}
-	if params.Email != nil {
-		p.Email = *params.Email
+	if params.ContactEmail != nil && p.ContactEmail != *params.ContactEmail {
+		p.ContactEmail, changed = *params.ContactEmail, true
 	}
-	if params.PhoneNumber != nil {
-		p.PhoneNumber = *params.PhoneNumber
+	if params.PhoneNumber != nil && p.PhoneNumber != *params.PhoneNumber {
+		p.PhoneNumber, changed = *params.PhoneNumber, true
 	}
-	if params.Marketing != nil {
-		p.Marketing = *params.Marketing
+	if params.MarketingOptIn != nil && p.MarketingOptIn != *params.MarketingOptIn {
+		p.MarketingOptIn, changed = *params.MarketingOptIn, true
 	}
-	p.UpdatedAt = time.Now().UTC()
+	if changed {
+		now := m.clock().UTC().Truncate(time.Millisecond)
+		if !now.After(p.UpdatedAt) {
+			now = p.UpdatedAt.Add(time.Millisecond)
+		}
+		p.UpdatedAt = now
+		m.writes++
+	}
 	return cloneProfile(p), nil
 }
 
@@ -105,7 +189,15 @@ func (m *ProfileStore) Delete(_ context.Context, userID string) error {
 		return profilesvc.ErrNotFound
 	}
 	delete(m.profiles, userID)
+	m.writes++
 	return nil
+}
+
+// WriteCount returns committed mutations for forbidden-side-effect assertions.
+func (m *ProfileStore) WriteCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.writes
 }
 
 func cloneProfile(p *profilesvc.Profile) *profilesvc.Profile {
@@ -115,5 +207,6 @@ func cloneProfile(p *profilesvc.Profile) *profilesvc.Profile {
 
 var (
 	_ auth.Verifier      = (*MockVerifier)(nil)
+	_ githubsvc.Service  = (*GitHubService)(nil)
 	_ profilesvc.Service = (*ProfileStore)(nil)
 )

@@ -1,71 +1,124 @@
 package pagination
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
-	"net/url"
-	"strconv"
 )
 
-// ErrInvalidCursor indicates the cursor could not be decoded.
-var ErrInvalidCursor = errors.New("invalid cursor format")
+const MaxCursorLength = 2048
 
-// Cursor represents a pagination position.
-type Cursor struct {
-	Type  string // resource type identifier
-	Value string // last seen value (ID, timestamp, etc.)
-	Scope string // canonical filters and page size
+var ErrInvalidCursor = errors.New("invalid cursor")
+
+// Scope is every result-shaping value to which a portable cursor is bound.
+type Scope struct {
+	Operation  string
+	Owner      string
+	Repository string
+	Filter     string
+	Limit      int
 }
 
-// Encode returns a URL-safe opaque Base64 representation.
+// Cursor contains only validated local transport state. It never contains a
+// complete provider URL, credential, or profile data.
+type Cursor struct {
+	Operation  string
+	Owner      string
+	Repository string
+	Filter     string
+	Direction  string
+	Position   string
+	Limit      int
+}
+
+func NewCursor(scope Scope, direction, position string) Cursor {
+	return Cursor{
+		Operation:  scope.Operation,
+		Owner:      scope.Owner,
+		Repository: scope.Repository,
+		Filter:     scope.Filter,
+		Direction:  direction,
+		Position:   position,
+		Limit:      scope.Limit,
+	}
+}
+
+func (c Cursor) Matches(scope Scope) bool {
+	return c.Operation == scope.Operation && c.Owner == scope.Owner &&
+		c.Repository == scope.Repository && c.Filter == scope.Filter && c.Limit == scope.Limit
+}
+
 func (c Cursor) Encode() string {
+	if c.Limit < 1 || c.Limit > 100 {
+		return ""
+	}
 	payload := []byte{1}
-	for _, value := range [...]string{c.Type, c.Value, c.Scope} {
+	payload = binary.AppendUvarint(payload, uint64(c.Limit))
+	for _, value := range [...]string{c.Operation, c.Owner, c.Repository, c.Filter, c.Direction, c.Position} {
 		payload = binary.AppendUvarint(payload, uint64(len(value)))
 		payload = append(payload, value...)
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
-// DecodeCursor parses a URL-safe Base64 cursor string.
-func DecodeCursor(s string) (Cursor, error) {
-	if s == "" {
-		return Cursor{}, nil
-	}
-	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
+func DecodeCursor(value string) (Cursor, error) {
+	if value == "" || len(value) > MaxCursorLength {
 		return Cursor{}, ErrInvalidCursor
 	}
-	if len(b) == 0 || b[0] != 1 {
+	for i := range len(value) {
+		if value[i] < 0x21 || value[i] > 0x7e {
+			return Cursor{}, ErrInvalidCursor
+		}
+	}
+	payload, err := base64.RawURLEncoding.Strict().DecodeString(value)
+	if err != nil || len(payload) < 2 || payload[0] != 1 {
 		return Cursor{}, ErrInvalidCursor
 	}
-	parts := [3]string{}
 	offset := 1
-	for i := range parts {
-		length, read := binary.Uvarint(b[offset:])
-		if read <= 0 {
-			return Cursor{}, ErrInvalidCursor
-		}
-		offset += read
-		remaining := len(b) - offset
-		if length > uint64(remaining) { //nolint:gosec // remaining is non-negative and bounded by len(b).
-			return Cursor{}, ErrInvalidCursor
-		}
-		lengthInt := int(length) //nolint:gosec // length was bounded by remaining, which is an int.
-		parts[i] = string(b[offset : offset+lengthInt])
-		offset += lengthInt
-	}
-	if offset != len(b) {
+	limit, read := binary.Uvarint(payload[offset:])
+	if read <= 0 || limit < 1 || limit > 100 {
 		return Cursor{}, ErrInvalidCursor
 	}
-	return Cursor{Type: parts[0], Value: parts[1], Scope: parts[2]}, nil
+	offset += read
+	parts := [6]string{}
+	for index := range parts {
+		part, nextOffset, ok := readPart(payload, offset)
+		if !ok {
+			return Cursor{}, ErrInvalidCursor
+		}
+		parts[index], offset = part, nextOffset
+	}
+	if offset != len(payload) || parts[0] == "" || parts[4] != "next" && parts[4] != "prev" || parts[5] == "" {
+		return Cursor{}, ErrInvalidCursor
+	}
+	cursor := Cursor{
+		Operation:  parts[0],
+		Owner:      parts[1],
+		Repository: parts[2],
+		Filter:     parts[3],
+		Direction:  parts[4],
+		Position:   parts[5],
+		Limit:      int(limit),
+	}
+	if !bytes.Equal([]byte(cursor.Encode()), []byte(value)) {
+		return Cursor{}, ErrInvalidCursor
+	}
+	return cursor, nil
 }
 
-// NewCursor binds a pagination position to the effective filters and page size.
-func NewCursor(cursorType, value string, limit int, query url.Values) Cursor {
-	scope := cloneValues(query)
-	scope.Del("cursor")
-	scope.Set("limit", strconv.Itoa(limit))
-	return Cursor{Type: cursorType, Value: value, Scope: scope.Encode()}
+func readPart(payload []byte, offset int) (string, int, bool) {
+	if offset >= len(payload) {
+		return "", offset, false
+	}
+	length, read := binary.Uvarint(payload[offset:])
+	if read <= 0 {
+		return "", offset, false
+	}
+	offset += read
+	if length > uint64(len(payload)-offset) { //nolint:gosec // remaining byte length is nonnegative and int-sized
+		return "", offset, false
+	}
+	end := offset + int(length) //nolint:gosec // length is bounded by the remaining int-sized payload.
+	return string(payload[offset:end]), end, true
 }

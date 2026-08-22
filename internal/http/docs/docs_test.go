@@ -13,7 +13,7 @@ import (
 
 func TestRegister_SwaggerUI(t *testing.T) {
 	e := echo.New()
-	Register(e, []byte(`{"openapi":"3.1.0"}`))
+	Register(e, []byte(`{"openapi":"3.1.2"}`))
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs", nil)
 	rec := httptest.NewRecorder()
@@ -57,7 +57,7 @@ func assertIntegrity(t *testing.T, document, value string) {
 
 func TestRegister_SwaggerInit(t *testing.T) {
 	e := echo.New()
-	Register(e, []byte(`{"openapi":"3.1.0"}`))
+	Register(e, []byte(`{"openapi":"3.1.2"}`))
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs/swagger-init.js", nil)
 	rec := httptest.NewRecorder()
@@ -69,16 +69,16 @@ func TestRegister_SwaggerInit(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/javascript") {
 		t.Fatalf("expected JavaScript content type, got %q", ct)
 	}
-	if !strings.Contains(rec.Body.String(), "/api-docs/openapi.json") {
-		t.Fatal("expected swagger UI to reference /api-docs/openapi.json")
+	if !strings.Contains(rec.Body.String(), "/openapi.json") {
+		t.Fatal("expected swagger UI to reference /openapi.json")
 	}
 }
 
 func TestRegister_OpenAPISpec(t *testing.T) {
 	e := echo.New()
-	Register(e, []byte(`{"openapi":"3.1.0"}`))
+	Register(e, []byte(`{"openapi":"3.1.2"}`))
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-docs/openapi.json", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

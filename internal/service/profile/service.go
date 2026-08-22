@@ -6,47 +6,46 @@ import (
 	"time"
 )
 
-// Service errors.
 var (
-	ErrNotFound      = errors.New("profile not found")
-	ErrAlreadyExists = errors.New("profile already exists")
-	ErrUnavailable   = errors.New("profile store unavailable")
+	ErrNotFound           = errors.New("profile not found")
+	ErrAlreadyExists      = errors.New("profile already exists")
+	ErrUnavailable        = errors.New("profile store unavailable")
+	ErrInvalidStoredData  = errors.New("stored profile is invalid")
+	ErrTimestampExhausted = errors.New("profile timestamp cannot advance")
 )
 
-// Profile represents stored profile data.
 type Profile struct {
-	ID          string
-	Firstname   string
-	Lastname    string
-	Email       string
-	PhoneNumber string
-	Marketing   bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             string
+	FirstName      string
+	LastName       string
+	ContactEmail   string
+	PhoneNumber    string
+	MarketingOptIn bool
+	TermsAccepted  bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
-// CreateParams for creating a profile.
 type CreateParams struct {
-	Firstname   string
-	Lastname    string
-	Email       string
-	PhoneNumber string
-	Marketing   bool
+	FirstName      string
+	LastName       string
+	ContactEmail   string
+	PhoneNumber    string
+	MarketingOptIn bool
+	TermsAccepted  bool
 }
 
-// UpdateParams for updating a profile.
 type UpdateParams struct {
-	Firstname   *string
-	Lastname    *string
-	Email       *string
-	PhoneNumber *string
-	Marketing   *bool
+	FirstName      *string
+	LastName       *string
+	ContactEmail   *string
+	PhoneNumber    *string
+	MarketingOptIn *bool
 }
 
-// Service defines profile operations.
 type Service interface {
-	Create(ctx context.Context, userID string, params CreateParams) (*Profile, error)
-	Get(ctx context.Context, userID string) (*Profile, error)
-	Update(ctx context.Context, userID string, params UpdateParams) (*Profile, error)
-	Delete(ctx context.Context, userID string) error
+	Create(context.Context, string, CreateParams) (*Profile, error)
+	Get(context.Context, string) (*Profile, error)
+	Update(context.Context, string, UpdateParams) (*Profile, error)
+	Delete(context.Context, string) error
 }

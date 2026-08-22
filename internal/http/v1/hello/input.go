@@ -2,5 +2,5 @@ package hello
 
 // CreateInput is the request body for creating a greeting.
 type CreateInput struct {
-	Name string `json:"name" validate:"required,min=1,max=100" example:"World"`
+	Name string `json:"name" cbor:"name" validate:"required,bounded_name" example:"World"`
 }

@@ -25,50 +25,57 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 	g.DELETE("/profile", handleDeleteProfile(svc))
 }
 
-// handleCreateProfile godoc
+// handleCreateProfile creates the current principal's profile.
 //
-//	@Summary		Create profile
+//	@Summary		Create the current principal profile
 //	@ID				createProfile
-//	@Description	Creates a new user profile
+//	@Description	Creates one profile owned by the verified Firebase principal. The query string is closed.
 //	@Tags			profile
+//	@Accept			json,application/cbor
 //	@Produce		json,application/cbor
-//	@Param			body	body		CreateInput	true	"Profile creation request body"
-//	@Success		201		{object}	Profile
-//	@Failure		400		{object}	respond.ProblemDetails
-//	@Failure		401		{object}	respond.ProblemDetails
-//	@Failure		406		{object}	respond.ProblemDetails
-//	@Failure		409		{object}	respond.ProblemDetails
-//	@Failure		413		{object}	respond.ProblemDetails
-//	@Failure		415		{object}	respond.ProblemDetails
-//	@Failure		422		{object}	respond.ProblemDetails
-//	@Failure		500		{object}	respond.ProblemDetails
-//	@Failure		503		{object}	respond.ProblemDetails
-//	@Header			201		{string}	Location	"URI of the created profile"
-//	@Header			401		{string}	WWW-Authenticate	"Bearer challenge"
+//	@Param			X-Request-ID	header		string		false	"Optional request correlation value"	minlength(1)	maxlength(128)
+//	@Param			body			body		CreateInput	true	"Profile creation document"
+//	@Success		201				{object}	Profile
+//	@Failure		400				{object}	respond.ProblemDetails
+//	@Failure		401				{object}	respond.ProblemDetails
+//	@Failure		406				{object}	respond.ProblemDetails
+//	@Failure		409				{object}	respond.ProblemDetails
+//	@Failure		413				{object}	respond.ProblemDetails
+//	@Failure		415				{object}	respond.ProblemDetails
+//	@Failure		422				{object}	respond.ProblemDetails
+//	@Failure		500				{object}	respond.ProblemDetails
+//	@Failure		503				{object}	respond.ProblemDetails
+//	@Header			201				{string}	Location			"Canonical profile location"
+//	@Header			401				{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
-//	@Router			/profile [post]
+//	@Router			/v1/profile [post]
 func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
-		var input CreateInput
-		if err := request.DecodeJSON(c, &input); err != nil {
+		if err := request.RejectUnknownOrRepeatedQuery(c); err != nil {
 			return err
 		}
+		var input CreateInput
+		if err := request.Decode(c, &input); err != nil {
+			return err
+		}
+		input.Normalize()
 		if err := c.Validate(&input); err != nil {
 			return err
 		}
 
 		user, err := auth.UserFromEchoContext(c)
 		if err != nil {
-			return respond.Error401("unauthorized")
+			return respond.Unauthorized()
 		}
 
 		ctx := c.Request().Context()
 		profile, err := svc.Create(ctx, user.UID, profilesvc.CreateParams{
-			Firstname:   input.Firstname,
-			Lastname:    input.Lastname,
-			Email:       input.Email,
-			PhoneNumber: input.PhoneNumber,
-			Marketing:   input.Marketing,
+			FirstName:      input.FirstName,
+			LastName:       input.LastName,
+			ContactEmail:   input.ContactEmail,
+			PhoneNumber:    input.PhoneNumber,
+			MarketingOptIn: input.MarketingOptIn.Value,
+			TermsAccepted:  input.TermsAccepted,
 		})
 		if err != nil {
 			return mapServiceError(ctx, "create profile", err)
@@ -79,27 +86,32 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	}
 }
 
-// handleGetProfile godoc
+// handleGetProfile gets the current principal's profile.
 //
-//	@Summary		Get profile
+//	@Summary		Get the current principal profile
 //	@ID				getProfile
-//	@Description	Returns the authenticated user's profile
+//	@Description	Returns only the profile selected by the verified Firebase principal. The query string is closed.
 //	@Tags			profile
 //	@Produce		json,application/cbor
-//	@Success		200	{object}	Profile
-//	@Failure		401	{object}	respond.ProblemDetails
-//	@Failure		404	{object}	respond.ProblemDetails
-//	@Failure		406	{object}	respond.ProblemDetails
-//	@Failure		500	{object}	respond.ProblemDetails
-//	@Failure		503	{object}	respond.ProblemDetails
-//	@Header			401	{string}	WWW-Authenticate	"Bearer challenge"
+//	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
+//	@Success		200				{object}	Profile
+//	@Failure		400				{object}	respond.ProblemDetails
+//	@Failure		401				{object}	respond.ProblemDetails
+//	@Failure		404				{object}	respond.ProblemDetails
+//	@Failure		406				{object}	respond.ProblemDetails
+//	@Failure		500				{object}	respond.ProblemDetails
+//	@Failure		503				{object}	respond.ProblemDetails
+//	@Header			401				{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
-//	@Router			/profile [get]
+//	@Router			/v1/profile [get]
 func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
+		if err := request.RejectUnknownOrRepeatedQuery(c); err != nil {
+			return err
+		}
 		user, err := auth.UserFromEchoContext(c)
 		if err != nil {
-			return respond.Error401("unauthorized")
+			return respond.Unauthorized()
 		}
 
 		ctx := c.Request().Context()
@@ -112,52 +124,59 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 	}
 }
 
-// handleUpdateProfile godoc
+// handleUpdateProfile updates the current principal's profile.
 //
-//	@Summary		Update profile
+//	@Summary		Update the current principal profile
 //	@ID				updateProfile
-//	@Description	Partially updates the authenticated user's profile
+//	@Description	Atomically applies a non-empty partial update owned by the verified principal. The query string is closed.
 //	@Tags			profile
+//	@Accept			json,application/cbor
 //	@Produce		json,application/cbor
-//	@Param			body	body		UpdateInput	true	"Profile update request body"
-//	@Success		200		{object}	Profile
-//	@Failure		400		{object}	respond.ProblemDetails
-//	@Failure		401		{object}	respond.ProblemDetails
-//	@Failure		406		{object}	respond.ProblemDetails
-//	@Failure		404		{object}	respond.ProblemDetails
-//	@Failure		413		{object}	respond.ProblemDetails
-//	@Failure		415		{object}	respond.ProblemDetails
-//	@Failure		422		{object}	respond.ProblemDetails
-//	@Failure		500		{object}	respond.ProblemDetails
-//	@Failure		503		{object}	respond.ProblemDetails
-//	@Header			401		{string}	WWW-Authenticate	"Bearer challenge"
+//	@Param			X-Request-ID	header		string		false	"Optional request correlation value"	minlength(1)	maxlength(128)
+//	@Param			body			body		UpdateInput	true	"Profile update document"
+//	@Success		200				{object}	Profile
+//	@Failure		400				{object}	respond.ProblemDetails
+//	@Failure		401				{object}	respond.ProblemDetails
+//	@Failure		404				{object}	respond.ProblemDetails
+//	@Failure		406				{object}	respond.ProblemDetails
+//	@Failure		413				{object}	respond.ProblemDetails
+//	@Failure		415				{object}	respond.ProblemDetails
+//	@Failure		422				{object}	respond.ProblemDetails
+//	@Failure		500				{object}	respond.ProblemDetails
+//	@Failure		503				{object}	respond.ProblemDetails
+//	@Header			401				{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
-//	@Router			/profile [patch]
+//	@Router			/v1/profile [patch]
 func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
-		var input UpdateInput
-		if err := request.DecodeJSON(c, &input); err != nil {
+		if err := request.RejectUnknownOrRepeatedQuery(c); err != nil {
 			return err
 		}
-		if err := c.Validate(&input); err != nil {
+		var input UpdateInput
+		if err := request.Decode(c, &input); err != nil {
+			return err
+		}
+		input.Normalize()
+		validationTarget := input.ValidationTarget()
+		if err := c.Validate(&validationTarget); err != nil {
 			return err
 		}
 		if input.Empty() {
-			return respond.Error422("at least one field must be provided")
+			return respond.ValidationFailed()
 		}
 
 		user, err := auth.UserFromEchoContext(c)
 		if err != nil {
-			return respond.Error401("unauthorized")
+			return respond.Unauthorized()
 		}
 
 		ctx := c.Request().Context()
 		profile, err := svc.Update(ctx, user.UID, profilesvc.UpdateParams{
-			Firstname:   input.Firstname,
-			Lastname:    input.Lastname,
-			Email:       input.Email,
-			PhoneNumber: input.PhoneNumber,
-			Marketing:   input.Marketing,
+			FirstName:      input.FirstName.Pointer(),
+			LastName:       input.LastName.Pointer(),
+			ContactEmail:   input.ContactEmail.Pointer(),
+			PhoneNumber:    input.PhoneNumber.Pointer(),
+			MarketingOptIn: input.MarketingOptIn.Pointer(),
 		})
 		if err != nil {
 			return mapServiceError(ctx, "update profile", err)
@@ -167,27 +186,30 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 	}
 }
 
-// handleDeleteProfile godoc
+// handleDeleteProfile deletes the current principal's profile.
 //
-//	@Summary		Delete profile
+//	@Summary		Delete the current principal profile
 //	@ID				deleteProfile
-//	@Description	Deletes the authenticated user's profile
+//	@Description	Atomically deletes only the profile owned by the verified principal. The query string is closed.
 //	@Tags			profile
-//	@Produce		json,application/cbor
+//	@Param			X-Request-ID	header	string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
 //	@Success		204
+//	@Failure		400	{object}	respond.ProblemDetails
 //	@Failure		401	{object}	respond.ProblemDetails
 //	@Failure		404	{object}	respond.ProblemDetails
-//	@Failure		406	{object}	respond.ProblemDetails
 //	@Failure		500	{object}	respond.ProblemDetails
 //	@Failure		503	{object}	respond.ProblemDetails
 //	@Header			401	{string}	WWW-Authenticate	"Bearer challenge"
 //	@Security		BearerAuth
-//	@Router			/profile [delete]
+//	@Router			/v1/profile [delete]
 func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
 	return func(c *echo.Context) error {
+		if err := request.RejectUnknownOrRepeatedQuery(c); err != nil {
+			return err
+		}
 		user, err := auth.UserFromEchoContext(c)
 		if err != nil {
-			return respond.Error401("unauthorized")
+			return respond.Unauthorized()
 		}
 
 		ctx := c.Request().Context()
@@ -201,32 +223,33 @@ func handleDeleteProfile(svc profilesvc.Service) echo.HandlerFunc {
 
 func mapServiceError(ctx context.Context, operation string, err error) error {
 	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return respond.Error503("request deadline exceeded")
+	case errors.Is(err, profilesvc.ErrNotFound):
+		return respond.ProfileNotFound()
+	case errors.Is(err, profilesvc.ErrAlreadyExists):
+		return respond.ProfileExists()
 	case errors.Is(ctx.Err(), context.Canceled):
 		return context.Canceled
-	case errors.Is(err, profilesvc.ErrNotFound):
-		return respond.Error404(profilesvc.ErrNotFound.Error())
-	case errors.Is(err, profilesvc.ErrAlreadyExists):
-		return respond.Error409(profilesvc.ErrAlreadyExists.Error())
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return respond.DependencyUnavailable()
 	case errors.Is(err, profilesvc.ErrUnavailable):
 		obs.Logger(ctx).Warn("profile dependency unavailable", zap.String("operation", operation))
-		return respond.Error503("profile service temporarily unavailable")
+		return respond.DependencyUnavailable()
 	default:
-		obs.Logger(ctx).Error("unexpected service error", zap.String("operation", operation), zap.Error(err))
-		return respond.Error500("internal error")
+		obs.Logger(ctx).Error("unexpected service error", zap.String("operation", operation))
+		return respond.InternalError()
 	}
 }
 
 func toHTTPProfile(p *profilesvc.Profile) Profile {
 	return Profile{
-		ID:          p.ID,
-		Firstname:   p.Firstname,
-		Lastname:    p.Lastname,
-		Email:       p.Email,
-		PhoneNumber: p.PhoneNumber,
-		Marketing:   p.Marketing,
-		CreatedAt:   timeutil.Time{Time: p.CreatedAt},
-		UpdatedAt:   timeutil.Time{Time: p.UpdatedAt},
+		ID:             p.ID,
+		FirstName:      p.FirstName,
+		LastName:       p.LastName,
+		ContactEmail:   p.ContactEmail,
+		PhoneNumber:    p.PhoneNumber,
+		MarketingOptIn: p.MarketingOptIn,
+		TermsAccepted:  p.TermsAccepted,
+		CreatedAt:      timeutil.Time{Time: p.CreatedAt},
+		UpdatedAt:      timeutil.Time{Time: p.UpdatedAt},
 	}
 }

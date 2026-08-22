@@ -1,4 +1,4 @@
 interface:
   display_name: "Echo Endpoint"
-  short_description: "Build project-standard Echo v5 API endpoints"
-  default_prompt: "Use $echo-endpoint to implement an Echo v5 endpoint with the repository routing, validation, response, OpenAPI, and test conventions."
+  short_description: "Build portable Echo v5 API endpoints"
+  default_prompt: "Use $echo-endpoint to implement and verify a portable Echo v5 endpoint with the repository routing, validation, response, OpenAPI, and adversarial test conventions."

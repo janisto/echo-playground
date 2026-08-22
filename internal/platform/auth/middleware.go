@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
-	"strings"
+	"unicode/utf8"
 
 	"github.com/janisto/echo-observability/v2"
 	"github.com/labstack/echo/v5"
@@ -19,10 +19,10 @@ const echoUserKey = "user"
 func Middleware(verifier Verifier) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			token, err := ExtractBearerToken(c.Request().Header.Get("Authorization"))
+			token, err := ExtractBearerTokenValues(c.Request().Header.Values("Authorization"))
 			if err != nil {
 				c.Response().Header().Set("WWW-Authenticate", "Bearer")
-				return respond.Error401("missing or invalid authorization header")
+				return respond.Unauthorized()
 			}
 
 			if verifier == nil {
@@ -39,10 +39,11 @@ func Middleware(verifier Verifier) echo.MiddlewareFunc {
 					return err
 				}
 				c.Response().Header().Set("WWW-Authenticate", "Bearer")
-				return respond.Error401("invalid or expired token")
+				return respond.Unauthorized()
 			}
-			if user == nil || strings.TrimSpace(user.UID) == "" {
-				return authUnavailable(c, "missing_identity")
+			if user == nil || !utf8.ValidString(user.UID) || user.UID == "" || utf8.RuneCountInString(user.UID) > 128 {
+				c.Response().Header().Set("WWW-Authenticate", "Bearer")
+				return respond.Unauthorized()
 			}
 
 			c.Set(echoUserKey, user)
@@ -57,8 +58,7 @@ func authUnavailable(c *echo.Context, reason string) error {
 		"authentication dependency failed",
 		zap.String("reason", reason),
 	)
-	c.Response().Header().Set("Retry-After", "30")
-	return respond.Error503("authentication service temporarily unavailable")
+	return respond.DependencyUnavailable()
 }
 
 // categorizeAuthError returns a safe category string for logging.

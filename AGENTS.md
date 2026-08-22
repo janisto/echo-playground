@@ -54,15 +54,15 @@ Echo Playground is a minimal REST API skeleton built with [Echo 5.3](https://git
 - Firebase Authentication with JWT validation via Echo middleware
 - Firestore integration with transaction-safe CRUD operations and audit logging
 - go-playground/validator for request validation
-- swaggo/swag v2 for OpenAPI 3.1 documentation
+- Swag v2 OpenAPI registration with deterministic 3.1.2 normalization and semantic drift tests
 
 ### Tech & Tooling
 
-- Language/runtime: Go 1.26.5+
+- Language/runtime: Go 1.26.7+
 - Frameworks/libs: Echo v5.3+, go-playground/validator, fxamacker/cbor, Firebase Admin SDK
 - Logging: Zap via github.com/janisto/echo-observability/v2
 - Testing: Go standard `testing` package, echotest, Firebase Emulators
-- OpenAPI: swaggo/swag v2 (OAS 3.1)
+- OpenAPI: Swag v2 plus the deterministic `cmd/openapi` normalizer (OAS 3.1.2)
 - Task runner: [Just](https://github.com/casey/just) (required for pinned Go toolchain)
 - Firebase CLI: Required for emulators (`just emulators`)
 
@@ -80,7 +80,7 @@ Key recipes:
 - `just lint` - Lint both Go modules
 - `just fmt` - Format both Go modules
 - `just fix` - Run lint fixes for both Go modules
-- `just check` - Whole-repository format, lint, build, and test check (`check-all` is a compatibility alias)
+- `just check` - Whole-repository OpenAPI drift, format, lint, build, and test check (`check-all` is a compatibility alias)
 - `just functions-check` - Build, test, and lint the separate function module
 - `just test-race` - Race-test both modules
 - `just mutation` - Mutation-test both modules (`mutation-app` and `mutation-functions` are narrow variants)
@@ -97,11 +97,13 @@ Key recipes:
 - `just emulators` - Start Firebase emulators (Auth + Firestore)
 - `just test-integration-ci` - Require emulators and generate separate integration coverage
 - `just functions-smoke` / `just container-smoke` - Probe the registered function and final image
+- `just contract-smoke` - Probe an already-running local server; anonymous live GitHub calls are opt-in
 - `just fmt-check` / `just tidy-check` / `just modernize-check` / `just workflow-check` - Non-mutating quality gates
 - `just workflow-security-check` - Audit GitHub Actions with the repository's zizmor policy
-- `just docs` - Generate OpenAPI 3.1 spec (alias for gen-openapi)
-- `just gen-openapi` - Generate OpenAPI 3.1 spec
-- `just fmt-openapi` - Format swag annotations
+- `just docs` - Generate OpenAPI 3.1.2 JSON and YAML (alias for gen-openapi)
+- `just gen-openapi` - Generate OpenAPI 3.1.2 JSON and YAML
+- `just fmt-openapi` - Format native Swag handler annotations
+- `just openapi-check` - Non-mutating generated-contract and runtime-discovery drift gate
 
 The Justfile uses `set dotenv-load` so all recipes automatically load `.env`. The `.env` sets `GOTOOLCHAIN` to pin the Go version, preventing automatic upgrades from a newer local Go installation. Always prefer `just` recipes over raw `go` or `golangci-lint` commands.
 
@@ -116,7 +118,7 @@ emulator hosts. Tests use hardcoded emulator addresses via `internal/testutil` a
 
 ### Requirements
 
-- Go 1.26.5+
+- Go 1.26.7+
 - Firebase CLI (for emulators): `npm install -g firebase-tools`
 
 ### Install Dependencies
@@ -140,7 +142,7 @@ go run ./cmd/server
 The server starts on port 8080 with endpoints:
 - `http://localhost:8080/health` - health probe
 - `http://localhost:8080/api-docs` - Swagger UI
-- `http://localhost:8080/api-docs/openapi.json` - OpenAPI 3.1 spec
+- `http://localhost:8080/openapi.json` - OpenAPI 3.1.2 spec
 
 ---
 
@@ -203,8 +205,9 @@ golangci-lint run --fix ./...
 .agents/skills/        # Reusable project-specific agent skills
 .github/agents/       # GitHub Copilot custom-agent profiles
 cmd/server/            # Application entrypoint and HTTP server bootstrap
-cmd/openapi/           # Deterministic generated OpenAPI normalization
-api-docs/              # Embedded generated OpenAPI 3.1 JSON and YAML
+cmd/openapi/           # Deterministic OpenAPI 3.1.2 normalization and semantic checks
+cmd/profile-migrate/   # Audit-first one-time profile persistence cutover
+api-docs/              # Embedded generated OpenAPI 3.1.2 JSON and YAML
 functions/             # Independent Functions Framework Go module
 internal/http/         # HTTP transport layer
   docs/                # Swagger UI serving and spec route registration
@@ -212,6 +215,7 @@ internal/http/         # HTTP transport layer
   v1/                  # Versioned API (v1)
     hello/             # Hello endpoint handlers
     items/             # Items endpoint handlers
+    github/            # Anonymous fixed-origin GitHub projection handlers
     profile/           # Profile endpoint handlers (requires auth)
     routes/            # Route registration
 internal/platform/     # Cross-cutting infrastructure
@@ -223,6 +227,7 @@ internal/platform/     # Cross-cutting infrastructure
   respond/             # Panic recovery, Problem Details, content negotiation
   timeutil/            # Time formatting utilities
   validate/            # go-playground/validator integration
+internal/service/      # GitHub transport/projection and Firestore profile persistence
 internal/service/      # Business logic and data access
   profile/             # Profile service with Firestore backend
 internal/testutil/     # Test utilities (shared Echo fixture, emulator helpers)
@@ -345,14 +350,15 @@ func getHandler(c *echo.Context) error {
 
 ### Input Binding and Validation
 
-Use a source-specific decoder plus `c.Validate()`. Use `request.DecodeJSON` for exactly one top-level JSON object,
-`request.RejectUnknownOrRepeatedQuery` before `echo.BindQueryParams` for closed scalar query contracts, and the corresponding path binder for path DTOs. Avoid
-generic `c.Bind`, which can merge multiple sources.
+Use a source-specific decoder plus `c.Validate()`. Use `request.Decode` for exactly one top-level JSON or CBOR object.
+Use `request.ParseQuery` when a closed scalar query needs typed parsing or absent-versus-empty distinctions, and
+`request.RejectUnknownOrRepeatedQuery` when the closed query carries no accepted values. Avoid generic `c.Bind`, which
+can merge multiple sources.
 
 ```go
 func createHandler(c *echo.Context) error {
     var input CreateInput
-    if err := request.DecodeJSON(c, &input); err != nil {
+    if err := request.Decode(c, &input); err != nil {
         return err
     }
     if err := c.Validate(&input); err != nil {
@@ -372,21 +378,20 @@ func createHandler(c *echo.Context) error {
 
 Errors follow RFC 9457 Problem Details and honor content negotiation:
 - `application/problem+json` when JSON is requested (default, RFC 9457 registered)
-- `application/problem+cbor` when CBOR is requested (project extension, follows RFC 6839 suffix convention)
+- `application/cbor` with the same Problem Details members when CBOR is requested
 
 Use custom error helpers:
 
 ```go
 import "github.com/janisto/echo-playground/internal/platform/respond"
 
-respond.Error400("invalid request")
-respond.Error401("unauthorized")
-respond.Error403("access denied")
-respond.Error404("resource not found")
-respond.Error409("resource already exists")
-respond.Error422("validation failed", fieldErrors...)
-respond.Error500("internal error")
-respond.NewError(http.StatusTeapot, "custom message")
+respond.InvalidRequest()
+respond.Unauthorized()
+respond.Forbidden()
+respond.NotFound()
+respond.ProfileExists()
+respond.ValidationFailed(fieldErrors...)
+respond.InternalError()
 ```
 
 Panic recovery and Echo-level handlers use Problem Details via `internal/platform/respond`.
@@ -419,7 +424,7 @@ listed middleware outermost, so the access logger classifies and rethrows panics
 2. Create `handler.go` with `Register(g *echo.Group)` function
 3. Create `input.go` with input structs using `validate` tags
 4. Create `model.go` with response model structs
-5. Add swag annotations to handler functions (see [OpenAPI Documentation](#openapi-documentation))
+5. Add native Swag annotations and the route's semantic normalization and tests under `cmd/openapi/`
 6. Call `Register()` from `routes.Register()`
 7. Log within handlers using context-aware helpers
 8. Return errors using respond error helpers
@@ -430,7 +435,7 @@ listed middleware outermost, so the access logger classifies and rethrows panics
 ```go
 func createHandler(c *echo.Context) error {
     var input CreateInput
-    if err := request.DecodeJSON(c, &input); err != nil {
+    if err := request.Decode(c, &input); err != nil {
         return err
     }
     if err := c.Validate(&input); err != nil {
@@ -504,26 +509,27 @@ All errors use RFC 9457 Problem Details format:
   "type": "about:blank",
   "title": "Not Found",
   "status": 404,
-  "detail": "resource not found"
+  "detail": "Resource not found",
+  "code": "not_found"
 }
 ```
 
 ### Request ID
 
 - `X-Request-ID` header tracks requests end-to-end
-- Propagate to downstream services and include in logs
+- Use it in request-scoped logs and explicitly allowlisted internal calls; never forward it to GitHub
 - Validated or generated automatically by echo-observability `RequestContext`
 
 ### Content Types
 
 **Requests:**
-- Set `Content-Type: application/json` for JSON request bodies
-- CBOR request bodies are not supported; CBOR is response-only
+- The three body-bearing portable operations accept `application/json` (optionally `charset=utf-8`) or parameterless `application/cbor`
+- All other portable operations advertise no request body and their handlers do not consume one
 
 **Responses:**
 - Default: `application/json` (RFC 8259)
 - Alternate: `application/cbor` (RFC 8949)
-- Errors: `application/problem+json` (RFC 9457) or `application/problem+cbor` (extension)
+- Errors: `application/problem+json` (RFC 9457) or ordinary `application/cbor` with the same members
 - Format selected via `Accept` header
 - Apply the most-specific matching media range before comparing effective quality values; a specific `q=0` overrides a broader range when another supported representation remains
 - Keep success and Problem Details negotiation separate. Problem media types do not opt a successful response into their base format.
@@ -593,7 +599,8 @@ func TestMyFeature(t *testing.T) {
     e := testutil.NewTestEcho()
     e.Use(middlewares...)
     v1 := e.Group("/v1")
-    routes.Register(v1, verifier, svc)
+    github := &fake.GitHubService{}
+    routes.Register(v1, verifier, svc, github)
 
     req := httptest.NewRequest(http.MethodGet, "/v1/hello", nil)
     req.Header.Set("X-Request-ID", "test-trace-id")
@@ -660,6 +667,16 @@ To run emulator tests, start emulators:
 ```bash
 just emulators
 ```
+
+---
+
+## Profile persistence migration
+
+`cmd/profile-migrate` is audit-only by default. Do not execute it against any project unless the current request
+explicitly authorizes that project and mode. Applying requires an exact `--confirm-project`, a closed version-1 manifest
+with approved per-document terms evidence, `--confirm-rollback-reference` for the verified provider backup, and
+`--confirm-profile-writes-quiesced` for the write freeze. Never invent terms acceptance, log document IDs or profile
+data, or treat a partially applied collection as globally atomic. See README.md for the operator sequence.
 
 ---
 
@@ -733,7 +750,7 @@ The auth middleware sets the user in Echo context for secured endpoints:
 func handleGetProfile(c *echo.Context) error {
     user, err := auth.UserFromEchoContext(c)
     if err != nil {
-        return respond.Error401("unauthorized")
+        return respond.Unauthorized()
     }
     // user is guaranteed non-nil for secured endpoints because the auth
     // middleware rejects unauthenticated requests before reaching the handler
@@ -745,14 +762,17 @@ func handleGetProfile(c *echo.Context) error {
 
 ## OpenAPI Documentation
 
-The project uses [swaggo/swag v2](https://github.com/swaggo/swag/tree/v2) to generate an OpenAPI 3.1 spec from Go comment annotations. The CLI is installed as a Go tool dependency (`go tool swag`).
+The repository uses native Swag v2 handler annotations for operation registration and `cmd/openapi` for deterministic
+OpenAPI 3.1.2 normalization. The normalizer validates the native method, path, operation ID, response-status,
+parameter, request-body, and security projection before supplying exact Draft 2020-12 schemas, media, and shared
+headers that Swag cannot express. Do not hand-edit generated artifacts or add another contract description.
 
 ### Generated files
 
 | File | Purpose |
 |------|---------|
-| `api-docs/swagger.json` | OpenAPI 3.1 spec (JSON), served at `/api-docs/openapi.json` |
-| `api-docs/swagger.yaml` | Same spec in YAML |
+| `api-docs/swagger.json` | OpenAPI 3.1.2 JSON embedded and served at `/openapi.json` |
+| `api-docs/swagger.yaml` | Semantically equivalent YAML projection |
 
 ### Generating the spec
 
@@ -760,42 +780,30 @@ The project uses [swaggo/swag v2](https://github.com/swaggo/swag/tree/v2) to gen
 just docs
 ```
 
-or equivalently:
-
-```bash
-go tool swag init --quiet --v3.1 --parseInternal --outputTypes json,yaml \
-  -g cmd/server/main.go -o api-docs >/dev/null
-go run ./cmd/openapi
-```
-
-`--parseInternal` is required because all handlers live under `internal/`.
-
-### Formatting annotations
-
-```bash
-just fmt-openapi
-```
-
-This auto-aligns `// @` annotations. Run before `just docs` after manual annotation edits.
+Use `just openapi-check` for the non-mutating native-generation, normalization, and runtime-discovery drift gate.
 
 ### When to regenerate
 
 Regenerate after any of these changes:
-- Adding, removing, or renaming handler functions or routes
-- Modifying `// @` annotations (summary, params, responses, security)
-- Changing request/response struct fields or tags (`json`, `example`, `validate`)
-- Updating general API info in `cmd/server/main.go`
+- adding, removing, or renaming a portable route or operation ID;
+- changing parameters, body media, success or error media, statuses, security, headers, or public models;
+- changing schema requiredness, nullability, bounds, literals, patterns, collection shapes, or examples; or
+- changing generated document metadata.
 
-### Annotation conventions
+### Generator conventions
 
-- General API info (`@title`, `@servers.url`) lives in `cmd/server/main.go`.
-- Operation annotations (`@Summary`, `@Param`, `@Success`, `@Failure`, `@Security`, `@Router`) go on the handler function.
-- Do NOT use `@Accept json` on handler annotations. swag v2 has a bug ([swaggo/swag#2142](https://github.com/swaggo/swag/issues/2142)) where `@Accept json` combined with `@Param body` generates a `oneOf` with an empty object schema, breaking Swagger UI examples. swag defaults to `application/json` for body params, so omitting `@Accept` produces the correct spec.
-- Use `@Produce json,application/cbor` for endpoints supporting content negotiation.
-- Use `@Failure` with `respond.ProblemDetails` for error responses.
-- Use `@Security BearerAuth` on protected routes.
-- The generated `api-docs/` files must be committed.
-- `just docs` applies deterministic bearer-auth and Problem Details media-type corrections after swag generation.
+- Keep exact native operation registration in handler annotations. Keep Draft 2020-12 schemas, shared parameters,
+  response media, security, and headers in the focused normalizer files under `cmd/openapi/`.
+- The normalizer must fail when native routes, operation IDs, status sets, parameters, request bodies, or security drift;
+  it must not silently replace an unrelated generated surface.
+- GCP request bodies use JSON and CBOR; successes use JSON and CBOR; failures use Problem Details JSON and ordinary CBOR.
+- Every required response documents the portable request ID and security headers; add conditional `Link`, `Location`,
+  `WWW-Authenticate`, and quota headers where the runtime emits them.
+- Keep every reachable reference local and resolving, every application object closed, and all profile operations
+  protected by the one Firebase bearer scheme. Public operations use explicit `security: []`.
+- Detailed semantic tests belong in `cmd/openapi/main_test.go`. Runtime discovery tests must compare the served embedded
+  bytes and prove that auth, persistence, and GitHub dependencies are not invoked.
+- Commit both generated files and run `just docs` followed by `just openapi-check`.
 
 ### Swagger UI
 
@@ -805,7 +813,7 @@ by `api-docs/embed.go` and registered by application composition with `docs.Regi
 | URL | Purpose |
 |-----|---------|
 | `/api-docs` | Swagger UI |
-| `/api-docs/openapi.json` | Raw OpenAPI 3.1 spec |
+| `/openapi.json` | Raw OpenAPI 3.1.2 spec |
 
 ---
 
