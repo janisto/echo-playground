@@ -23,7 +23,7 @@ func portableSchemas() map[string]any {
 			"type":      "string",
 			"minLength": 3,
 			"maxLength": 254,
-			"pattern":   `^(?=.{1,64}@)(?!\.)(?![^@]*\.\.)(?![^@]*\.@)[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$`,
+			"pattern":   `^(?=.{1,64}@)(?!\.)(?![^@]*\.\.)(?![^@]*\.@)[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`,
 		},
 		"ContactEmailInput": map[string]any{
 			"type":    "string",

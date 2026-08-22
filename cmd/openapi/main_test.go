@@ -362,11 +362,20 @@ func TestPortableSchemasAndReferences(t *testing.T) {
 		mapValue(t, profileProperties, "phoneNumber")["$ref"] != "#/components/schemas/PhoneNumber" {
 		t.Fatal("Profile response does not use canonical contact schemas")
 	}
+	canonicalEmail := mapValue(t, schemas, "ContactEmail")
+	canonicalEmailPattern, ok := canonicalEmail["pattern"].(string)
+	if !ok || !strings.HasSuffix(
+		canonicalEmailPattern,
+		`@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`,
+	) {
+		t.Fatalf("ContactEmail does not require a lowercase canonical domain: %#v", canonicalEmail)
+	}
 	emailInput := mapValue(t, schemas, "ContactEmailInput")
 	emailPattern, ok := emailInput["pattern"].(string)
 	if !ok || emailInput["maxLength"] != nil ||
 		!strings.HasPrefix(emailPattern, `^[\u0009-\u000D\u0020]*`) ||
 		!strings.Contains(emailPattern, `{3,254}`) ||
+		!strings.Contains(emailPattern, `@[A-Za-z0-9]`) ||
 		!strings.HasSuffix(emailPattern, `[\u0009-\u000D\u0020]*$`) {
 		t.Fatalf("ContactEmailInput does not admit exact surrounding ASCII whitespace: %#v", emailInput)
 	}
