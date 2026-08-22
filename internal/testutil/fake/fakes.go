@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/janisto/echo-playground/internal/platform/auth"
+	"github.com/janisto/echo-playground/internal/platform/pagination"
+	githubsvc "github.com/janisto/echo-playground/internal/service/github"
 	profilesvc "github.com/janisto/echo-playground/internal/service/profile"
 )
 
@@ -28,6 +30,65 @@ func (m *MockVerifier) Verify(context.Context, string) (*auth.FirebaseUser, erro
 
 // CallCount returns the number of verification attempts.
 func (m *MockVerifier) CallCount() int32 { return m.calls.Load() }
+
+// GitHubService is a bounded zero-network fake that fails closed when invoked.
+type GitHubService struct {
+	calls atomic.Int32
+}
+
+func (service *GitHubService) GetOwner(context.Context, string) (githubsvc.Owner, error) {
+	service.calls.Add(1)
+	return githubsvc.Owner{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListOwnerRepositories(
+	context.Context,
+	string,
+	int,
+	*pagination.Cursor,
+) (githubsvc.Page[githubsvc.RepositorySummary], error) {
+	service.calls.Add(1)
+	return githubsvc.Page[githubsvc.RepositorySummary]{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) GetRepository(context.Context, string, string) (githubsvc.Repository, error) {
+	service.calls.Add(1)
+	return githubsvc.Repository{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListRepositoryActivity(
+	context.Context,
+	string,
+	string,
+	int,
+	*pagination.Cursor,
+) (githubsvc.Page[githubsvc.Activity], error) {
+	service.calls.Add(1)
+	return githubsvc.Page[githubsvc.Activity]{}, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListRepositoryLanguages(
+	context.Context,
+	string,
+	string,
+) ([]githubsvc.Language, error) {
+	service.calls.Add(1)
+	return nil, githubsvc.ErrUpstream
+}
+
+func (service *GitHubService) ListRepositoryTags(
+	context.Context,
+	string,
+	string,
+	int,
+	*pagination.Cursor,
+) (githubsvc.Page[githubsvc.Tag], error) {
+	service.calls.Add(1)
+	return githubsvc.Page[githubsvc.Tag]{}, githubsvc.ErrUpstream
+}
+
+// CallCount returns the number of attempted provider operations.
+func (service *GitHubService) CallCount() int32 { return service.calls.Load() }
 
 // TestUser returns a stable authenticated identity for tests.
 func TestUser() *auth.FirebaseUser {
@@ -146,5 +207,6 @@ func cloneProfile(p *profilesvc.Profile) *profilesvc.Profile {
 
 var (
 	_ auth.Verifier      = (*MockVerifier)(nil)
+	_ githubsvc.Service  = (*GitHubService)(nil)
 	_ profilesvc.Service = (*ProfileStore)(nil)
 )

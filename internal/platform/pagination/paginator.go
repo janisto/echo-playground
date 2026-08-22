@@ -35,6 +35,7 @@ func Paginate[T any](
 		return Result[T]{}, ErrInvalidLimit
 	}
 	start := 0
+	end := min(len(items), scope.Limit)
 	if cursor != nil {
 		if !cursor.Matches(scope) {
 			return Result[T]{}, ErrCursorScopeMismatch
@@ -51,11 +52,12 @@ func Paginate[T any](
 		}
 		if cursor.Direction == "next" {
 			start = position + 1
+			end = min(len(items), start+scope.Limit)
 		} else {
-			start = max(0, position-scope.Limit)
+			end = position
+			start = max(0, end-scope.Limit)
 		}
 	}
-	end := min(len(items), start+scope.Limit)
 	page := items[start:end]
 
 	var nextCursor, prevCursor string

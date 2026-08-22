@@ -33,6 +33,7 @@ the behavior under test:
 func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo {
 	logger := zap.NewNop()
 	e := testutil.NewTestEcho()
+	github := &fake.GitHubService{}
 	const traceContextLevel = obs.TraceContextLevel1
 	e.Use(
 		obs.RequestContext(obs.RequestContextConfig{
@@ -45,10 +46,13 @@ func setupTestServer(verifier auth.Verifier, svc profilesvc.Service) *echo.Echo 
 	)
 
 	e.GET("/health", health.Handler)
-	routes.Register(e.Group("/v1"), verifier, svc)
+	routes.Register(e.Group("/v1"), verifier, svc, github)
 	return e
 }
 ```
+
+`fake.GitHubService` performs no network calls and fails closed with `github.ErrUpstream` if an unrelated test reaches
+a provider route. Use a purpose-built deterministic service double when the GitHub response itself is under test.
 
 Keep recovery outside `obs.AccessLogger`; v2 classifies and rethrows panics before recovery writes the error response.
 

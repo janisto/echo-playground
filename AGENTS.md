@@ -350,9 +350,10 @@ func getHandler(c *echo.Context) error {
 
 ### Input Binding and Validation
 
-Use a source-specific decoder plus `c.Validate()`. Use `request.Decode` for exactly one top-level JSON or CBOR object,
-`request.RejectUnknownOrRepeatedQuery` before `echo.BindQueryParams` for closed scalar query contracts, and the corresponding path binder for path DTOs. Avoid
-generic `c.Bind`, which can merge multiple sources.
+Use a source-specific decoder plus `c.Validate()`. Use `request.Decode` for exactly one top-level JSON or CBOR object.
+Use `request.ParseQuery` when a closed scalar query needs typed parsing or absent-versus-empty distinctions, and
+`request.RejectUnknownOrRepeatedQuery` when the closed query carries no accepted values. Avoid generic `c.Bind`, which
+can merge multiple sources.
 
 ```go
 func createHandler(c *echo.Context) error {
@@ -598,7 +599,8 @@ func TestMyFeature(t *testing.T) {
     e := testutil.NewTestEcho()
     e.Use(middlewares...)
     v1 := e.Group("/v1")
-    routes.Register(v1, verifier, svc)
+    github := &fake.GitHubService{}
+    routes.Register(v1, verifier, svc, github)
 
     req := httptest.NewRequest(http.MethodGet, "/v1/hello", nil)
     req.Header.Set("X-Request-ID", "test-trace-id")
