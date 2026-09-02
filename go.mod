@@ -11,7 +11,7 @@ require (
 	github.com/labstack/echo/v5 v5.3.1
 	go.uber.org/zap v1.28.0
 	google.golang.org/api v0.290.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.1
 	sigs.k8s.io/yaml v1.6.0
 )
 
