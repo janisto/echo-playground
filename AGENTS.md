@@ -73,7 +73,8 @@ Instructions for coding agents working in this repository.
   final settings in Chrome; API/CLI inspection supplements this verification.
   Never weaken protection to make a PR pass.
 - Pin Actions to explicit full release tags and downloaded tools to reviewed
-  versions. Keep local and CI actionlint/zizmor selections aligned. Enforce one
+  versions. Verify release tags during review instead of adding custom tag-format
+  scanners. Keep local and CI actionlint/zizmor selections aligned. Enforce one
   read-only offline pedantic zizmor scan in plain mode, without SARIF uploads.
 - Keep auto-merge limited to verified Dependabot minor/patch updates behind
   required checks. Do not add duplicate package filters, enablement triggers,

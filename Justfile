@@ -291,27 +291,9 @@ vuln-functions:
     cd functions && GOWORK=off go tool -modfile=../go.mod govulncheck ./...
 
 [group('qa')]
-workflow-check: action-refs-check
+workflow-check:
     actionlint
     zizmor --offline --persona=pedantic .
-
-[group('qa')]
-action-refs-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    invalid=0
-    while read -r _ use; do
-      if [[ "$use" == docker://* ]]; then
-        valid='@sha256:[0-9a-f]{64}$'
-      else
-        valid='@v[0-9]+\.[0-9]+\.[0-9]+$'
-      fi
-      if [[ ! "$use" =~ $valid ]]; then
-        printf 'Action must use a full release tag or Docker digest: %s\n' "$use"
-        invalid=1
-      fi
-    done < <(rg --no-filename --only-matching 'uses:[[:space:]]+[^[:space:]#]+' .github/workflows)
-    exit "$invalid"
 
 [group('qa')]
 modernize-check:
