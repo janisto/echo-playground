@@ -3059,7 +3059,7 @@
         }
     },
     "info": {
-        "description": "Portable REST contract implemented with Echo 5.3.",
+        "description": "Portable REST contract implemented with Echo v5.",
         "title": "Echo Playground Portable API",
         "version": "1.0.0"
     },

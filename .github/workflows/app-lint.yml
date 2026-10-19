@@ -1,10 +1,9 @@
-name: App code quality
+name: App code quality (linting and formatting)
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -17,62 +16,31 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
-  quality:
+  lint:
+    name: lint
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
         with:
-          go-version: '1.26.x'
-          check-latest: true
-          cache: true
+          go-version-file: go.mod
           cache-dependency-path: |
             go.sum
             functions/go.sum
-
       - name: Set up Just
         uses: extractions/setup-just@v4.0.0
-
+        with:
+          just-version: '1.59.0'
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
         with:
-          version: v2.12.2
+          version: v2.15.0
           install-only: true
 
-      - name: Check formatting
-        run: just fmt-check
-
-      - name: Lint both modules
-        run: just lint
-
-      - name: Check module files
-        run: just tidy-check
-
-      - name: Audit workflow security
-        uses: zizmorcore/zizmor-action@v0.6.4
-        with:
-          advanced-security: false
-          version: v1.28.0
-
-      - name: Check Go modernizations
-        run: just modernize-check
-
-      - name: Check patches
-        run: git diff --check
-
-  lint:
-    if: ${{ always() }}
-    needs: [quality]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require quality job
-        env:
-          QUALITY: ${{ needs.quality.result }}
-        run: test "$QUALITY" = success
+      - name: Check formatting and lint rules in both modules
+        run: just fmt-check lint

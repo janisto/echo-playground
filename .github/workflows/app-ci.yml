@@ -1,10 +1,11 @@
-name: App build, tests and deployable artifacts
+name: App validation
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+  schedule:
+    - cron: '17 5 * * 1'
 
 permissions:
   contents: read
@@ -17,33 +18,56 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
-  unit:
+  quality:
+    name: Go quality and dependency safety
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
         with:
-          go-version: '1.26.x'
-          check-latest: true
-          cache: true
+          go-version-file: go.mod
           cache-dependency-path: |
             go.sum
             functions/go.sum
-
       - name: Set up Just
         uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: '1.59.0'
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.15.0
+          install-only: true
 
-      - name: Validate toolchain
-        run: go version
+      - name: Check both modules
+        run: just fmt-check lint tidy-check modernize-check vuln
 
-      - name: Download both modules
-        run: just download
+  tests:
+    name: Build, tests, race, and fuzz
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            functions/go.sum
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: '1.59.0'
 
       - name: Build both modules
         run: just build
@@ -51,49 +75,32 @@ jobs:
       - name: Test both modules with coverage
         run: just test-coverage
 
+      - name: Generate coverage reports
+        if: ${{ !cancelled() && hashFiles('coverage.out') != '' }}
+        run: |
+          for module in . functions; do
+            if [ -f "$module/coverage.out" ]; then
+              (cd "$module" && go tool cover -func=coverage.out > coverage-summary.txt && go tool cover -html=coverage.out -o coverage.html)
+              {
+                echo "### Test coverage: $module"
+                echo
+                sed 's/^/    /' "$module/coverage-summary.txt"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
       - name: Smoke-test Functions Framework target
         run: just functions-smoke
-
-      - name: Fuzz curated input boundaries
-        # Use a deterministic budget: very short wall-clock fuzz deadlines can
-        # race worker shutdown on loaded hosted runners.
-        run: just fuzz-all 100000x
 
       - name: Race detector
         run: just test-race
 
-      - name: Generate coverage artifacts
-        run: |
-          go tool cover -func=coverage.out > coverage-summary.txt
-          go tool cover -html=coverage.out -o coverage.html
-          (
-            cd functions
-            GOWORK=off go tool cover -func=coverage.out > coverage-summary.txt
-            GOWORK=off go tool cover -html=coverage.out -o coverage.html
-          )
-
-      - name: Publish coverage summary
-        run: |
-          root_total=$(grep '^total:' coverage-summary.txt | awk '{print $3}')
-          function_total=$(grep '^total:' functions/coverage-summary.txt | awk '{print $3}')
-          {
-            echo "### Test Coverage"
-            echo
-            echo "Root module: ${root_total}"
-            echo
-            echo "Function module: ${function_total}"
-            echo
-            echo "#### Root module"
-            echo
-            sed 's/^/    /' coverage-summary.txt
-            echo
-            echo "#### Function module"
-            echo
-            sed 's/^/    /' functions/coverage-summary.txt
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fuzz curated input boundaries
+        run: just fuzz-all 100000x
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v7.0.1
+        if: ${{ !cancelled() && hashFiles('coverage.out') != '' }}
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: coverage-report
           path: |
@@ -103,8 +110,94 @@ jobs:
             functions/coverage.out
             functions/coverage.html
             functions/coverage-summary.txt
+          if-no-files-found: error
 
   firebase-emulators:
+    name: Firebase emulator integration tests
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: /dev/null
+      GCE_METADATA_HOST: '127.0.0.1:9'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            functions/go.sum
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: '1.59.0'
+
+      - name: Set up Java for emulators
+        uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: '27'
+
+      - name: Set up Node.js for Firebase CLI
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24.22.0'
+
+      - name: Run required emulator tests
+        run: just test-integration-ci
+
+      - name: Generate emulator coverage reports
+        if: ${{ !cancelled() && hashFiles('integration-coverage.out') != '' }}
+        run: |
+          go tool cover -func=integration-coverage.out > integration-coverage-summary.txt
+          go tool cover -html=integration-coverage.out -o integration-coverage.html
+          {
+            echo '### Emulator-backed test coverage'
+            echo
+            sed 's/^/    /' integration-coverage-summary.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload emulator coverage artifacts
+        if: ${{ !cancelled() && hashFiles('integration-coverage.out') != '' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: emulator-coverage-report
+          path: |
+            integration-coverage.out
+            integration-coverage.html
+            integration-coverage-summary.txt
+          if-no-files-found: error
+
+  generated-openapi:
+    name: Generated OpenAPI and runtime agreement
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Set up Just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: '1.59.0'
+
+      - name: Check generation, semantics, and runtime discovery
+        run: just openapi-check
+
+  container:
+    name: Container build and smoke
+    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -112,160 +205,69 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version: '1.26.x'
-          check-latest: true
-          cache: true
-
-      - name: Set up Java
-        uses: actions/setup-java@v6.0.1
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7.0.0
-        with:
-          node-version: '24'
-
       - name: Set up Just
         uses: extractions/setup-just@v4.0.0
-
-      # The emulator CLI is a pinned CI tool; this repository has no Node dependency graph to lock.
-      - name: Install Firebase CLI
-        run: npm install --global firebase-tools@15.24.0 # zizmor: ignore[adhoc-packages]
-
-      - name: Run required emulator tests
-        run: just test-integration-ci
-
-      - name: Publish emulator coverage summary
-        run: |
-          total=$(grep '^total:' integration-coverage-summary.txt | awk '{print $3}')
-          {
-            echo "### Emulator-backed Test Coverage"
-            echo
-            echo "Total coverage: ${total}"
-            echo
-            echo "This profile includes the root test suite with required Auth and Firestore emulators."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload emulator coverage artifacts
-        uses: actions/upload-artifact@v7.0.1
         with:
-          name: emulator-coverage-report
-          path: |
-            integration-coverage.out
-            integration-coverage.html
-            integration-coverage-summary.txt
-
-  vulnerability:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version: '1.26.x'
-          check-latest: true
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            functions/go.sum
-
-      - name: Set up Just
-        uses: extractions/setup-just@v4.0.0
-
-      - name: Scan both modules
-        run: just vuln
-
-  dependency-review:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Review dependency changes
-        if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v5.0.0
-
-  generated-openapi:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version: '1.26.x'
-          check-latest: true
-          cache: true
-
-      - name: Set up Just
-        uses: extractions/setup-just@v4.0.0
-
-      - name: Regenerate OpenAPI
-        run: just docs
-
-      - name: Reject generated drift
-        run: git diff --exit-code -- api-docs
-
-      - name: Validate OpenAPI semantics
-        run: just test-app
-
-  container:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Just
-        uses: extractions/setup-just@v4.0.0
+          just-version: '1.59.0'
 
       - name: Probe final image
         run: just container-smoke
 
-  ci:
-    if: ${{ always() }}
-    needs:
-      - unit
-      - firebase-emulators
-      - vulnerability
-      - dependency-review
-      - generated-openapi
-      - container
+  actionlint:
+    name: Workflow syntax
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require all CI jobs
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@v0.7.1
         env:
-          UNIT: ${{ needs.unit.result }}
+          ZIZMOR_OFFLINE: 'true'
+        with:
+          version: '1.31.1'
+          persona: pedantic
+          online-audits: false
+          advanced-security: false
+
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs: [quality, tests, firebase-emulators, container, generated-openapi, actionlint, zizmor]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every validation job to succeed
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          TESTS: ${{ needs.tests.result }}
           FIREBASE_EMULATORS: ${{ needs['firebase-emulators'].result }}
-          VULNERABILITY: ${{ needs.vulnerability.result }}
-          DEPENDENCY_REVIEW: ${{ needs['dependency-review'].result }}
-          GENERATED_OPENAPI: ${{ needs['generated-openapi'].result }}
           CONTAINER: ${{ needs.container.result }}
+          GENERATED_OPENAPI: ${{ needs['generated-openapi'].result }}
+          ACTIONLINT: ${{ needs.actionlint.result }}
+          ZIZMOR: ${{ needs.zizmor.result }}
         run: |
-          test "$UNIT" = success
+          test "$QUALITY" = success
+          test "$TESTS" = success
           test "$FIREBASE_EMULATORS" = success
-          test "$VULNERABILITY" = success
-          test "$DEPENDENCY_REVIEW" = success
-          test "$GENERATED_OPENAPI" = success
           test "$CONTAINER" = success
+          test "$GENERATED_OPENAPI" = success
+          test "$ACTIONLINT" = success
+          test "$ZIZMOR" = success

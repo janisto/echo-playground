@@ -14,7 +14,7 @@ import (
 
 //	@title			Echo Playground Portable API
 //	@version		1.0.0
-//	@description	Portable REST contract implemented with Echo 5.3.
+//	@description	Portable REST contract implemented with Echo v5.
 
 // Version can be overridden at build time: -ldflags "-X main.Version=1.2.3"
 var Version = "dev"

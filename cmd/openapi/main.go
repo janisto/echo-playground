@@ -237,23 +237,11 @@ func validateNativeRequestBody(location string, generated, expected map[string]a
 		return fmt.Errorf("%s native JSON request media is not an object", location)
 	}
 	jsonSchema, ok := jsonMedia["schema"].(map[string]any)
-	if !ok || len(jsonSchema) != 1 {
-		return fmt.Errorf("%s native JSON request schema is not exactly oneOf", location)
-	}
-	variants, ok := jsonSchema["oneOf"].([]any)
-	if !ok || len(variants) != 2 {
-		return fmt.Errorf("%s native JSON request schema does not have the expected two registrations", location)
-	}
-	baseVariant, ok := variants[0].(map[string]any)
-	if !ok || len(baseVariant) != 1 || baseVariant["type"] != "object" {
-		return fmt.Errorf("%s native JSON request schema lacks the generator object registration", location)
-	}
-	dtoVariant, ok := variants[1].(map[string]any)
-	summary, summaryOK := dtoVariant["summary"].(string)
-	description, descriptionOK := dtoVariant["description"].(string)
-	if !ok || !sameKeys(dtoVariant, map[string]struct{}{
+	summary, summaryOK := jsonSchema["summary"].(string)
+	description, descriptionOK := jsonSchema["description"].(string)
+	if !ok || !sameKeys(jsonSchema, map[string]struct{}{
 		"$ref": {}, "summary": {}, "description": {},
-	}) || dtoVariant["$ref"] != expectedReference || !summaryOK || summary == "" ||
+	}) || jsonSchema["$ref"] != expectedReference || !summaryOK || summary == "" ||
 		!descriptionOK || description == "" {
 		return fmt.Errorf("%s native JSON request schema does not exactly reference %s", location, expectedReference)
 	}

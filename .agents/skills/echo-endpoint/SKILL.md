@@ -3,7 +3,7 @@ name: echo-endpoint
 description: Create or change Echo v5 portable API endpoints in echo-playground, including strict JSON or CBOR input, closed queries, authentication, Problem Details, OpenAPI generation, and adversarial tests.
 ---
 
-# Echo 5.3 endpoints
+# Echo v5 endpoints
 
 Read `AGENTS.md`, neighboring handlers, `internal/http/v1/routes/routes.go`, and the relevant platform and service
 contracts. Do not apply this skill to the independent `functions/` module.

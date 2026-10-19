@@ -103,8 +103,8 @@ just test-race
 just coverage
 just test-integration-ci
 just functions-smoke
-just check
+just qa
 ```
 
 The unqualified build, test, race, lint, formatting, vulnerability, tidy, and check recipes cover both modules. Use the
-`*-app`, `*-functions`, or compatibility `functions-*` recipes only for a deliberately narrow first pass.
+`*-app`, `*-functions`, or targeted `functions-*` recipes only for a deliberately narrow first pass.
