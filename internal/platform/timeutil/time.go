@@ -14,6 +14,8 @@ const RFC3339Micros = "2006-01-02T15:04:05.000000Z"
 
 // Time wraps time.Time to ensure consistent RFC 3339 millisecond precision
 // in JSON and CBOR marshaling. Output format is always "2024-01-15T10:30:00.000Z".
+//
+//nolint:recvcheck // Encoding uses values; decoding needs pointers, matching time.Time.
 type Time struct {
 	time.Time
 }

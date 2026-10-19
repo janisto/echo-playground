@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/janisto/echo-observability/v2"
@@ -187,7 +188,8 @@ func serve(ctx context.Context, server *http.Server, shutdownTimeout time.Durati
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", server.Addr, err)
 	}
-	logger.Info("server listening", zap.String("addr", listener.Addr().String()), zap.String("version", Version))
+	logger.Info("server listening", zap.String("addr", listener.Addr().String()),
+		zap.String("version", Version), zap.String("go_version", runtime.Version()))
 
 	listenErr := make(chan error, 1)
 	go func() {

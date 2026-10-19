@@ -3,17 +3,23 @@ name: Dependabot auto-merge
 
 on: pull_request
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   auto-merge:
+    name: Approve and enable auto-merge
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'janisto/echo-playground'
+
+    permissions:
+      contents: write # Enable squash auto-merge.
+      pull-requests: write # Label and approve eligible updates.
 
     steps:
       - name: Fetch Dependabot metadata

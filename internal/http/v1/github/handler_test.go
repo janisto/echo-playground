@@ -69,12 +69,10 @@ func (service *serviceDouble) ListOwnerRepositories(
 func (service *serviceDouble) GetRepository(context.Context, string, string) (githubsvc.Repository, error) {
 	service.calls.Add(1)
 	return githubsvc.Repository{
-		RepositorySummary: githubsvc.RepositorySummary{
-			ID:       1,
-			Name:     "repo",
-			FullName: "acme/repo",
-			HTMLURL:  "https://example.test/acme/repo",
-		},
+		ID:            1,
+		Name:          "repo",
+		FullName:      "acme/repo",
+		HTMLURL:       "https://example.test/acme/repo",
 		Topics:        []string{},
 		CreatedAt:     time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 		UpdatedAt:     time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),

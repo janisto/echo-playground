@@ -118,8 +118,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeDecodeError(w http.ResponseWriter, err error) {
-	var maxBytesErr *http.MaxBytesError
-	if errors.As(err, &maxBytesErr) {
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}

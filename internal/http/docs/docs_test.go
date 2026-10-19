@@ -29,16 +29,16 @@ func TestRegister_SwaggerUI(t *testing.T) {
 		t.Fatal("expected swagger-ui content in response")
 	}
 	for _, expected := range []string{
-		"https://unpkg.com/swagger-ui-dist@5.32.11/swagger-ui.css",
-		"https://unpkg.com/swagger-ui-dist@5.32.11/swagger-ui-bundle.js",
+		"https://unpkg.com/swagger-ui-dist@5.33.3/swagger-ui.css",
+		"https://unpkg.com/swagger-ui-dist@5.33.3/swagger-ui-bundle.js",
 		`crossorigin="anonymous"`,
 	} {
 		if !strings.Contains(rec.Body.String(), expected) {
 			t.Fatalf("Swagger UI HTML lacks %q", expected)
 		}
 	}
-	assertIntegrity(t, rec.Body.String(), "sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT")
-	assertIntegrity(t, rec.Body.String(), "sha384-vfl/klfTFrIz5urj0HnhcXLAbzPdRHezizfy+XgFB6GqcKkhlk0lS3bIbyB39NLA")
+	assertIntegrity(t, rec.Body.String(), "sha384-Ov4/wv3j2bmct8cDc5X4ngJZohVPzEmc6uDPH8WeljUxO5vtoykvMEfbu9Vh6RaW")
+	assertIntegrity(t, rec.Body.String(), "sha384-h00llMzD1afyNow1pDmnZKlHsUZgp9KE9HXLFXF2CvbwsBY0+WBO4f75SfGwvM4K")
 }
 
 func assertIntegrity(t *testing.T, document, value string) {

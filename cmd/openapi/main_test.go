@@ -109,21 +109,19 @@ func TestNormalizerRejectsNativeRegistrationDrift(t *testing.T) {
 			t.Helper()
 			body := mapValue(t, nativeOperation(t, document, "/v1/profile", "post"), "requestBody")
 			jsonMedia := mapValue(t, mapValue(t, body, "content"), "application/json")
-			variants := arrayValue(t, mapValue(t, jsonMedia, "schema")["oneOf"], "request schema variants")
-			objectValue(t, variants[1], "request DTO")["$ref"] = "#/components/schemas/profile.UpdateInput"
+			mapValue(t, jsonMedia, "schema")["$ref"] = "#/components/schemas/profile.UpdateInput"
 		}},
 		{name: "request DTO sibling keyword", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
 			body := mapValue(t, nativeOperation(t, document, "/v1/profile", "post"), "requestBody")
 			jsonMedia := mapValue(t, mapValue(t, body, "content"), "application/json")
-			variants := arrayValue(t, mapValue(t, jsonMedia, "schema")["oneOf"], "request schema variants")
-			objectValue(t, variants[1], "request DTO")["not"] = map[string]any{}
+			mapValue(t, jsonMedia, "schema")["not"] = map[string]any{}
 		}},
-		{name: "request schema sibling keyword", mutate: func(t *testing.T, document map[string]any) {
+		{name: "ambiguous request schema union", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
 			body := mapValue(t, nativeOperation(t, document, "/v1/profile", "post"), "requestBody")
 			jsonMedia := mapValue(t, mapValue(t, body, "content"), "application/json")
-			mapValue(t, jsonMedia, "schema")["not"] = map[string]any{}
+			jsonMedia["schema"] = map[string]any{"oneOf": []any{map[string]any{"type": "object"}, jsonMedia["schema"]}}
 		}},
 		{name: "body on bodyless operation", mutate: func(t *testing.T, document map[string]any) {
 			t.Helper()
@@ -480,7 +478,7 @@ func nativeRegistrationFixture() map[string]any {
 		"info": map[string]any{
 			"title":       "Echo Playground Portable API",
 			"version":     "1.0.0",
-			"description": "Portable REST contract implemented with Echo 5.3.",
+			"description": "Portable REST contract implemented with Echo v5.",
 		},
 		"paths": paths,
 	}
@@ -509,12 +507,9 @@ func nativeRequestBodyFixture(reference string) map[string]any {
 	return map[string]any{
 		"required": true,
 		"content": map[string]any{
-			"application/json": map[string]any{"schema": map[string]any{"oneOf": []any{
-				map[string]any{"type": "object"},
-				map[string]any{
-					"$ref": reference, "summary": "body", "description": "request document",
-				},
-			}}},
+			"application/json": map[string]any{"schema": map[string]any{
+				"$ref": reference, "summary": "body", "description": "request document",
+			}},
 			"application/cbor": map[string]any{"schema": map[string]any{"type": "string"}},
 		},
 	}

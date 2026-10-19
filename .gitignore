@@ -33,3 +33,7 @@ firebase-debug.*.log
 firestore-debug.log*
 firestore-debug.*.log*
 .firebase/
+
+# Emulator coverage reports
+integration-coverage.html
+integration-coverage-summary.txt

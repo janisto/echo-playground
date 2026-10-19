@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24.0
+# syntax=docker/dockerfile:1.28.0
 # Dockerfile for a Go Echo application
 #
 # Uses multi-stage build with official Go and distroless images.
@@ -7,9 +7,9 @@
 # Rebuild this image for Go standard-library and base-image security updates.
 
 # Builder image: includes Go toolchain for compilation
-ARG GO_IMAGE=golang:1.26-trixie
+ARG GO_IMAGE=golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e
 # Runtime image: minimal distroless image (no shell, no package manager)
-ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian13:nonroot
+ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 # Build arguments for version injection
 ARG VERSION=dev
 

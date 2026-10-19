@@ -21,11 +21,12 @@ permissions:
 
 jobs:
   collect-prs:
+    name: Collect pull requests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: read # List the selected pull requests.
 
     outputs:
       pr_numbers: ${{ steps.get_prs.outputs.pr_numbers }}
@@ -66,6 +67,7 @@ jobs:
           INPUT_SCOPE: ${{ github.event.inputs.scope }}
 
   label-prs-matrix:
+    name: Label selected pull requests
     if: needs.collect-prs.outputs.pr_count != '0'
     needs: collect-prs
 
@@ -73,8 +75,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      issues: write
-      pull-requests: write
+      pull-requests: write # Apply pull request labels.
 
     strategy:
       max-parallel: 10

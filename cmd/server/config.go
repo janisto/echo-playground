@@ -168,8 +168,8 @@ func isCanonicalCORSOrigin(origin string, parsed *url.URL) bool {
 func hostEndsInNumber(hostname string) bool {
 	trimmed := strings.TrimSuffix(hostname, ".")
 	label := trimmed
-	if index := strings.LastIndexByte(trimmed, '.'); index >= 0 {
-		label = trimmed[index+1:]
+	if _, after, ok := strings.CutLast(trimmed, "."); ok {
+		label = after
 	}
 	if label == "" {
 		return false
