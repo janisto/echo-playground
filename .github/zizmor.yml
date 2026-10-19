@@ -5,6 +5,6 @@ rules:
       days: 1
   unpinned-uses:
     config:
-      # Repository policy requires explicit full release tags.
+      # Symbolic refs are allowed here; action-refs-check enforces full release tags.
       policies:
         "*": ref-pin

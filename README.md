@@ -144,7 +144,7 @@ paths, queries, and fragments are rejected. Enabled CORS permits and exposes `X-
 | `just contract-smoke [base_url] [github_live]` | Probe an already-running server over real HTTP; live GitHub calls are explicit and off by default |
 | `just emulators` | Start Auth and Firestore emulators |
 | `just test-integration-ci` | Require emulators and generate separate integration coverage |
-| `just workflow-check` | Run actionlint and one offline pedantic zizmor scan |
+| `just workflow-check` | Check Action release references, actionlint, and one offline pedantic zizmor scan |
 | `just modernize-check` | Report available Go modernizations without changing files |
 | `just container-smoke` | Build and verify the final service image |
 
