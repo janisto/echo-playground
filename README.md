@@ -282,7 +282,7 @@ styles from `unpkg.com`; SRI pins the selected external bytes, while the initial
 ## Project layout
 
 ```text
-.agents/skills/         Six portable project workflows with Codex UI metadata
+.agents/skills/         Portable project workflows with Codex UI metadata
 .github/agents/        Evidence-based security review profile for GitHub Copilot
 api-docs/              Generated OpenAPI plus embedded runtime document
 cmd/openapi/           Deterministic OpenAPI 3.1.2 normalizer and semantic tests
