@@ -3,15 +3,15 @@ module github.com/janisto/echo-playground
 go 1.27.3
 
 require (
-	cloud.google.com/go/firestore v1.26.0
+	cloud.google.com/go/firestore v1.29.2
 	firebase.google.com/go/v4 v4.22.0
-	github.com/fxamacker/cbor/v2 v2.9.6
-	github.com/go-playground/validator/v10 v10.30.5
+	github.com/fxamacker/cbor/v2 v2.10.0
+	github.com/go-playground/validator/v10 v10.30.6
 	github.com/janisto/echo-observability/v2 v2.0.0
-	github.com/labstack/echo/v5 v5.4.0
+	github.com/labstack/echo/v5 v5.4.4
 	go.uber.org/zap v1.28.0
-	google.golang.org/api v0.304.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/api v0.310.0
+	google.golang.org/grpc v1.85.0
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -56,8 +56,8 @@ require (
 	github.com/google/renameio v1.0.1 // indirect
 	github.com/google/s2a-go v0.1.11 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
-	github.com/googleapis/gax-go/v2 v2.26.2 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.24 // indirect
+	github.com/googleapis/gax-go/v2 v2.27.0 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -94,7 +94,7 @@ require (
 	google.golang.org/appengine/v2 v2.0.6 // indirect
 	google.golang.org/genproto v0.0.0-20261012220534-4341edf3f941 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261012220534-4341edf3f941 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261012220534-4341edf3f941 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
