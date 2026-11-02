@@ -2,7 +2,7 @@
 
 [![Application CI](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-ci.yml?branch=main&label=application%20CI&logo=githubactions&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-ci.yml)
 [![Code quality](https://img.shields.io/github/actions/workflow/status/janisto/echo-playground/app-lint.yml?branch=main&label=code%20quality&logo=go&logoColor=white)](https://github.com/janisto/echo-playground/actions/workflows/app-lint.yml)
-[![Go 1.27.2](https://img.shields.io/badge/Go-1.27.2-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Go 1.27.3](https://img.shields.io/badge/Go-1.27.3-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![MIT license](https://img.shields.io/github/license/janisto/echo-playground)](LICENSE)
 
 A compact, high-quality REST API example built with [Echo 5.4](https://github.com/labstack/echo/tree/v5) and Go 1.27.
@@ -69,7 +69,7 @@ repeated scalar parameters instead of choosing an arbitrary value.
 
 ## Requirements
 
-- Go 1.27.2 (the only supported Go line is 1.27)
+- Go 1.27.3 (the only supported Go line is 1.27)
 - [Just](https://github.com/casey/just) 1.59.0
 - [golangci-lint](https://golangci-lint.run/) 2.15.0
 - Node.js 24 LTS and Java 27 for Auth and Firestore emulators; Just invokes Firebase CLI 15.34.0 through pinned `npx`
