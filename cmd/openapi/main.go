@@ -75,7 +75,7 @@ func run(inputPath, jsonPath, yamlPath string) error {
 
 func normalizeDocument(generated map[string]any) (map[string]any, error) {
 	paths := portablePaths()
-	if err := validateNativeDocument(generated, paths); err != nil {
+	if err := normalizeNativeOperations(generated, paths); err != nil {
 		return nil, fmt.Errorf("validate Swag registration: %w", err)
 	}
 	generatedInfo, ok := generated["info"].(map[string]any)
@@ -105,7 +105,7 @@ func normalizeDocument(generated map[string]any) (map[string]any, error) {
 	}, nil
 }
 
-func validateNativeDocument(generated, expectedPaths map[string]any) error {
+func normalizeNativeOperations(generated, expectedPaths map[string]any) error {
 	if securityValue, present := generated["security"]; present {
 		security, ok := securityValue.([]any)
 		if !ok || len(security) != 0 {
@@ -151,6 +151,13 @@ func validateNativeDocument(generated, expectedPaths map[string]any) error {
 			}
 			if err := validateNativeOperation(method+" "+path, generatedOperation, expectedOperation); err != nil {
 				return err
+			}
+			for _, field := range []string{"summary", "description"} {
+				value, valid := generatedOperation[field].(string)
+				if !valid || strings.TrimSpace(value) == "" {
+					return fmt.Errorf("%s %s native %s must be non-empty", method, path, field)
+				}
+				expectedOperation[field] = value
 			}
 		}
 	}

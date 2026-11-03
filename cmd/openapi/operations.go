@@ -220,8 +220,7 @@ func operation(
 	allParameters = append(allParameters, parameters...)
 	result := map[string]any{
 		"operationId": id, "summary": summary, "security": security,
-		"description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
-		"parameters":  allParameters, "responses": operationResponses,
+		"parameters": allParameters, "responses": operationResponses,
 	}
 	if body != nil {
 		result["requestBody"] = body

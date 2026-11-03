@@ -18,7 +18,8 @@ type Response struct {
 //
 //	@Summary		Get application health
 //	@ID				getHealth
-//	@Description	Returns the dependency-free application health signal. The query string is closed.
+//	@Description	Returns process liveness without authentication or external-service calls; it does not establish Firebase readiness.
+//	@Description	The query string is closed; no query parameters are accepted.
 //	@Tags			health
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)

@@ -20,7 +20,8 @@ func Register(g *echo.Group) {
 //
 //	@Summary		Get the default greeting
 //	@ID				getHello
-//	@Description	Returns the fixed greeting. The query string is closed.
+//	@Description	Returns the fixed public greeting without authentication or persisted side effects.
+//	@Description	The query string is closed; no query parameters are accepted.
 //	@Tags			hello
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
@@ -40,7 +41,8 @@ func getHandler(c *echo.Context) error {
 //
 //	@Summary		Create a personalized greeting
 //	@ID				createHello
-//	@Description	Creates a greeting from one strict request document. The query string is closed.
+//	@Description	Computes a public personalized greeting from one validated JSON or CBOR object and returns 200.
+//	@Description	No resource is stored, so repeating valid input has no persisted side effect. No query parameters are accepted.
 //	@Tags			hello
 //	@Accept			json,application/cbor
 //	@Produce		json,application/cbor

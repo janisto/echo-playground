@@ -29,7 +29,10 @@ func Register(g *echo.Group, svc profilesvc.Service) {
 //
 //	@Summary		Create the current principal profile
 //	@ID				createProfile
-//	@Description	Creates one profile owned by the verified Firebase principal. The query string is closed.
+//	@Description	Atomically creates a profile owned exclusively by the verified Firebase principal; callers cannot select an owner.
+//	@Description	Success returns 201 with Location; 409 profile_exists preserves the existing profile.
+//	@Description	After an uncertain outcome, read and reconcile current state before another write. A conflict does not prove success.
+//	@Description	No query parameters are accepted.
 //	@Tags			profile
 //	@Accept			json,application/cbor
 //	@Produce		json,application/cbor
@@ -90,7 +93,8 @@ func handleCreateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //
 //	@Summary		Get the current principal profile
 //	@ID				getProfile
-//	@Description	Returns only the profile selected by the verified Firebase principal. The query string is closed.
+//	@Description	Reads only the profile owned by the verified Firebase principal; an absent profile returns 404 profile_not_found.
+//	@Description	A read after an uncertain write shows current state, not which request produced it. No query parameters are accepted.
 //	@Tags			profile
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
@@ -128,7 +132,10 @@ func handleGetProfile(svc profilesvc.Service) echo.HandlerFunc {
 //
 //	@Summary		Update the current principal profile
 //	@ID				updateProfile
-//	@Description	Atomically applies a non-empty partial update owned by the verified principal. The query string is closed.
+//	@Description	Atomically updates supplied mutable fields on the verified principal profile; the patch must be non-empty.
+//	@Description	Omitted fields stay unchanged and explicit null is rejected. A no-op preserves updatedAt and performs no write.
+//	@Description	Read and reassess an uncertain outcome: repeating a patch can overwrite intervening changes.
+//	@Description	No query parameters are accepted.
 //	@Tags			profile
 //	@Accept			json,application/cbor
 //	@Produce		json,application/cbor
@@ -190,7 +197,9 @@ func handleUpdateProfile(svc profilesvc.Service) echo.HandlerFunc {
 //
 //	@Summary		Delete the current principal profile
 //	@ID				deleteProfile
-//	@Description	Atomically deletes only the profile owned by the verified principal. The query string is closed.
+//	@Description	Atomically deletes only the verified principal profile, returning 204 if it existed or 404 profile_not_found otherwise.
+//	@Description	Repeated deletion has idempotent effects, without response replay or protection for a later profile recreation.
+//	@Description	Consider that recreation risk before repeating an uncertain deletion. No query parameters are accepted.
 //	@Tags			profile
 //	@Param			X-Request-ID	header	string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
 //	@Success		204

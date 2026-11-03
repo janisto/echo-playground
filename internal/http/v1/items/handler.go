@@ -23,7 +23,9 @@ func Register(g *echo.Group) {
 //
 //	@Summary		List the fixed item catalog
 //	@ID				listItems
-//	@Description	Filters before pagination and rejects unknown or repeated query parameters.
+//	@Description	Reads the fixed public item catalog, applying the optional category filter before cursor pagination.
+//	@Description	Follow the returned Link URLs and treat cursors as opaque and scoped to the original filter and limit.
+//	@Description	Only limit, cursor, and category are accepted; unknown, repeated, or malformed parameters are rejected.
 //	@Tags			items
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)

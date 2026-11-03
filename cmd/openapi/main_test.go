@@ -32,7 +32,7 @@ var nativeRequestSchemaByOperation = map[string]string{
 	"updateProfile": "#/components/schemas/profile.UpdateInput",
 }
 
-func TestGeneratedDocumentMatchesNormalizer(t *testing.T) {
+func TestGeneratedDocumentMatchesPortableStructure(t *testing.T) {
 	generated := generatedDocument(t)
 	want, err := normalizeDocument(nativeRegistrationFixture())
 	if err != nil {
@@ -46,8 +46,60 @@ func TestGeneratedDocumentMatchesNormalizer(t *testing.T) {
 	if err := json.Unmarshal(wantData, &normalized); err != nil {
 		t.Fatalf("normalize built document: %v", err)
 	}
+	// Wording belongs to native annotations; fresh generation is checked by just openapi-check.
+	for key := range portableInventory {
+		method, path, _ := strings.Cut(key, " ")
+		for _, document := range []map[string]any{generated, normalized} {
+			operation := nativeOperation(t, document, path, method)
+			for _, field := range []string{"summary", "description"} {
+				value, ok := operation[field].(string)
+				if !ok || strings.TrimSpace(value) == "" {
+					t.Fatalf("%s has no %s", key, field)
+				}
+				delete(operation, field)
+			}
+		}
+	}
 	if !reflect.DeepEqual(generated, normalized) {
 		t.Fatal("committed OpenAPI document is stale; run just docs")
+	}
+}
+
+func TestNormalizerPreservesNativeDocumentation(t *testing.T) {
+	native := nativeRegistrationFixture()
+	for key, operationID := range portableInventory {
+		method, path, _ := strings.Cut(key, " ")
+		operation := nativeOperation(t, native, path, method)
+		operation["summary"] = "Native summary for " + operationID
+		operation["description"] = "Native usage constraints for " + key
+	}
+	normalized, err := normalizeDocument(native)
+	if err != nil {
+		t.Fatalf("normalize native metadata: %v", err)
+	}
+	for key := range portableInventory {
+		method, path, _ := strings.Cut(key, " ")
+		before := nativeOperation(t, native, path, method)
+		after := nativeOperation(t, normalized, path, method)
+		for _, field := range []string{"summary", "description"} {
+			if after[field] != before[field] {
+				t.Fatalf("%s %s was replaced: got %v, want %v", key, field, after[field], before[field])
+			}
+		}
+	}
+}
+
+func TestNormalizerRejectsMissingNativeDocumentation(t *testing.T) {
+	for _, field := range []string{"summary", "description"} {
+		for _, value := range []any{nil, "", " \n\t", 42} {
+			t.Run(field+"="+fmt.Sprint(value), func(t *testing.T) {
+				native := nativeRegistrationFixture()
+				nativeOperation(t, native, "/v1/profile", "post")[field] = value
+				if _, err := normalizeDocument(native); err == nil {
+					t.Fatalf("normalizer accepted invalid native %s", field)
+				}
+			})
+		}
 	}
 }
 
@@ -457,6 +509,8 @@ func nativeRegistrationFixture() map[string]any {
 			}
 			operation := map[string]any{
 				"operationId": expected["operationId"],
+				"summary":     expected["summary"],
+				"description": "Native description for " + mustString(expected["operationId"]),
 				"parameters":  parameters,
 				"responses":   responses,
 				"security":    expected["security"],
