@@ -23,6 +23,7 @@ type Response struct {
 //	@Tags			health
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
+//	@Header			200				{string}	Link	"Typed API catalog and OpenAPI discovery links"
 //	@Success		200				{object}	Response
 //	@Failure		400				{object}	respond.ProblemDetails
 //	@Failure		406				{object}	respond.ProblemDetails
@@ -32,5 +33,7 @@ func Handler(c *echo.Context) error {
 	if err := request.RejectUnknownOrRepeatedQuery(c); err != nil {
 		return err
 	}
+	c.Response().Header().Add("Link", `</.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json"`)
+	c.Response().Header().Add("Link", `</openapi.json>; rel="service-desc"; type="application/json"`)
 	return respond.Negotiate(c, http.StatusOK, Response{Status: "healthy"})
 }

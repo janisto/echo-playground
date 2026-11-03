@@ -13,7 +13,7 @@ components:
         const: DENY
         type: string
     Link:
-      description: RFC 8288 relative next and previous navigation.
+      description: RFC 8288 typed discovery or next and previous navigation links.
       schema:
         type: string
     Location:
@@ -2206,6 +2206,8 @@ paths:
           headers:
             Cache-Control:
               $ref: '#/components/headers/CacheControl'
+            Link:
+              $ref: '#/components/headers/Link'
             Referrer-Policy:
               $ref: '#/components/headers/ReferrerPolicy'
             Vary:

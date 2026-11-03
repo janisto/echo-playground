@@ -33,6 +33,7 @@ const (
 	formatNotAcceptable responseFormat = iota
 	formatJSON
 	formatCBOR
+	formatDocument
 )
 
 type representation struct {
@@ -170,9 +171,6 @@ func parseAccept(header string) []mediaRange {
 				parsed.quality, sawQ = quality, true
 				continue
 			}
-			if sawQ {
-				continue
-			}
 			_, parameterMap, parseErr := mime.ParseMediaType("application/x;" + parameter)
 			if parseErr != nil || len(parameterMap) != 1 {
 				valid = false
@@ -187,7 +185,7 @@ func parseAccept(header string) []mediaRange {
 				valid = false
 				break
 			}
-			parsed.params[name] = strings.ToLower(value)
+			parsed.params[name] = value
 			parsed.specificity++
 		}
 		if valid {
@@ -242,7 +240,7 @@ func rangeMatches(mediaRange mediaRange, candidate candidate) bool {
 	}
 	for name, value := range mediaRange.params {
 		candidateValue, ok := candidate.params[name]
-		if !ok || !strings.EqualFold(candidateValue, value) {
+		if !ok || candidateValue != value && (name != "charset" || !strings.EqualFold(candidateValue, value)) {
 			return false
 		}
 	}
@@ -320,9 +318,32 @@ func JSONDocument(c *echo.Context, status int, document []byte) error {
 	return c.Blob(status, selected.contentType, document)
 }
 
+// Document serves a fixed local representation using the shared Accept rules.
+func Document(c *echo.Context, contentType string, document []byte) error {
+	httpheader.AddVary(c.Response().Header(), "Accept")
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return InternalError()
+	}
+	typ, subtype, _ := strings.Cut(mediaType, "/")
+	selected := selectRepresentation(acceptHeader(c.Request().Header), []candidate{
+		{formatDocument, typ, subtype, params, contentType},
+	})
+	if selected.format == formatNotAcceptable {
+		return NotAcceptable()
+	}
+	return c.Blob(http.StatusOK, selected.contentType, document)
+}
+
 func writeProblem(w http.ResponseWriter, r *http.Request, problem ProblemDetails) {
 	httpheader.AddVary(w.Header(), "Accept")
 	selected := selectRepresentation(acceptHeader(r.Header), problemCandidates)
+	// Public documentation errors remain JSON, including routing errors that
+	// never reach route middleware. Other API errors retain JSON/CBOR negotiation.
+	switch r.URL.Path {
+	case "/openapi.json", "/.well-known/api-catalog", "/llms.txt", "/llms-full.txt":
+		selected = representation{format: formatJSON, contentType: MediaTypeProblemJSON}
+	}
 	if selected.format == formatNotAcceptable {
 		selected = representation{format: formatJSON, contentType: MediaTypeProblemJSON}
 	}

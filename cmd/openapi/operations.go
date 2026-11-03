@@ -10,7 +10,7 @@ func portablePaths() map[string]any {
 		nil,
 		nil,
 		responses(
-			success("Health"),
+			successWithHeaders(200, "Health", "Link"),
 			failure(400, "invalid_request"),
 			failure(406, "not_acceptable"),
 			failure(500, "internal_error"),
@@ -402,7 +402,7 @@ func headerComponents() map[string]any {
 			"schema":      map[string]any{"type": "string"},
 		},
 		"Link": map[string]any{
-			"description": "RFC 8288 relative next and previous navigation.",
+			"description": "RFC 8288 typed discovery or next and previous navigation links.",
 			"schema":      map[string]any{"type": "string"},
 		},
 		"Location":        literalHeader("/v1/profile"),
