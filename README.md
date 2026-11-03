@@ -27,6 +27,7 @@ and production-shaped verification without pretending to be a complete productio
 - Six anonymous, fixed-origin GitHub REST projections with strict public-only models, manual redirect and `Link` validation,
   bounded response bodies, one overall deadline, and no ambient credential use
 - Generated and embedded OpenAPI 3.1.2 JSON with all fourteen portable operations, matched YAML, and SRI-pinned Swagger UI
+- Public RFC 9727 API catalog and same-build API usage guides for agent consumers
 - A separate minimal Google Functions Framework example
 - Required CI checks for both Go modules, emulators, race detection, vulnerabilities, generated artifacts, and the final image
 
@@ -38,9 +39,11 @@ Successful and error responses use JSON by default and CBOR when the `Accept` he
 Negotiation follows RFC 9110 specificity and quality rules, so an explicit `q=0` exclusion overrides a broader
 range when another supported representation remains. A request with no acceptable success representation returns 406;
 when the client also rejects both Problem Details formats, the 406 explanation uses JSON as a final diagnostic fallback.
-Echo 5.4 automatically serves bodyless HEAD responses through the corresponding GET route.
+Documentation uses JSON, the catalog's profiled linkset JSON, or UTF-8 plain text as documented below;
+its errors always use `application/problem+json`. Echo 5.4 automatically serves bodyless HEAD responses through
+the corresponding GET route.
 
-Errors use either:
+Ordinary API errors use either:
 
 - `application/problem+json`
 - `application/cbor` with the same Problem Details members
@@ -66,6 +69,9 @@ repeated scalar parameters instead of choosing an arbitrary value.
 | GET | `/v1/github/repos/{owner}/{repo}/languages` | Deterministically ordered language totals |
 | GET | `/v1/github/repos/{owner}/{repo}/tags` | Cursor-paginated public tags |
 | GET | `/openapi.json` | Runtime OpenAPI 3.1.2 discovery document |
+| GET, HEAD | `/.well-known/api-catalog` | RFC 9727 links to the schema, guides, and health |
+| GET | `/llms.txt` | Concise API usage index |
+| GET | `/llms-full.txt` | Complete API usage guide |
 
 ## Requirements
 
@@ -95,6 +101,8 @@ Open:
 - http://localhost:8080/health
 - http://localhost:8080/api-docs
 - http://localhost:8080/openapi.json
+- http://localhost:8080/.well-known/api-catalog
+- http://localhost:8080/llms.txt
 
 The default `FIREBASE_MODE=offline` keeps public health, docs, hello, and items routes available while protected routes
 return 503. Use explicit `emulator` mode for local Auth and Firestore, or `live` mode with a real project and ADC.
@@ -271,10 +279,23 @@ from being exposed accidentally to clients.
 `just docs` runs the repository's native Swag v2 registration generator and then `cmd/openapi`, the deterministic
 OpenAPI 3.1.2 normalizer for Draft 2020-12 details that annotations cannot express. The normalizer refuses missing or
 extra operations, operation-ID drift, status drift, parameter drift, request-body drift, and security drift in the
-native output before writing deterministic JSON and semantically equivalent YAML. Semantic tests independently enforce
-the exact schemas, media, headers, and runtime agreement. `just openapi-check` regenerates into a temporary directory
+native output. It preserves native summaries and usage descriptions and requires both to be non-empty before writing
+deterministic JSON and semantically equivalent YAML. Semantic tests independently enforce the exact schemas, media,
+headers, and runtime agreement. `just openapi-check` regenerates into a temporary directory
 and is the non-mutating drift gate. The service embeds `api-docs/swagger.json` and serves those exact bytes at
 `/openapi.json`, so runtime discovery does not depend on a working directory, Firebase, Firestore, DNS, or GitHub.
+
+The public `/.well-known/api-catalog` returns an
+[RFC 9727](https://www.rfc-editor.org/rfc/rfc9727) linkset with the OpenAPI document, both usage guides, and health.
+Resolve its root-relative references against the catalog retrieval URL. Health advertises typed catalog and schema
+links in both JSON and CBOR; the catalog, OpenAPI, full guide, and Swagger UI advertise `/llms.txt` with `describedby`.
+Existing links are preserved.
+
+The root [usage index](llms.txt) supports selective retrieval; [the complete guide](llms-full.txt) covers local
+credentials, profile CRUD, pagination, errors, and safe recovery after uncertain writes. `documentation.go` embeds
+only those two named files, served unchanged as `text/plain; charset=utf-8`, including in the binary-only container.
+The catalog and guide routes reject query parameters and unsupported success media, return JSON Problem Details on
+errors, and do not require authentication, cloud credentials, persistence, network access, or a working directory.
 
 Swagger UI uses exact version 5.33.3 assets with SHA-384 integrity metadata. A docs-specific CSP permits scripts and
 styles from `unpkg.com`; SRI pins the selected external bytes, while the initialization script is embedded and same-origin.
@@ -284,6 +305,8 @@ styles from `unpkg.com`; SRI pins the selected external bytes, while the initial
 ```text
 .agents/skills/         Portable project workflows with Codex UI metadata
 .github/agents/        Evidence-based security review profile for GitHub Copilot
+documentation.go       Explicitly embedded root API usage guides
+llms*.txt              Consumer discovery index and complete usage guide
 api-docs/              Generated OpenAPI plus embedded runtime document
 cmd/openapi/           Deterministic OpenAPI 3.1.2 normalizer and semantic tests
 cmd/server/            Process lifecycle, typed config, and application composition
@@ -309,8 +332,8 @@ just container-up echo-playground:local
 `container-up` treats its optional third argument as the host port and always runs the application on container port 8080,
 so a local `.env` `PORT` value cannot desynchronize the port mapping.
 
-The distroless final image is non-root and embeds the OpenAPI document. Its OCI version label is distinct from source
-revision metadata; no revision label is emitted unless a real source revision is added deliberately. Rebuild it for both
+The distroless final image is non-root and embeds the OpenAPI document and both usage guides. Its OCI version label
+is distinct from source revision metadata; no revision label is emitted unless a real source revision is added deliberately. Rebuild it for both
 Go standard-library and base-image security fixes. Cloud Run automatic base-image rebasing is not a substitute for
 rebuilding a compiled Go binary.
 

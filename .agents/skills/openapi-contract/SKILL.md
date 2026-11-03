@@ -1,6 +1,6 @@
 ---
 name: openapi-contract
-description: Maintain and verify echo-playground's Swag v2 registration, deterministic OpenAPI 3.1.2 normalization, embedded discovery route, runtime agreement, and Swagger UI.
+description: Maintain and verify echo-playground's Swag v2 registration, deterministic OpenAPI 3.1.2 normalization, embedded schema and consumer discovery routes, runtime agreement, and Swagger UI.
 ---
 
 # OpenAPI contract maintenance
@@ -15,8 +15,9 @@ portable inventory and deterministically normalizes the exact OpenAPI 3.1.2 cont
 those exact bytes at `/openapi.json` and points the optional `/api-docs` UI at that route.
 
 Do not hand-edit generated files, bypass native annotation registration, fetch references at runtime, or introduce
-another description. The normalizer must reject native method, path, operation-ID, response-status, parameter,
-request-body, and security drift before it supplies semantics Swag cannot express. Runtime code and OpenAPI remain
+a second OpenAPI description. The normalizer must reject native method, path, operation-ID, response-status, parameter,
+request-body, and security drift before it supplies semantics Swag cannot express. Preserve each native non-empty
+summary and usage description rather than replacing them with generic text. Runtime code and OpenAPI remain
 independent evidence: inspect and test both.
 
 ## Required projection
@@ -34,6 +35,8 @@ independent evidence: inspect and test both.
   formats, and collection shapes. Examples, when present, must validate and contain no credential, personal, or live
   provider data.
 - `/openapi.json` may omit itself. If included, use the exact discovery tuple and JSON-only success.
+- Health success documents its typed discovery `Link` header. Other discovery surfaces need not become business
+  operations in OpenAPI.
 
 ## Workflow
 
@@ -48,3 +51,15 @@ independent evidence: inspect and test both.
 Use `api-docs/embed_test.go` for embedding and JSON/YAML equivalence. Keep detailed operation/schema semantics and
 generated drift in `cmd/openapi/main_test.go`; keep runtime discovery behavior in `cmd/server` or `internal/http/docs`
 tests. A version-prefix assertion or successful generation alone is not sufficient.
+
+## Consumer discovery
+
+Root `llms.txt` and `llms-full.txt` own the usage index and complete API guide; `documentation.go` embeds only those
+named assets. `internal/http/docs/` serves them unchanged and publishes the RFC 9727 catalog from local content.
+Update the guides alongside API usage changes; keep contributor instructions elsewhere.
+
+Test actual catalog GET/HEAD, root-relative target resolution against the retrieval URL, exact same-build guide bytes,
+closed queries, fixed success media and JSON Problem Details errors, and bodyless HEAD. Parse typed health/catalog
+links and the `/llms.txt` advertisement on schema, catalog, full guide, and Swagger UI. Preserve unrelated links,
+including another `describedby` target. Discovery must not invoke authentication, persistence, GitHub, DNS, request-body
+reads, or runtime filesystem access. Never expose a directory or add a discovery generator or dedicated CI job.

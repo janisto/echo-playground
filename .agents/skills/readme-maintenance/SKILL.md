@@ -15,7 +15,8 @@ Read only the areas relevant to the documentation change, using these files as t
 
 - application and configuration: `cmd/server/main.go`, `cmd/server/application.go`, and `cmd/server/config.go`;
 - routes and contracts: `internal/http/health/`, `internal/http/v1/routes/`, and registered handler packages;
-- API documentation: `api-docs/embed.go`, `cmd/openapi/`, and `internal/http/docs/`;
+- API documentation: `api-docs/embed.go`, `cmd/openapi/`, `internal/http/docs/`, `documentation.go`, `llms.txt`, and
+  `llms-full.txt`;
 - separate function: `functions/function.go`, `functions/cmd/server/main.go`, and `functions/go.mod`;
 - tooling and deployment: `Justfile`, `Dockerfile`, `firebase.json`, and `.github/workflows/`;
 - dependencies and versions: `go.mod`, `functions/go.mod`, and pinned workflow or container references.
@@ -34,7 +35,8 @@ Keep the document concise and onboarding-oriented. Preserve or update these subj
 - root and function module development commands;
 - the explicit distinction that Firebase CLI runs Auth and Firestore emulators but does not deploy the Go function;
 - the `gcloud run deploy --source functions --function Hello --base-image go127` function path;
-- emulator, OpenAPI generation, embedded Swagger UI, container, and CI behavior;
+- emulator, OpenAPI generation, native usage descriptions, embedded Swagger UI, API catalog and usage guides,
+  container, and CI behavior;
 - explicit `FIREBASE_MODE=offline|emulator|live` behavior and valid environment/mode combinations;
 - concise project layout, contribution pointer, and license.
 
@@ -48,6 +50,8 @@ maintaining compatibility with old README structure.
 - Defaults and failure behavior must match `loadConfig` and application composition.
 - Describe the two Go modules as independent; do not imply root `./...` crosses into `functions/`.
 - Describe `/health` as dependency-free liveness, not Firebase readiness.
+- Keep human onboarding here; link the consumer guides for complete API usage. Describe public discovery as local
+  same-build content, with typed links and root-relative catalog resolution, without implying a deployment.
 - Describe JSON and CBOR request decoding and response negotiation from the implemented routes.
 - Keep offline and emulator modes development-only, document strict emulator `host:port` authorities, and explain why
   live mode rejects emulator hosts and demo project IDs.

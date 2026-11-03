@@ -39,7 +39,9 @@ func Register(group *echo.Group, service githubsvc.Service) {
 //
 //	@Summary		Get a public GitHub owner
 //	@ID				getGitHubOwner
-//	@Description	Projects a public owner from the fixed anonymous GitHub origin. The query string is closed.
+//	@Description	Reads one public GitHub user or organization projection anonymously from the fixed upstream origin.
+//	@Description	Caller credentials are never forwarded. Missing or inaccessible owners return controlled 404 errors.
+//	@Description	No query parameters are accepted.
 //	@Tags			github
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
@@ -72,7 +74,9 @@ func getOwner(service githubsvc.Service) echo.HandlerFunc {
 //
 //	@Summary		List public GitHub owner repositories
 //	@ID				listGitHubOwnerRepositories
-//	@Description	Returns a strictly projected, cursor-paginated public repository page.
+//	@Description	Reads only public repositories for the selected GitHub owner without an upstream credential.
+//	@Description	Follow returned Link URLs; cursors are opaque and scoped to the owner and limit. Only limit and cursor are accepted.
+//	@Description	Shared upstream quota failures return 429 with Retry-After; the server does not retry the upstream operation.
 //	@Tags			github
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
@@ -116,7 +120,8 @@ func listOwnerRepositories(service githubsvc.Service) echo.HandlerFunc {
 //
 //	@Summary		Get a public GitHub repository
 //	@ID				getGitHubRepository
-//	@Description	Projects one public repository from the fixed anonymous GitHub origin. The query string is closed.
+//	@Description	Reads one strictly public GitHub repository projection anonymously; private or inaccessible repositories are not exposed.
+//	@Description	Missing or inaccessible repositories return controlled 404 errors. No query parameters are accepted.
 //	@Tags			github
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
@@ -150,7 +155,9 @@ func getRepository(service githubsvc.Service) echo.HandlerFunc {
 //
 //	@Summary		List public GitHub repository activity
 //	@ID				listGitHubRepositoryActivity
-//	@Description	Returns a newest-first, cursor-paginated public activity page.
+//	@Description	Reads a newest-first page of public activity for the selected public GitHub repository, without forwarding credentials.
+//	@Description	Follow Link URLs and treat cursors as opaque and scoped to the repository and limit. Only limit and cursor are accepted.
+//	@Description	Activity can change between requests; the cursor does not promise a snapshot.
 //	@Tags			github
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
@@ -202,7 +209,8 @@ func listRepositoryActivity(service githubsvc.Service) echo.HandlerFunc {
 //
 //	@Summary		List public GitHub repository languages
 //	@ID				listGitHubRepositoryLanguages
-//	@Description	Returns the strictly projected language byte counts. The query string is closed.
+//	@Description	Reads language byte totals for a public GitHub repository anonymously and returns deterministic language ordering.
+//	@Description	Missing or inaccessible repositories return controlled 404 errors. No query parameters are accepted.
 //	@Tags			github
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)
@@ -236,7 +244,9 @@ func listRepositoryLanguages(service githubsvc.Service) echo.HandlerFunc {
 //
 //	@Summary		List public GitHub repository tags
 //	@ID				listGitHubRepositoryTags
-//	@Description	Returns a strictly projected, cursor-paginated public tag page.
+//	@Description	Reads a page of tags and commit identifiers for the selected public GitHub repository without an upstream credential.
+//	@Description	Follow Link URLs; cursors are opaque and scoped to the repository and limit. Only limit and cursor are accepted.
+//	@Description	This is a live upstream view rather than a stable snapshot or a claim that tag names cannot change.
 //	@Tags			github
 //	@Produce		json,application/cbor
 //	@Param			X-Request-ID	header		string	false	"Optional request correlation value"	minlength(1)	maxlength(128)

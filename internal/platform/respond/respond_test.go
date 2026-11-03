@@ -38,11 +38,14 @@ func TestSuccessNegotiationSpecificityQualityAndTieBreaking(t *testing.T) {
 		},
 		{"application/cbor;q=0.8, application/json;q=0.8", formatJSON, "application/json"},
 		{"application/json; charset=utf-8", formatJSON, "application/json; charset=utf-8"},
+		{"application/json;q=1; charset=UTF-8", formatJSON, "application/json; charset=utf-8"},
+		{"application/json;q=1; profile=other", formatNotAcceptable, ""},
+		{"application/json; charset=utf-8;q=1;charset=utf-8", formatNotAcceptable, ""},
 		{"application/json; charset=iso-8859-1, application/cbor", formatCBOR, "application/cbor"},
 		{"broken, application/cbor", formatCBOR, "application/cbor"},
 		{"\u00a0application/json, application/cbor", formatCBOR, "application/cbor"},
 		{"application/json\u2003, application/cbor", formatCBOR, "application/cbor"},
-		{"application/json;q=1; note=\"a\u00a0b\"", formatJSON, "application/json"},
+		{"application/json;q=1; note=\"a\u00a0b\"", formatNotAcceptable, ""},
 		{"\u00a0application/json", formatNotAcceptable, ""},
 		{"application/problem+json", formatNotAcceptable, ""},
 		{"application/json;q=0, application/cbor;q=0", formatNotAcceptable, ""},
@@ -95,7 +98,7 @@ func TestAcceptParsingBoundariesAndQuotedSeparators(t *testing.T) {
 		t.Fatalf("parseAccept retained %#v, want two valid ranges", ranges)
 	}
 	if ranges[0].typ != "application" || ranges[0].subtype != "json" || ranges[0].quality != 700 ||
-		ranges[0].specificity != 201 || ranges[0].params["level"] != "1" {
+		ranges[0].specificity != 202 || ranges[0].params["level"] != "1" || ranges[0].params["extension"] != "ignored" {
 		t.Fatalf("parameterized range = %#v", ranges[0])
 	}
 	if ranges[1].subtype != "cbor" || ranges[1].quality != 500 || ranges[1].specificity != 200 {

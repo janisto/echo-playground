@@ -20,7 +20,7 @@
                 }
             },
             "Link": {
-                "description": "RFC 8288 relative next and previous navigation.",
+                "description": "RFC 8288 typed discovery or next and previous navigation links.",
                 "schema": {
                     "type": "string"
                 }
@@ -3068,7 +3068,7 @@
     "paths": {
         "/health": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Returns process liveness without authentication or external-service calls; it does not establish Firebase readiness.\nThe query string is closed; no query parameters are accepted.",
                 "operationId": "getHealth",
                 "parameters": [
                     {
@@ -3093,6 +3093,9 @@
                         "headers": {
                             "Cache-Control": {
                                 "$ref": "#/components/headers/CacheControl"
+                            },
+                            "Link": {
+                                "$ref": "#/components/headers/Link"
                             },
                             "Referrer-Policy": {
                                 "$ref": "#/components/headers/ReferrerPolicy"
@@ -3223,7 +3226,7 @@
         },
         "/v1/github/owners/{owner}": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads one public GitHub user or organization projection anonymously from the fixed upstream origin.\nCaller credentials are never forwarded. Missing or inaccessible owners return controlled 404 errors.\nNo query parameters are accepted.",
                 "operationId": "getGitHubOwner",
                 "parameters": [
                     {
@@ -3562,7 +3565,7 @@
         },
         "/v1/github/owners/{owner}/repos": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads only public repositories for the selected GitHub owner without an upstream credential.\nFollow returned Link URLs; cursors are opaque and scoped to the owner and limit. Only limit and cursor are accepted.\nShared upstream quota failures return 429 with Retry-After; the server does not retry the upstream operation.",
                 "operationId": "listGitHubOwnerRepositories",
                 "parameters": [
                     {
@@ -3910,7 +3913,7 @@
         },
         "/v1/github/repos/{owner}/{repo}": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads one strictly public GitHub repository projection anonymously; private or inaccessible repositories are not exposed.\nMissing or inaccessible repositories return controlled 404 errors. No query parameters are accepted.",
                 "operationId": "getGitHubRepository",
                 "parameters": [
                     {
@@ -4252,7 +4255,7 @@
         },
         "/v1/github/repos/{owner}/{repo}/activity": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads a newest-first page of public activity for the selected public GitHub repository, without forwarding credentials.\nFollow Link URLs and treat cursors as opaque and scoped to the repository and limit. Only limit and cursor are accepted.\nActivity can change between requests; the cursor does not promise a snapshot.",
                 "operationId": "listGitHubRepositoryActivity",
                 "parameters": [
                     {
@@ -4603,7 +4606,7 @@
         },
         "/v1/github/repos/{owner}/{repo}/languages": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads language byte totals for a public GitHub repository anonymously and returns deterministic language ordering.\nMissing or inaccessible repositories return controlled 404 errors. No query parameters are accepted.",
                 "operationId": "listGitHubRepositoryLanguages",
                 "parameters": [
                     {
@@ -4945,7 +4948,7 @@
         },
         "/v1/github/repos/{owner}/{repo}/tags": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads a page of tags and commit identifiers for the selected public GitHub repository without an upstream credential.\nFollow Link URLs; cursors are opaque and scoped to the repository and limit. Only limit and cursor are accepted.\nThis is a live upstream view rather than a stable snapshot or a claim that tag names cannot change.",
                 "operationId": "listGitHubRepositoryTags",
                 "parameters": [
                     {
@@ -5296,7 +5299,7 @@
         },
         "/v1/hello": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Returns the fixed public greeting without authentication or persisted side effects.\nThe query string is closed; no query parameters are accepted.",
                 "operationId": "getHello",
                 "parameters": [
                     {
@@ -5449,7 +5452,7 @@
                 "summary": "Get the default greeting"
             },
             "post": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Computes a public personalized greeting from one validated JSON or CBOR object and returns 200.\nNo resource is stored, so repeating valid input has no persisted side effect. No query parameters are accepted.",
                 "operationId": "createHello",
                 "parameters": [
                     {
@@ -5724,7 +5727,7 @@
         },
         "/v1/items": {
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads the fixed public item catalog, applying the optional category filter before cursor pagination.\nFollow the returned Link URLs and treat cursors as opaque and scoped to the original filter and limit.\nOnly limit, cursor, and category are accepted; unknown, repeated, or malformed parameters are rejected.",
                 "operationId": "listItems",
                 "parameters": [
                     {
@@ -5926,7 +5929,7 @@
         },
         "/v1/profile": {
             "delete": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Atomically deletes only the verified principal profile, returning 204 if it existed or 404 profile_not_found otherwise.\nRepeated deletion has idempotent effects, without response replay or protection for a later profile recreation.\nConsider that recreation risk before repeating an uncertain deletion. No query parameters are accepted.",
                 "operationId": "deleteProfile",
                 "parameters": [
                     {
@@ -6144,7 +6147,7 @@
                 "summary": "Delete the current principal profile"
             },
             "get": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Reads only the profile owned by the verified Firebase principal; an absent profile returns 404 profile_not_found.\nA read after an uncertain write shows current state, not which request produced it. No query parameters are accepted.",
                 "operationId": "getProfile",
                 "parameters": [
                     {
@@ -6409,7 +6412,7 @@
                 "summary": "Get the current principal profile"
             },
             "patch": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Atomically updates supplied mutable fields on the verified principal profile; the patch must be non-empty.\nOmitted fields stay unchanged and explicit null is rejected. A no-op preserves updatedAt and performs no write.\nRead and reassess an uncertain outcome: repeating a patch can overwrite intervening changes.\nNo query parameters are accepted.",
                 "operationId": "updateProfile",
                 "parameters": [
                     {
@@ -6794,7 +6797,7 @@
                 "summary": "Update the current principal profile"
             },
             "post": {
-                "description": "The query string is closed; unknown, repeated, or malformed parameters are rejected.",
+                "description": "Atomically creates a profile owned exclusively by the verified Firebase principal; callers cannot select an owner.\nSuccess returns 201 with Location; 409 profile_exists preserves the existing profile.\nAfter an uncertain outcome, read and reconcile current state before another write. A conflict does not prove success.\nNo query parameters are accepted.",
                 "operationId": "createProfile",
                 "parameters": [
                     {
