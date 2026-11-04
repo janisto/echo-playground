@@ -1,6 +1,7 @@
 package hello
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -110,31 +111,55 @@ func TestCreateHello_Success(t *testing.T) {
 	}
 }
 
-func TestCreateHello_MissingName(t *testing.T) {
-	e := setupEcho()
-
-	body := `{}`
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d", rec.Code)
-	}
-
-	var problem respond.ProblemDetails
-	if err := json.Unmarshal(rec.Body.Bytes(), &problem); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
-	}
-	if problem.Status != http.StatusUnprocessableEntity {
-		t.Fatalf("expected status 422, got %d", problem.Status)
-	}
-	if len(problem.Errors) == 0 {
-		t.Fatal("expected validation errors")
-	}
-	if problem.Errors[0].Source == nil || problem.Errors[0].Source.Pointer != "/name" {
-		t.Fatalf("expected pointer '/name', got %#v", problem.Errors[0].Source)
+func TestCreateHello_ValidationSources(t *testing.T) {
+	for _, media := range []string{"application/json", "application/cbor"} {
+		for _, test := range []struct {
+			name    string
+			payload map[string]string
+			pointer string
+		}{
+			{name: "missing", payload: map[string]string{}},
+			{name: "empty", payload: map[string]string{"name": ""}},
+			{name: "present invalid", payload: map[string]string{"name": " Ada"}, pointer: "/name"},
+		} {
+			t.Run(media+"/"+test.name, func(t *testing.T) {
+				encode := json.Marshal
+				if media == "application/cbor" {
+					encode = cbor.Marshal
+				}
+				body, err := encode(test.payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/hello", bytes.NewReader(body))
+				req.Header.Set("Content-Type", media)
+				req.Header.Set("Accept", media)
+				rec := httptest.NewRecorder()
+				setupEcho().ServeHTTP(rec, req)
+				if rec.Code != http.StatusUnprocessableEntity {
+					t.Fatalf("expected 422, got %d", rec.Code)
+				}
+				decode := json.Unmarshal
+				if media == "application/cbor" {
+					decode = cbor.Unmarshal
+				}
+				var problem respond.ProblemDetails
+				if err := decode(rec.Body.Bytes(), &problem); err != nil {
+					t.Fatal(err)
+				}
+				if problem.Status != http.StatusUnprocessableEntity || len(problem.Errors) != 1 {
+					t.Fatalf("unexpected validation problem: %#v", problem)
+				}
+				source := problem.Errors[0].Source
+				if test.pointer == "" {
+					if source != nil {
+						t.Fatalf("required-field failure must omit an unproven source: %#v", source)
+					}
+				} else if source == nil || source.Pointer != test.pointer {
+					t.Fatalf("expected pointer %q for a present invalid member, got %#v", test.pointer, source)
+				}
+			})
+		}
 	}
 }
 

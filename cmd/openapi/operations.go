@@ -10,7 +10,7 @@ func portablePaths() map[string]any {
 		nil,
 		nil,
 		responses(
-			successWithHeaders(200, "Health", "Link"),
+			successWithHeaders(200, "Health", "HealthLink"),
 			failure(400, "invalid_request"),
 			failure(406, "not_acceptable"),
 			failure(500, "internal_error"),
@@ -303,6 +303,8 @@ func responseHeaders(extra ...string) map[string]any {
 		switch name {
 		case "Link":
 			headers["Link"] = headerRef("Link")
+		case "HealthLink":
+			headers["Link"] = headerRef("HealthLink")
 		case "Location":
 			headers["Location"] = headerRef("Location")
 		case "WWWAuthenticate":
@@ -403,6 +405,11 @@ func headerComponents() map[string]any {
 		},
 		"Link": map[string]any{
 			"description": "RFC 8288 typed discovery or next and previous navigation links.",
+			"schema":      map[string]any{"type": "string"},
+		},
+		"HealthLink": map[string]any{
+			"description": "RFC 8288 typed API catalog and OpenAPI discovery links.",
+			"required":    true,
 			"schema":      map[string]any{"type": "string"},
 		},
 		"Location":        literalHeader("/v1/profile"),

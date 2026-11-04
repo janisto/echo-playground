@@ -87,10 +87,15 @@ func (av *AppValidator) Validate(i any) error {
 	if ve, ok := errors.AsType[validator.ValidationErrors](err); ok {
 		fields := make([]FieldError, len(ve))
 		for idx, fe := range ve {
+			location := fieldLocation(reflect.TypeOf(i), fe.StructField())
+			if location == LocationBody && fe.Tag() == "required" {
+				// A zero value cannot establish that the body member was present.
+				location = LocationNone
+			}
 			fields[idx] = FieldError{
 				Field:    fe.Field(),
 				Message:  buildMessage(fe),
-				Location: fieldLocation(reflect.TypeOf(i), fe.StructField()),
+				Location: location,
 			}
 		}
 		return &ValidationError{

@@ -318,8 +318,15 @@ func TestOperationsDescribeExactMediaFailuresAndHeaders(t *testing.T) {
 	}
 	health := mapValue(t, mapValue(t, paths, "/health"), "get")
 	healthResponse := mapValue(t, mapValue(t, health, "responses"), "200")
-	if mapValue(t, mapValue(t, healthResponse, "headers"), "Link")["$ref"] != "#/components/headers/Link" {
-		t.Fatal("health success lacks its discovery Link header")
+	if mapValue(t, mapValue(t, healthResponse, "headers"), "Link")["$ref"] != "#/components/headers/HealthLink" {
+		t.Fatal("health success lacks its required discovery Link header")
+	}
+	headers := mapValue(t, mapValue(t, document, "components"), "headers")
+	if mapValue(t, headers, "HealthLink")["required"] != true {
+		t.Fatal("health discovery Link must be required")
+	}
+	if mapValue(t, headers, "Link")["required"] == true {
+		t.Fatal("pagination Link must remain optional")
 	}
 	profilePost := mapValue(t, mapValue(t, paths, "/v1/profile"), "post")
 	assertStatusSet(t, profilePost, "201", "400", "401", "406", "409", "413", "415", "422", "500", "503")
