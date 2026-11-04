@@ -95,6 +95,9 @@ func TestValidate_RequiredFields(t *testing.T) {
 
 	fieldMap := make(map[string]FieldError)
 	for _, f := range ve.Fields {
+		if f.Location != LocationNone {
+			t.Fatalf("required field %q has an unproven body source: %v", f.Field, f.Location)
+		}
 		fieldMap[f.Field] = f
 	}
 

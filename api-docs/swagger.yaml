@@ -12,6 +12,11 @@ components:
       schema:
         const: DENY
         type: string
+    HealthLink:
+      description: RFC 8288 typed API catalog and OpenAPI discovery links.
+      required: true
+      schema:
+        type: string
     Link:
       description: RFC 8288 typed discovery or next and previous navigation links.
       schema:
@@ -2207,7 +2212,7 @@ paths:
             Cache-Control:
               $ref: '#/components/headers/CacheControl'
             Link:
-              $ref: '#/components/headers/Link'
+              $ref: '#/components/headers/HealthLink'
             Referrer-Policy:
               $ref: '#/components/headers/ReferrerPolicy'
             Vary:
